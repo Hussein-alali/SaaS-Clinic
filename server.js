@@ -1,13 +1,17 @@
 // Minimal zero-dependency static server for Railway (or any Node host).
-// The app itself is fully static — index.html + src/*.jsx compiled by
-// Babel Standalone in the browser — so all this does is serve files on
-// the port the platform provides.
+// The app itself is fully static, so all this does is serve files on the
+// port the platform provides. It serves the precompiled build in dist/
+// (`npm run build`) when one exists; `npm run dev` serves the raw sources
+// instead — index.html + src/*.jsx compiled by Babel Standalone in the
+// browser — so edits show up on reload without a build step.
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const ROOT = __dirname;
+const DEV = process.argv.includes("--dev");
+const DIST = path.join(__dirname, "dist");
+const ROOT = !DEV && fs.existsSync(path.join(DIST, "index.html")) ? DIST : __dirname;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -56,5 +60,5 @@ http.createServer((req, res) => {
     fs.createReadStream(filePath).pipe(res);
   });
 }).listen(PORT, () => {
-  console.log(`Kinetic clinic app serving on port ${PORT}`);
+  console.log(`Kinetic clinic app serving ${ROOT === DIST ? "dist/ (production build)" : "sources (dev, in-browser Babel)"} on port ${PORT}`);
 });

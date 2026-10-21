@@ -38,13 +38,16 @@ billing, and reports — into one role-scoped web application backed by
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 18 via **Babel Standalone** (CDN, no build step), RTL layout |
+| Frontend | React 18, JSX precompiled by **esbuild** (`npm run build`), RTL layout |
 | Backend | **Supabase** — Postgres, Auth, Storage, auto-generated REST, RLS |
 | Server logic | Supabase **Edge Functions** (Deno) for privileged admin actions |
 | Hosting | Any Node host (Railway, Vercel, …) — `server.js` is a zero-dependency static server |
 
-There is no bundler and nothing to install: the browser compiles
-`src/*.jsx` on the fly, and `@supabase/supabase-js` loads from a CDN.
+`src/*.jsx` are plain scripts that share globals (no imports). The build
+concatenates them in `index.html` order and precompiles them into
+`dist/app.<hash>.js`; React and `@supabase/supabase-js` load from a CDN.
+During development, `npm run dev` serves the raw sources and the browser
+compiles them with Babel Standalone — no build step, but a slow first load.
 
 ## Getting Started
 
@@ -69,10 +72,15 @@ Set your project's URL and anon key in [`src/supabase.jsx`](src/supabase.jsx)
 ### 2. Run locally
 
 ```bash
-npm start        # serves the app on http://localhost:3000
+npm install      # once — installs the build tool (esbuild)
+npm run build    # precompiles src/ into dist/
+npm start        # serves dist/ on http://localhost:3000
+npm run dev      # or: serve the raw sources, compiled in the browser
 ```
 
-Requires Node ≥ 18. No `npm install` needed.
+Requires Node ≥ 18. Re-run `npm run build` after changing `src/` or
+`index.html`; `npm start` falls back to the raw sources when `dist/` is
+missing (the startup log says which one it serves).
 
 ### 3. Modes
 
@@ -85,7 +93,8 @@ Requires Node ≥ 18. No `npm install` needed.
 ## Project Structure
 
 ```
-├── index.html                  # App shell — loads React, Babel, and src/*.jsx
+├── index.html                  # App shell (dev) — loads React, Babel, and src/*.jsx
+├── dist/                       # Production build output (npm run build, not committed)
 ├── server.js                   # Zero-dependency static file server
 ├── src/
 │   ├── core.jsx                # App bootstrap and shared state
@@ -113,7 +122,7 @@ Requires Node ≥ 18. No `npm install` needed.
 
 See [`DEPLOY.md`](DEPLOY.md) for the full guide, including:
 
-- Deploying to Railway (or any Node host) with `npm start`.
+- Deploying to Railway (or any Node host) with `npm run build` + `npm start`.
 - Deploying the three admin Edge Functions (`admin-create-user`,
   `admin-reset-password`, `admin-set-status`) via the Dashboard or
   `./deploy-edge-function.sh` — recommended for unlimited, instant staff
