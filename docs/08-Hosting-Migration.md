@@ -49,7 +49,7 @@
 | **المخاطر** | شبه معدومة |
 
 **الخطوات:**
-1. بناء الواجهة مسبقًا (الخطوة 1 في [07-Performance-Audit.md](07-Performance-Audit.md))، فينتج مجلد `dist/` فيه `index.html` و `app.min.js` و `assets/`.
+1. شغّل `npm install` ثم `npm run build` على جهازك، فينتج مجلد `dist/` فيه `index.html` و `app.<hash>.js` و `import.<hash>.js` و `assets/`.
 2. cPanel ← **Git Version Control** (أو File Manager) ← ارفع محتوى `dist/` فقط إلى `public_html`. **لا ترفع** `*.sql` ولا `DEPLOY.md` ولا `server.js`.
 3. cPanel ← **SSL/TLS Status** ← فعّل AutoSSL لـ `clinicsyseg.com`.
 4. ضع ملف `.htaccess` في `public_html`:
@@ -79,7 +79,7 @@
      </FilesMatch>
    </IfModule>
    ```
-   تخزين `.js` لسنة آمن فقط إذا تغيّر اسم الملف مع كل نشر، مثل `app.3f9a.js`. إن بقي الاسم `app.min.js` فاستخدم `max-age=300`.
+   تخزين `.js` لسنة آمن لأن `npm run build` يضع بصمة المحتوى في اسم الملف (`app.<hash>.js`)، فيتغير الاسم مع كل تعديل.
 5. Supabase Dashboard ← **Authentication → URL Configuration**: ضع `https://clinicsyseg.com` في *Site URL* و *Redirect URLs*، حتى تعمل روابط إعادة تعيين كلمة المرور والدعوات.
 6. اختبر الدخول، والحجز، والدفع السريع، ورفع ملف مريض، وتصدير Excel.
 

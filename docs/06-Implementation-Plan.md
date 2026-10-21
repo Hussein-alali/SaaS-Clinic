@@ -9,9 +9,9 @@
 
 | المهمة | المنفذ | المدخلات | المخرجات | تعريف الإنجاز | يعتمد على |
 |---|---|---|---|---|---|
-| 1.1 استيراد الكود الناقص | المطور | مستودع `clinksys` الأصلي | `src/*.jsx`، `supabase/migrations`، `supabase/functions` في هذا المستودع | `npm start` يفتح التطبيق، و `?demo=1` يعمل | — |
+| 1.1 استيراد الكود الناقص ✅ | المطور | مستودع `clinksys` الأصلي | `src/*.jsx`، `supabase/migrations`، `supabase/functions` في هذا المستودع | `npm start` يفتح التطبيق، و `?demo=1` يعمل | — |
 | 1.2 تنظيف الأسرار | المطور | `DEPLOY.md`، `seed-admin.sql`، سجل Git | ملفات بلا كلمات مرور؛ تدوير كلمة مرور المدير وأي مفتاح مكشوف | فحص الأسرار (gitleaks) نظيف على HEAD | 1.1 |
-| 1.3 تقييد الخادم الثابت | AI agent | `server.js` | قائمة سماح: `index.html` والأصول فقط | طلب `/seed-admin.sql` يعيد 404 | 1.1 |
+| 1.3 تقييد الخادم الثابت ✅ (يخدم `dist/` فقط) | AI agent | `server.js` | قائمة سماح: `index.html` والأصول فقط | طلب `/seed-admin.sql` يعيد 404 | 1.1 |
 | 1.4 قرار أداة البناء | المالك + المطور | [TRD](02-TRD.md) | قرار مكتوب: Vite أو الإبقاء على Babel | القرار مسجل في TRD | 1.1 |
 | 1.5 الانتقال إلى Vite (إن اعتُمد) | AI agent | `index.html`، `src/` | `vite.config`، `npm run build`، متغيرات بيئة `VITE_SUPABASE_URL/ANON_KEY` | build ناجح والتطبيق يعمل بنفس السلوك | 1.4 |
 | 1.6 البيئات | المطور | حساب Supabase | مشروع staging منفصل + `supabase start` محليًا | الـ migrations الحالية تطبق على المحلي و staging | 1.1 |

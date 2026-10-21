@@ -11,14 +11,14 @@
 
 | العنصر | الحالة |
 |---|---|
-| `index.html` | غلاف التطبيق؛ يحمّل React 18.3.1 و Babel Standalone 7.29.0 و `@supabase/supabase-js@2` و `xlsx-js-style` من CDN، ثم `src/*.jsx` |
-| `src/*.jsx` | **غير موجود في هذا المستودع** رغم أن `index.html` و `README.md` يشيران إليه. يجب استيراده من المستودع الأصلي (`clinksys`) قبل أي عمل |
-| `supabase/migrations`، `supabase/functions` | **غير موجودين** كذلك؛ الموجود فقط `Supabase_All_In_One.sql` (5070 سطر) و `deploy-edge-function.sh` |
-| `server.js` | خادم ملفات ثابتة بدون اعتماديات؛ **يخدم كل ملفات المستودع** بما فيها `*.sql` و `*.md` |
+| `index.html` | غلاف التطبيق للتطوير (`npm run dev`)؛ يحمّل React و Babel Standalone و `@supabase/supabase-js@2` من CDN، ثم `src/*.jsx` |
+| `src/*.jsx` | منقول من المستودع الأصلي `clinksys` (commit `cfd073d`) مع `assets/` و `supabase/` و `scripts/` |
+| البناء | `npm run build` (`scripts/build.mjs`، esbuild) يترجم `src/*.jsx` مسبقًا إلى `dist/` مع React production؛ صفحة الاستيراد ومكتبة Excel تُحمّلان عند الحاجة فقط ([07](07-Performance-Audit.md)) |
+| `server.js` | خادم ملفات ثابتة بدون اعتماديات؛ يخدم `dist/` في الإنتاج، وكل ملفات المستودع في وضع `--dev` فقط |
 | قاعدة البيانات | عيادة واحدة: `clinic_settings` بسجل وحيد `id = 1`، ودور المستخدم من `staff.role` عبر `app_role()`، ولا يوجد `organization_id` |
 | `branches` | جدول موجود لكنه غير مربوط بالمواعيد أو الموظفين أو الفواتير |
 
-> **تنبيه أمني قائم:** `DEPLOY.md` و `seed-admin.sql` يحتويان على بريد وكلمة مرور حساب المدير الأولي، و `server.js` يخدم ملفات `.sql` للعامة. يجب تغيير كلمة المرور وحذفها من الملفات ومنع خدمة غير ملفات التطبيق قبل أي نشر متعدد العيادات (انظر Milestone 1 في [خطة التنفيذ](06-Implementation-Plan.md)).
+> **تنبيه أمني قائم:** `DEPLOY.md` و `seed-admin.sql` يحتويان على بريد وكلمة مرور حساب المدير الأولي، و `server.js` كان يخدم ملفات `.sql` للعامة (أصبح يخدم `dist/` فقط بعد `npm run build`). يجب تغيير كلمة المرور وحذفها من الملفات قبل أي نشر متعدد العيادات (انظر Milestone 1 في [خطة التنفيذ](06-Implementation-Plan.md)).
 
 ## Platforms
 
@@ -30,7 +30,7 @@
 | البند | القرار |
 |---|---|
 | Framework | React 18 |
-| أسلوب البناء | **قرار مطلوب في Milestone 1:** الإبقاء على Babel Standalone (بدون build) مؤقتًا، أو الانتقال إلى Vite. التوصية: الانتقال إلى **Vite + React** لأن الترجمة داخل المتصفح بطيئة، وتمنع فحص الأنواع والاختبارات، وتحمّل نسخ React التطويرية في الإنتاج |
+| أسلوب البناء | **الآن:** ترجمة مسبقة بـ esbuild (`npm run build`) بدل Babel داخل المتصفح. **قرار مطلوب في Milestone 1:** الانتقال إلى **Vite + React** مع ES modules لتقسيم الكود حسب الشاشة (`React.lazy`) وإتاحة فحص الأنواع والاختبارات |
 | Hosting | خادم Node (`server.js`) على Railway، أو استضافة ثابتة (Vercel/Hosting.com) |
 | Domains | `clinicsyseg.com` (الموقع الرئيسي والدخول) + `*.clinicsyseg.com` (العيادات) + `admin.clinicsyseg.com` (لوحة Super Admin؛ slug محجوز) |
 | حل العيادة | الواجهة تقرأ الـ subdomain من `window.location.hostname` → تستدعي `resolve_organization(slug)` → تحصل على `organization_id` والحالة والتخصص والميزات العامة فقط |
