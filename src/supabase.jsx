@@ -919,11 +919,30 @@ function pkOf(cfg, row) {
   return row[cfg.pk] != null ? row[cfg.pk] : row.id;
 }
 
+// PostgREST caps every response at the project's "Max rows" setting (1000
+// by default), so a bare select("*") silently drops every row past it. The
+// first request also asks for the exact row count; only a table bigger than
+// what came back is re-read page by page, ordered by its primary key so
+// pages neither overlap nor skip rows.
+async function selectAllRows(cfg) {
+  const first = await sb.from(cfg.key).select("*", { count: "exact" });
+  const total = first.count;
+  const pageSize = Array.isArray(first.data) ? first.data.length : 0;
+  if (first.error || total == null || !pageSize || pageSize >= total) return first;
+  const offsets = [];
+  for (let from = 0; from < total; from += pageSize) offsets.push(from);
+  const pages = await Promise.all(offsets.map(from =>
+    sb.from(cfg.key).select("*").order(cfg.pk, { ascending: true }).range(from, from + pageSize - 1)));
+  const failed = pages.find(p => p.error);
+  if (failed) return { data: null, error: failed.error };
+  return { data: pages.flatMap(p => p.data || []), error: null };
+}
+
 async function listTable(name) {
   const cfg = DATA_TABLES[name];
   if (!cfg) return [];
   if (sb) {
-    const { data, error } = await sb.from(cfg.key).select("*");
+    const { data, error } = await selectAllRows(cfg);
     // On success (no error), trust the server — even if the response is [].
     // That way a deleted row on the server actually clears the LS cache.
     if (!error && Array.isArray(data)) {
@@ -1136,18 +1155,20 @@ function normalizeDomainData(D) {
 window.normalizeDomainData = normalizeDomainData;
 
 // Hydrate domain tables from Supabase (if configured) into window.DATA
-// on boot. Non-blocking: the UI renders first, real data swaps in.
+// on boot. Non-blocking: the UI renders first, real data swaps in. The
+// tables are independent, so they are requested in parallel rather than
+// one round trip after another.
 async function hydrateDomainTables() {
   if (!sb) return;
+  const names = Object.keys(DATA_TABLES);
+  const results = await Promise.all(names.map(name =>
+    listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; })));
   const fetched = {};
-  for (const name of Object.keys(DATA_TABLES)) {
-    try {
-      const rows = await listTable(name);
-      // Trust the database as the single source of truth — an empty table
-      // means empty UI, not "keep whatever was in memory before".
-      if (Array.isArray(rows)) fetched[name] = rows;
-    } catch (e) { console.warn("hydrate", name, "failed", e); }
-  }
+  names.forEach((name, i) => {
+    // Trust the database as the single source of truth — an empty table
+    // means empty UI, not "keep whatever was in memory before".
+    if (Array.isArray(results[i])) fetched[name] = results[i];
+  });
   if (window.DATA) {
     for (const [name, rows] of Object.entries(fetched)) window.DATA[name] = rows;
     // Normalize even when nothing was fetched: rows restored from the LS
