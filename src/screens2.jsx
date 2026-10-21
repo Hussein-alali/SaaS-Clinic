@@ -12,15 +12,37 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+// Loads a classic script once and resolves after it has run. Used for code
+// only some visits need (Excel export, the ?import=1 page) so it stays out
+// of the first page load.
+const scriptLoads = {};
+function loadScriptOnce(src) {
+  if (!scriptLoads[src]) {
+    scriptLoads[src] = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => { delete scriptLoads[src]; reject(new Error("failed to load " + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  return scriptLoads[src];
+}
+
 // ── Excel export (styled, RTL, Arabic-safe) ───────────────────
 // Builds a professional workbook from the ALREADY-FILTERED report rows:
 // clinic name, report title, generated date, active filters, bold header
 // band, bordered table, column widths, number/currency formats, and a
-// totals row. Uses the xlsx-js-style global loaded in index.html. Handles
-// thousands of rows (a single aoa_to_sheet + writeFile, no per-render DOM).
+// totals row. Handles thousands of rows (a single aoa_to_sheet + writeFile,
+// no per-render DOM).
+//
+// Uses the xlsx-js-style fork of SheetJS (community SheetJS can't write
+// cell styles), fetched on the first export rather than on every page load.
 //
 // columns: [{ key, label, type?: 'text'|'number'|'currency'|'date', total?, width? }]
-function exportReportExcel({ filename, sheetName = "التقرير", title, filters = [], columns = [], rows = [] }) {
+const XLSX_SRC = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
+async function exportReportExcel({ filename, sheetName = "التقرير", title, filters = [], columns = [], rows = [] }) {
+  if (!window.XLSX) await loadScriptOnce(XLSX_SRC).catch(() => {});
   const XLSX = window.XLSX;
   if (!XLSX || !XLSX.utils) {
     window.showToast && window.showToast("مكتبة Excel غير محمّلة — تحقق من الاتصال", "error");
@@ -3106,8 +3128,8 @@ function FinancialReport() {
     { key: "outstanding", label: "المتبقي", type: "currency", total: true, width: 14 },
     { key: "status", label: "الحالة", type: "text", width: 12 },
   ];
-  function doExport() {
-    const ok = exportReportExcel({
+  async function doExport() {
+    const ok = await exportReportExcel({
       filename: `تقرير-مالي-${reportToday()}.xlsx`, sheetName: "التقرير المالي",
       title: "التقرير المالي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
     });
@@ -3218,8 +3240,8 @@ function MedicalReport() {
     { key: "pain", label: "مستوى الألم", type: "number", width: 10 },
     { key: "notes", label: "ملاحظات", type: "text", width: 30 },
   ];
-  function doExport() {
-    const ok = exportReportExcel({
+  async function doExport() {
+    const ok = await exportReportExcel({
       filename: `تقرير-طبي-${reportToday()}.xlsx`, sheetName: "التقرير الطبي",
       title: "التقرير الطبي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
     });
@@ -3311,8 +3333,8 @@ function OperationalReport() {
     { key: "type", label: "النوع", type: "text", width: 14 },
     { key: "status", label: "الحالة", type: "text", width: 12 },
   ];
-  function doExport() {
-    const ok = exportReportExcel({
+  async function doExport() {
+    const ok = await exportReportExcel({
       filename: `تقرير-تشغيلي-${reportToday()}.xlsx`, sheetName: "التقرير التشغيلي",
       title: "التقرير التشغيلي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
     });
@@ -4881,6 +4903,16 @@ function App() {
     try { return new URLSearchParams(window.location.search).get("import") === "1"; }
     catch { return false; }
   }, []);
+  // In the production build the import page is a separate chunk
+  // (scripts/build.mjs) fetched only on this route; in dev, index.html has
+  // already loaded src/import.jsx.
+  const [importGateReady, setImportGateReady] = React.useState(() => !!window.ImportAuthGate);
+  React.useEffect(() => {
+    const chunk = window.KINETIC_CHUNKS && window.KINETIC_CHUNKS.importPage;
+    if (!importMode || importGateReady || !chunk) return;
+    loadScriptOnce(chunk).then(() => setImportGateReady(true)).catch(() =>
+      window.showToast && window.showToast("تعذّر تحميل صفحة الاستيراد — تحقق من الاتصال", "error"));
+  }, [importMode, importGateReady]);
 
   // ⌘K / Ctrl+K opens the global command palette (PRD 5.10)
   React.useEffect(() => {
