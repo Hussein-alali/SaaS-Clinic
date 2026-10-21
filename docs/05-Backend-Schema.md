@@ -217,6 +217,14 @@ org_module_enabled(org uuid, code text)
 `using ( (select is_super_admin()) or ( (select is_org_member(organization_id)) and <شرط الدور/الفرع/الوحدة> ) )`
 و `with check` بنفس الشرط حتى لا يُكتب سجل بـ `organization_id` لمؤسسة أخرى (BR-008).
 
+## Data access rules
+
+- **حد الصفوف:** PostgREST (Supabase) يعيد في كل طلب حدًا أقصى هو *Max rows* (1000 افتراضيًا). أي قراءة لقائمة كاملة **يجب** أن تمر عبر `selectAllRows(cfg)` في `src/supabase.jsx`: طلب أول مع `count: "exact"`، ثم إذا كان الجدول أكبر مما وصل، صفحات متوازية مرتبة بالمفتاح الأساسي. المفتاح الأساسي مفهرس دائمًا، فالترتيب رخيص.
+- **التوازي:** الجداول المستقلة تُطلب معًا (`Promise.all`)، لا واحدًا بعد الآخر.
+- **ترتيب الصفوف:** الجداول الأكبر من *Max rows* تصل مرتبة بالمفتاح الأساسي. الشاشات التي تحتاج ترتيبًا آخر ترتب بنفسها.
+- **المستقبل (F18):** بدل تحميل كل الجداول عند البداية، كل شاشة تطلب ما تعرضه: المواعيد لنطاق التاريخ، والمرضى بالبحث و `.range()`، والتقارير عبر دوال RPC تجمّع داخل قاعدة البيانات. مع تعدد العيادات تُضاف فهارس `(organization_id, date)` و `(organization_id, branch_id)`.
+- **إن نُقلت القاعدة إلى hosting.com:** القواعد نفسها تُطبق في خادم Node.js API بدل PostgREST ([08](08-Hosting-Migration.md)).
+
 ## Data validation
 
 | القاعدة | التطبيق |
@@ -247,7 +255,7 @@ org_module_enabled(org uuid, code text)
 
 ## Migration and seed data
 
-**ترتيب الـ migrations** (كل خطوة ملف مستقل تحت `supabase/migrations/`، مع نسخة احتياطية واختبار استرجاع قبل التنفيذ على الإنتاج):
+**ترتيب الـ migrations** (كل خطوة ملف مستقل تحت `supabase/migrations/`، مع نسخة احتياطية واختبار استرجاع قبل التنفيذ على الإنتاج). المجلد موجود الآن في المستودع، فالأسماء تتبع نمطه `YYYYMMDDhhmmss_name.sql`، والأرقام أدناه ترتيب فقط. `Supabase_All_In_One.sql` يُعاد توليده منها:
 
 1. `0100_platform_tables.sql` — `organizations`, `platform_admins`, `specialties`, `modules`, `specialty_modules`, `organization_modules`, `subscription_plans`, `subscriptions`, `reserved_slugs`, `invitations`, `organization_members`, `member_branches`, `organization_settings`.
 2. `0110_seed_catalog.sql` — التخصصات الثلاثة، الوحدات (النواة المشتركة بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، الربط الافتراضي، الـ slugs المحجوزة.
@@ -261,3 +269,9 @@ org_module_enabled(org uuid, code text)
 **بيانات البذر للتطوير/الاختبار:** عيادتان وهميتان (`demo-physio`، `demo-dental`) بفرعين لكل منهما ومستخدمين لكل دور، لاختبارات العزل المتبادل. **لا بيانات حقيقية في staging** إلا بعد إخفاء الهوية (BR-009). لا كلمات مرور في ملفات البذر.
 
 **التحقق بعد الترحيل:** مطابقة أعداد السجلات لكل جدول قبل/بعد، وعدم وجود `organization_id IS NULL`، وكل `branch_id` يتبع نفس المؤسسة، وتقرير ترحيل محفوظ (AT-11).
+
+## سجل التغييرات
+
+| التاريخ | التغيير |
+|---|---|
+| 21 أكتوبر 2026 | إضافة قسم «Data access rules» (حد الـ 1000 صف، التوازي، الترتيب، الخطة المستقبلية)، وتوحيد تسمية الـ migrations مع مجلد `supabase/migrations/` المنقول. الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |

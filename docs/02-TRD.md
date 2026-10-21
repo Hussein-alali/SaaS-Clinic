@@ -31,7 +31,9 @@
 |---|---|
 | Framework | React 18 |
 | أسلوب البناء | **الآن:** ترجمة مسبقة بـ esbuild (`npm run build`) بدل Babel داخل المتصفح. **قرار مطلوب في Milestone 1:** الانتقال إلى **Vite + React** مع ES modules لتقسيم الكود حسب الشاشة (`React.lazy`) وإتاحة فحص الأنواع والاختبارات |
-| Hosting | خادم Node (`server.js`) على Railway، أو استضافة ثابتة (Vercel/Hosting.com) |
+| Hosting | ناتج `npm run build` (مجلد `dist/`) يُخدم إما بـ `server.js` على Railway، أو كملفات ثابتة في `public_html` على hosting.com (موصى به، الخيار A في [08](08-Hosting-Migration.md)) |
+| Build output | `dist/index.html` + `app.<hash>.js` (كل الشاشات) + `import.<hash>.js` (صفحة `?import=1`، تُحمّل عند فتحها فقط) + `assets/`. البصمة في اسم الملف تسمح بتخزين مؤقت طويل |
+| مكتبات عند الطلب | `xlsx-js-style` (‏139 KB gzip) تُحمّل عند أول «تصدير Excel» عبر `loadScriptOnce()` في `src/screens2.jsx` |
 | Domains | `clinicsyseg.com` (الموقع الرئيسي والدخول) + `*.clinicsyseg.com` (العيادات) + `admin.clinicsyseg.com` (لوحة Super Admin؛ slug محجوز) |
 | حل العيادة | الواجهة تقرأ الـ subdomain من `window.location.hostname` → تستدعي `resolve_organization(slug)` → تحصل على `organization_id` والحالة والتخصص والميزات العامة فقط |
 | Routing | تطبيق واحد لكل النطاقات؛ لا نسخة لكل عيادة ولا لكل تخصص |
@@ -40,8 +42,8 @@
 
 | البند | القرار |
 |---|---|
-| Database | Supabase PostgreSQL (المشروع الحالي)، المنطقة الأقرب لمصر المتاحة في Supabase (مثل `eu-central-1`) — **تأكيد مطلوب** |
-| Data access | `supabase-js` من المتصفح مباشرة، محمي بالكامل بسياسات RLS |
+| Database | Supabase PostgreSQL (المشروع الحالي)، المنطقة الأقرب لمصر المتاحة في Supabase (مثل `eu-central-1`) — **تأكيد مطلوب**. **قرار مفتوح:** البقاء على Supabase أم PostgreSQL على hosting.com، وهذا الثاني يتطلب خادم Node.js API بديلًا عن PostgREST وAuth وStorage ([08](08-Hosting-Migration.md)) |
+| Data access | `supabase-js` من المتصفح مباشرة، محمي بالكامل بسياسات RLS. الجداول تُقرأ **بالتوازي**، وكل قراءة قائمة تتجاوز حد *Max rows* (1000 افتراضيًا) بعدّ دقيق ثم صفحات مرتبة بالمفتاح الأساسي (`selectAllRows` في `src/supabase.jsx`). لا يُستخدم `select("*")` بدون ذلك |
 | العمليات المميزة | Supabase **Edge Functions** (Deno) بمفتاح `service_role` على الخادم فقط: إنشاء عيادة، دعوة مستخدم، إيقاف عيادة/عضوية، تغيير الخطة |
 | منطق الأعمال الحساس | دوال Postgres `security definer` مع `search_path` ثابت (النمط المستخدم حاليًا في `app_role()` و `record_quick_payment`) |
 | Migrations | ملفات SQL مرقمة تحت `supabase/migrations/` (Supabase CLI)؛ `Supabase_All_In_One.sql` يُعاد توليده منها ولا يُعدل يدويًا |
@@ -112,6 +114,8 @@
 
 ## Performance and reliability targets
 
+- **أول شاشة ≤ 1 ثانية** على جهاز متوسط (معالج أبطأ 4×). **مقاس:** 125 ms على جهاز سريع و 370 ms بالإبطاء، بدل 5,962 ms و 24,757 ms قبل الترجمة المسبقة. لا مترجم داخل المتصفح في الإنتاج.
+- **ميزانية JavaScript الأولية ≤ 300 KB gzip.** الحالي: React 46 + supabase-js 54 + التطبيق 150 = حوالي 250 KB. المكتبات الثقيلة والشاشات النادرة تُحمّل عند الحاجة.
 - القوائم الشائعة تستجيب خلال **2.5 ثانية** في ظروف الشبكة المستهدفة (NFR-009)؛ فهارس على `organization_id` و `(organization_id, branch_id)` و `(organization_id, date)`.
 - استدعاءات دوال RLS المساعدة تكون `stable` وتُستدعى بنمط `(select fn())` لتجنب التنفيذ لكل صف.
 - النسخ الاحتياطي: النسخ اليومية في Supabase + PITR إن أمكن؛ **اختبار استرجاع فعلي قبل الترحيل** (NFR-008).
@@ -125,7 +129,8 @@
 | Staging | `*.staging.clinicsyseg.com` | مشروع Supabase منفصل ببيانات وهمية أو مجهولة الهوية (BR-009) | اختبارات العزل والترحيل والقبول |
 | Production | `clinicsyseg.com`, `*.clinicsyseg.com` | مشروع Supabase الإنتاجي | العملاء |
 
-- **CI (GitHub Actions):** lint + build + اختبارات الوحدة + **اختبارات RLS السلبية** على قاعدة Postgres مؤقتة (`supabase start` أو pgTAP) لكل PR.
+- **البناء:** `npm install` ثم `npm run build` (`scripts/build.mjs`، esbuild) ينتج `dist/`. `npm start` يخدم `dist/`، و `npm run dev` يخدم المصادر مع Babel للتطوير فقط. على Railway يجب أن يظهر في السجل `serving dist/ (production build)`. على hosting.com يُرفع محتوى `dist/` فقط.
+- **CI (GitHub Actions):** lint + `npm run build` + اختبارات الوحدة + **اختبارات RLS السلبية** على قاعدة Postgres مؤقتة (`supabase start` أو pgTAP) لكل PR.
 - **CD:** النشر من `main` بعد نجاح CI؛ migrations تُطبق على staging أولًا ثم production بعد الموافقة.
 - **Rollback:** كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
 
@@ -142,3 +147,12 @@
 | اشتراك يدوي | قرار مالك المنتج؛ لا حاجة لبوابة دفع الآن | Stripe/Paymob من البداية |
 | تعطيل الوحدة لا يحذف بياناتها | BR-007 / FR-027 | حذف عند التعطيل |
 | Edge Functions بدل Backend Express | موجودة في Supabase ولا تحتاج خادمًا إضافيًا | Express على Railway |
+| ترجمة مسبقة بـ esbuild الآن، و Vite لاحقًا | يزيل 6–25 ثانية من تجمّد المتصفح دون إعادة هيكلة الملفات (تتشارك متغيرات عامة، فتُدمج بترتيب `index.html`) | Babel داخل المتصفح؛ أو Vite فورًا، وهذا يتطلب تحويل كل الملفات إلى ES modules أولًا |
+| مكتبة Excel وصفحة الاستيراد عند الحاجة | لا يحتاجهما معظم الزوار | تحميلهما في كل زيارة |
+| قراءة كل الصفوف بصفحات بعد حد Max rows | يمنع اختفاء السجلات بصمت بعد الصف 1000 | رفع *Max rows* في إعدادات Supabase، وهذا يؤجل المشكلة فقط |
+
+## سجل التغييرات
+
+| التاريخ | التغيير |
+|---|---|
+| 21 أكتوبر 2026 | `src/` و `supabase/` منقولان؛ الأقسام التي تغيرت: أسلوب البناء (esbuild)، و Build output، والمكتبات عند الطلب، وقراءة البيانات (توازي + صفحات)، وأهداف الأداء المقاسة، وخطوة البناء في CI/CD، وقرارات جديدة، وقرار وجهة قاعدة البيانات (مفتوح). الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
