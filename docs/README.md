@@ -11,6 +11,8 @@
 | 4 | [UI/UX Brief](04-UI-UX-Brief.md) | الاتجاه البصري وقواعد الاستخدام |
 | 5 | [Backend Schema](05-Backend-Schema.md) | البيانات والعلاقات وقواعد الوصول |
 | 6 | [Implementation Plan](06-Implementation-Plan.md) | ترتيب البناء ونقاط التحقق |
+| 7 | [Performance Audit](07-Performance-Audit.md) | سبب بطء التحميل الأول مع القياسات والإصلاح |
+| 8 | [Hosting Migration](08-Hosting-Migration.md) | النقل إلى hosting.com (cPanel): الخيارات والخطوات |
 
 ## التغييرات في الإصدار 1.1 من BRD (21 أكتوبر 2026)
 
