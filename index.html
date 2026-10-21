@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Beactive — سيستم عيادة علاج الطبيعي</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='9' fill='%237BBDE8'/%3E%3Cpath d='M10 22 L13 14 L16 19 L19 11 L22 22' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='22' cy='22' r='1.6' fill='%23fff'/%3E%3C/svg%3E"/>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Amiri:ital@0;1&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    /* brand */
+    --blue-500:#7BBDE8;
+    --blue-300:#BDD8E9;
+    --blue-100:#E8F1F7;
+    --blue-50:#F4F8FB;
+    --blue-700:#3A7FB5;
+    --blue-900:#1E4A6E;
+
+    /* neutrals (cool) */
+    --ink-900:#0F1E2B;
+    --ink-700:#2E4458;
+    --ink-500:#647686;
+    --ink-400:#8898A8;
+    --ink-300:#BFCAD4;
+    --ink-200:#DCE3EA;
+    --ink-100:#EEF2F6;
+    --ink-50:#F7F9FB;
+    --paper:#FCFDFE;
+    --white:#FFFFFF;
+
+    /* status */
+    --green:#3FA984;
+    --green-bg:#E4F2EC;
+    --amber:#D49044;
+    --amber-bg:#FBEFDB;
+    --red:#D8665A;
+    --red-bg:#FBE6E3;
+    --violet:#7E6BD3;
+    --violet-bg:#ECE8FA;
+
+    /* type */
+    --font-sans: 'IBM Plex Sans Arabic', 'Geist', system-ui, sans-serif;
+    --font-serif: 'Amiri', 'Reem Kufi', Georgia, serif;
+    --font-display: 'Reem Kufi', 'IBM Plex Sans Arabic', sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 18px;
+    --radius-xl: 28px;
+
+    --shadow-sm: 0 1px 2px rgba(15,30,43,.04), 0 1px 1px rgba(15,30,43,.03);
+    --shadow-md: 0 4px 14px rgba(15,30,43,.06), 0 2px 4px rgba(15,30,43,.04);
+    --shadow-lg: 0 16px 40px rgba(15,30,43,.10), 0 4px 10px rgba(15,30,43,.05);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--ink-50);color:var(--ink-900);font-family:var(--font-sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  body{direction:rtl}
+  /* Flip directional arrows in RTL (continue/back buttons read naturally) */
+  [dir="rtl"] .btn svg path[d^="M5 12h14M12 5"],
+  [dir="rtl"] .btn svg path[d^="M19 12H5M12 19"]{transform:scaleX(-1);transform-origin:center}
+  /* But not chevrons (used for collapsibles, crumbs) — they auto-flip via dir anyway */
+  button{font-family:inherit}
+  input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;height:auto}
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  }
+
+  /* scrollbars */
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--ink-200);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:var(--ink-300);background-clip:padding-box;border:2px solid transparent}
+
+  /* utilities */
+  .row{display:flex;align-items:center}
+  .col{display:flex;flex-direction:column}
+  .gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}.gap-8{gap:32px}
+  .grow{flex:1 1 auto}
+  .mono{font-family:var(--font-mono);font-feature-settings:"tnum"}
+  .serif{font-family:var(--font-serif);font-weight:400}
+  .tnum{font-variant-numeric:tabular-nums}
+  .muted{color:var(--ink-500)}
+  .dim{color:var(--ink-400)}
+
+  /* shared cards */
+  .card{background:var(--white);border:1px solid var(--ink-200);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)}
+  .card-pad{padding:20px}
+
+  /* primary button */
+  .btn{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:9px 14px;font-weight:500;font-size:13px;border:1px solid transparent;cursor:pointer;transition:all .15s ease;white-space:nowrap}
+  .btn-primary{background:var(--ink-900);color:#fff}
+  .btn-primary:hover{background:#1A2D3F}
+  .btn-secondary{background:#fff;color:var(--ink-900);border-color:var(--ink-200)}
+  .btn-secondary:hover{background:var(--ink-50);border-color:var(--ink-300)}
+  .btn-ghost{background:transparent;color:var(--ink-700)}
+  .btn-ghost:hover{background:var(--ink-100)}
+  .btn-blue{background:var(--blue-500);color:#fff;box-shadow:0 4px 14px rgba(123,189,232,.45)}
+  .btn-blue:hover{background:var(--blue-700)}
+  .btn-icon{padding:8px;border-radius:8px}
+
+  /* badges */
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:500;line-height:1.4}
+  .b-green{background:var(--green-bg);color:#2C8067}
+  .b-amber{background:var(--amber-bg);color:#9B6321}
+  .b-red{background:var(--red-bg);color:#A8443A}
+  .b-violet{background:var(--violet-bg);color:#5A4BAD}
+  .b-blue{background:var(--blue-100);color:var(--blue-900)}
+  .b-grey{background:var(--ink-100);color:var(--ink-700)}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  /* inputs */
+  .input{height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--ink-200);background:#fff;width:100%;outline:none;transition:border-color .15s,box-shadow .15s}
+  .input:focus{border-color:var(--blue-500);box-shadow:0 0 0 4px rgba(123,189,232,.18)}
+  select.input{
+    -webkit-appearance:none;-moz-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23647686' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat;background-position:left 12px center;background-size:12px 12px;
+    padding-left:32px;padding-right:12px;cursor:pointer;font-weight:500;color:var(--ink-900);
+  }
+  select.input:hover{border-color:var(--ink-300);background-color:var(--ink-50)}
+  select.input:focus{background-color:#fff}
+  select.input option{font-weight:500;padding:6px 10px;color:var(--ink-900);background:#fff}
+  .label{font-size:12px;font-weight:500;color:var(--ink-700);margin-bottom:6px}
+
+  /* table — shared list primitive.
+     RTL-aware alignment (text-align:start), sticky header inside .tbl-scroll,
+     subtle zebra, 44px min row height for touch, hover/focus only on
+     rows marked data-clickable="true". */
+  .tbl{width:100%;border-collapse:separate;border-spacing:0}
+  .tbl th{
+    text-align:start;font-weight:600;font-size:11px;
+    text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-700);
+    padding:11px 14px;
+    background:var(--ink-100);
+    border-bottom:1px solid var(--ink-200);
+    position:sticky;top:0;z-index:1;
+  }
+  .tbl th:first-child{border-start-start-radius:10px}
+  .tbl th:last-child{border-start-end-radius:10px}
+  .tbl td{
+    padding:12px 14px;
+    border-bottom:1px solid var(--ink-100);
+    font-size:13px;
+    vertical-align:middle;
+  }
+  .tbl tbody tr{min-height:44px}
+  .tbl tbody tr:nth-child(even) td{background:color-mix(in srgb, var(--ink-50) 60%, transparent)}
+  .tbl tbody tr:last-child td{border-bottom:none}
+
+  /* Row interactivity — opt in with data-clickable="true" on the <tr>.
+     Non-clickable rows keep default cursor and no hover shift so users
+     aren't misled about what's actionable. */
+  .tbl tbody tr[data-clickable="true"]{cursor:pointer;transition:background-color .12s ease}
+  .tbl tbody tr[data-clickable="true"]:hover td,
+  .tbl tbody tr[data-clickable="true"]:focus-within td{background:var(--blue-50)}
+  .tbl tbody tr[data-clickable="true"]:focus-visible{outline:2px solid var(--blue-500);outline-offset:-2px}
+
+  /* Scroll wrapper carries the frame + rounds tables that aren't inside a card */
+  .tbl-scroll{
+    overflow:auto;-webkit-overflow-scrolling:touch;
+    max-width:100%;max-height:70vh;
+    border-radius:12px;
+  }
+  .tbl-scroll > .tbl{min-width:560px}
+
+  /* Empty-state cell — span all columns and render a friendly message */
+  .tbl-empty{
+    padding:36px 14px !important;text-align:center;color:var(--ink-500);
+    font-size:13px;background:var(--ink-50) !important;
+  }
+  .tbl-empty svg{margin-bottom:8px;color:var(--ink-300)}
+
+  /* Selected row (checkbox-selection pattern) */
+  .tbl tbody tr[data-selected="true"] td{background:var(--blue-100)}
+
+  /* ── Patient searchable combobox ───────────────────────────── */
+  .pcombo-trigger{
+    width:100%;min-height:44px;padding:8px 12px;
+    background:#fff;border:1px solid var(--ink-200);border-radius:12px;
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+    font:inherit;color:inherit;text-align:start;
+    transition:border-color .15s ease, box-shadow .15s ease, background-color .12s ease;
+  }
+  .pcombo-trigger:hover:not(.is-disabled){border-color:var(--ink-300)}
+  .pcombo-trigger.is-open,
+  .pcombo-trigger:focus-visible{
+    outline:none;border-color:var(--blue-500);
+    box-shadow:0 0 0 4px rgba(123,189,232,.18);
+  }
+  .pcombo-trigger.is-disabled{background:var(--ink-50);cursor:not-allowed;opacity:.7}
+  .pcombo-sel{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
+  .pcombo-av{background:var(--blue-100);color:var(--blue-900)}
+  .pcombo-name{
+    font-weight:600;font-size:13.5px;color:var(--ink-900);line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .pcombo-sub{
+    font-size:11.5px;color:var(--ink-500);line-height:1.3;margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .pcombo-placeholder{color:var(--ink-400);flex:1;font-size:13px}
+
+  .pcombo-panel{
+    background:#fff;border:1px solid var(--ink-200);border-radius:14px;
+    box-shadow:0 12px 32px rgba(15,30,43,.10), 0 2px 8px rgba(15,30,43,.05);
+    overflow:hidden;
+    animation:pcomboIn .16s cubic-bezier(.2,.9,.3,1);
+    transform-origin:top;
+  }
+  @keyframes pcomboIn{
+    from{opacity:0;transform:translateY(-6px) scale(.98)}
+    to{opacity:1;transform:translateY(0) scale(1)}
+  }
+  .pcombo-search{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 12px;background:var(--ink-50);
+    border-bottom:1px solid var(--ink-100);
+  }
+  .pcombo-input{
+    flex:1;border:none;outline:none;background:transparent;
+    font:inherit;font-size:13px;color:var(--ink-900);min-width:0;
+  }
+  .pcombo-input::placeholder{color:var(--ink-400)}
+  .pcombo-clear{
+    background:transparent;border:none;padding:4px;border-radius:6px;cursor:pointer;
+    color:var(--ink-400);display:inline-flex;align-items:center;justify-content:center;
+    transition:background-color .12s;
+  }
+  .pcombo-clear:hover{background:var(--ink-200);color:var(--ink-700)}
+
+  .pcombo-list{
+    padding:6px;overflow-y:auto;scroll-behavior:smooth;
+    scrollbar-width:thin;scrollbar-color:var(--ink-200) transparent;
+  }
+  .pcombo-list::-webkit-scrollbar{width:10px}
+  .pcombo-list::-webkit-scrollbar-track{background:transparent}
+  .pcombo-list::-webkit-scrollbar-thumb{
+    background:var(--ink-200);border-radius:6px;
+    border:2px solid #fff;background-clip:padding-box;
+  }
+  .pcombo-list::-webkit-scrollbar-thumb:hover{background:var(--ink-300);background-clip:padding-box;border:2px solid #fff}
+
+  .pcombo-item{
+    display:flex;align-items:center;gap:10px;
+    min-height:48px;padding:8px 10px;border-radius:10px;
+    cursor:pointer;
+    transition:background-color .12s ease;
+  }
+  .pcombo-item.is-active:not(.is-selected){background:var(--ink-100)}
+  .pcombo-item.is-selected{background:var(--blue-50)}
+  .pcombo-item.is-selected .pcombo-name{color:var(--blue-900)}
+  .pcombo-item.is-selected .pcombo-av{background:var(--blue-500);color:#fff}
+  .pcombo-item.is-active.is-selected{background:color-mix(in srgb, var(--blue-100) 70%, #fff)}
+
+  .pcombo-hl{
+    background:var(--blue-100);color:var(--blue-900);
+    padding:0 2px;border-radius:3px;font-weight:600;
+  }
+
+  .pcombo-empty{
+    padding:36px 12px;text-align:center;color:var(--ink-500);font-size:13px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+  }
+  .pcombo-empty svg{color:var(--ink-300)}
+
+  .pcombo-foot{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:8px 12px;border-top:1px solid var(--ink-100);background:var(--ink-50);
+    font-size:11px;color:var(--ink-500);
+  }
+  .pcombo-kbd{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-400)}
+
+  @media (max-width:768px){
+    .pcombo-panel{border-radius:14px}
+    .pcombo-item{min-height:52px;padding:10px 10px}
+    .pcombo-foot .pcombo-kbd{display:none}
+  }
+
+  /* avatar */
+  .av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:var(--blue-100);color:var(--blue-900);font-weight:600;font-size:12px;flex-shrink:0}
+  .av.lg{width:40px;height:40px;font-size:14px}
+  .av.md{width:32px;height:32px;font-size:12px}
+  .av.sm{width:24px;height:24px;font-size:10px}
+
+  /* loader */
+  @keyframes spin {to{transform:rotate(360deg)}}
+  .spin{animation:spin .8s linear infinite}
+
+  @keyframes pulse {0%,100%{opacity:.5}50%{opacity:.85}}
+
+  /* live concurrent-session pulse */
+  @keyframes livePulse {0%{box-shadow:0 0 0 0 rgba(63,169,132,.55)}70%{box-shadow:0 0 0 6px rgba(63,169,132,0)}100%{box-shadow:0 0 0 0 rgba(63,169,132,0)}}
+  .live-pulse{animation:livePulse 1.6s ease-out infinite}
+  .skel{background:linear-gradient(90deg,var(--ink-100) 0,var(--ink-200) 40%,var(--ink-100) 80%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px}
+  @keyframes shimmer {0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* sidebar */
+  .sidebar{width:240px;background:#fff;border-right:1px solid var(--ink-200);display:flex;flex-direction:column;height:100vh;position:sticky;top:0;flex-shrink:0}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;border-radius:9px;cursor:pointer;color:var(--ink-700);font-size:13.5px;font-weight:500;margin:0 10px;transition:background .12s}
+  .nav-item:hover{background:var(--ink-100)}
+  .nav-item.active{background:var(--blue-100);color:var(--blue-900)}
+  .nav-item.active svg{color:var(--blue-700)}
+  .nav-section{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-400);padding:14px 22px 6px;font-weight:600}
+
+  /* topbar */
+  .topbar{height:62px;background:#fff;border-bottom:1px solid var(--ink-200);display:flex;align-items:center;padding:0 28px;gap:16px;position:sticky;top:0;z-index:20}
+
+  /* page header */
+  .page{padding:28px 36px 60px;max-width:1480px;margin:0 auto}
+  .h1{font-size:26px;font-weight:600;letter-spacing:-.01em;color:var(--ink-900);margin:0}
+  .h2{font-size:18px;font-weight:600;letter-spacing:-.005em;color:var(--ink-900);margin:0}
+  .h3{font-size:14px;font-weight:600;color:var(--ink-900);margin:0}
+  .crumb{display:flex;align-items:center;gap:8px;color:var(--ink-500);font-size:12.5px;margin-bottom:8px}
+  .crumb svg{color:var(--ink-300)}
+
+  /* toggle */
+  .switch{position:relative;width:34px;height:20px;background:var(--ink-200);border-radius:999px;cursor:pointer;transition:background .15s;flex-shrink:0}
+  .switch.on{background:var(--blue-500)}
+  .switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .switch.on .knob{left:16px}
+
+  /* segmented */
+  .seg{display:inline-flex;background:var(--ink-100);border-radius:10px;padding:3px;gap:2px}
+  .seg button{background:transparent;border:none;padding:6px 12px;border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--ink-700)}
+  .seg button.on{background:#fff;color:var(--ink-900);box-shadow:var(--shadow-sm)}
+
+  /* modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(15,30,43,.42);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadein .15s ease}
+  @keyframes fadein {from{opacity:0}to{opacity:1}}
+  .modal{background:#fff;border-radius:18px;box-shadow:var(--shadow-lg);max-width:560px;width:calc(100% - 40px);max-height:calc(100vh - 60px);max-height:calc(100dvh - 60px);overflow:auto;animation:popin .18s cubic-bezier(.34,1.3,.4,1)}
+  @keyframes popin{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+
+  /* charts */
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+  .grid-2 > *,.grid-3 > *,.grid-4 > *,.grid-stats > *{min-width:0}
+
+  /* responsive grid utility — desktop template comes from the inline
+     --gtc custom property; collapse classes flatten it per breakpoint:
+       .c-lg  → single column at <= 1024px (main + aside splits)
+       .c-sm  → single column at <= 768px  (form pairs, twin cards)
+       .half-lg / .half-sm → two columns at that breakpoint */
+  .rgrid{display:grid;grid-template-columns:var(--gtc,1fr);gap:18px}
+  .rgrid > *{min-width:0}
+
+  /* page header: crumb+title on one side, actions on the other; wraps */
+  .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .page-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+  /* wizard steppers scroll sideways instead of squashing */
+  .stepper{display:flex;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;scrollbar-width:none}
+  .stepper::-webkit-scrollbar{display:none}
+  .stepper .step-label{white-space:nowrap}
+
+  /* settings / reports side menu — becomes a wrapping tab row on tablet */
+  /* (rules live in the 1024px media block below) */
+
+  /* focus ring */
+  button:focus-visible, a:focus-visible, .input:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}
+
+  /* misc */
+  hr.sep{border:none;border-top:1px solid var(--ink-200);margin:0}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--ink-100);font-size:12px;color:var(--ink-700)}
+  .tag-blue{background:var(--blue-100);color:var(--blue-900)}
+
+  /* placeholder image */
+  .ph{
+    background-color: var(--blue-50);
+    background-image:repeating-linear-gradient(135deg, transparent 0 6px, rgba(123,189,232,.18) 6px 7px);
+    border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-mono);font-size:11px;color:var(--blue-900);
+    border:1px solid var(--blue-100);
+  }
+
+  /* mobile hamburger (hidden on desktop) */
+  .mobile-menu-btn{display:none;background:transparent;border:none;padding:8px;border-radius:8px;cursor:pointer;color:var(--ink-700)}
+  .mobile-menu-btn:hover{background:var(--ink-100)}
+  .mobile-search-btn{display:none}
+  /* display lives here (not inline) so the phone media query can hide it */
+  .topbar .search-wrap{display:flex}
+  .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(15,30,43,.42);backdrop-filter:blur(3px);z-index:90;animation:fadein .15s ease}
+
+  /* login screen: brand panel + form */
+  .auth-grid{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:1fr 1.05fr;background:var(--ink-50)}
+
+  /* patient portal top navigation — scrolls sideways on small screens */
+  .pt-nav{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+  .pt-nav::-webkit-scrollbar{display:none}
+  .pt-nav button{white-space:nowrap;flex-shrink:0}
+
+  /* patient messages: conversation list + thread heights */
+  .chat-list{height:560px;overflow-y:auto}
+  .chat-pane{height:560px}
+
+  /* ── Tablet (<= 1024px) ─────────────────────────────────────── */
+  @media (max-width: 1024px){
+    .sidebar{width:220px}
+    .page{padding:22px 22px 60px}
+    .topbar{padding:0 18px;gap:10px}
+    .grid-4{grid-template-columns:repeat(2,1fr)}
+    .grid-3{grid-template-columns:repeat(2,1fr)}
+
+    .rgrid.c-lg{grid-template-columns:1fr}
+    .rgrid.c-lg > *{grid-column:auto !important}
+    .rgrid.half-lg{grid-template-columns:repeat(2,1fr)}
+    .rgrid.half-lg > *{grid-column:auto !important}
+
+    /* settings / reports side menu wraps into a tab row above content */
+    .side-tabs{display:flex;flex-wrap:wrap;gap:4px}
+    .side-tabs .nav-item{flex:0 0 auto}
+  }
+
+  /* ── Small tablet / large phone (<= 900px) ──────────────────── */
+  @media (max-width: 900px){
+    .auth-grid{grid-template-columns:1fr}
+  }
+
+  /* ── Phone (<= 768px) ───────────────────────────────────────── */
+  @media (max-width: 768px){
+    .mobile-menu-btn{display:inline-flex;align-items:center;justify-content:center}
+    /* Sidebar becomes an off-canvas drawer sliding from the inline-start edge */
+    .sidebar{
+      position:fixed;top:0;bottom:0;inset-inline-start:0;
+      width:min(84vw, 300px);z-index:100;
+      transform:translateX(100%);       /* RTL: hide off the right edge */
+      transition:transform .22s ease;
+      box-shadow:none;
+      height:100dvh;
+    }
+    html[dir="ltr"] .sidebar{transform:translateX(-100%)}
+    .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
+    .sidebar-backdrop.open{display:block}
+
+    .topbar{height:56px;padding:0 12px;gap:8px}
+    .topbar .search-wrap{display:none}        /* full search bar → icon button */
+    .mobile-search-btn{display:inline-flex;align-items:center;justify-content:center}
+    .page{padding:16px 14px 80px}
+    .h1{font-size:22px}
+    .h2{font-size:16px}
+    .grid-2, .grid-3, .grid-4{grid-template-columns:1fr;gap:12px}
+    .grid-stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+    .card-pad{padding:14px !important}
+
+    .rgrid{gap:12px}
+    .rgrid.c-sm{grid-template-columns:1fr}
+    .rgrid.c-sm > *{grid-column:auto !important}
+    .rgrid.half-sm{grid-template-columns:repeat(2,1fr)}
+    .rgrid.half-sm > *{grid-column:auto !important}
+    .rgrid.quarter-sm{grid-template-columns:repeat(4,1fr)}
+    .rgrid.quarter-sm > *{grid-column:auto !important}
+
+    /* Tighter cells on mobile — but keep row height 44px+ for touch */
+    .tbl th{padding:10px 10px;font-size:10.5px}
+    .tbl td{padding:12px 10px;font-size:12.5px}
+
+    .modal{width:calc(100% - 20px);max-width:100%;border-radius:14px;max-height:calc(100dvh - 24px)}
+    .seg{flex-wrap:wrap}
+    .btn{padding:8px 12px;font-size:12.5px;min-height:40px}
+    .btn.btn-blue, .btn.btn-secondary{white-space:nowrap}
+    .btn-icon{min-width:40px;min-height:40px;justify-content:center}
+    .input{height:42px}
+    textarea.input{height:auto;min-height:70px}
+    .nav-item{padding:11px 12px}
+    .seg button{padding:8px 12px}
+
+    /* session timeline rows: number+content on row 1, pain+action on row 2 */
+    .sess-row{grid-template-columns:56px 1fr}
+    .sess-row > :nth-child(3){grid-column:1;text-align:center}
+    .sess-row > :nth-child(4){grid-column:2;text-align:start}
+
+    /* patient past-visit rows stack into a 2-col card */
+    .pvisit-row{grid-template-columns:1fr 1fr}
+    .pvisit-row > :last-child{grid-column:1 / -1;justify-self:start}
+
+    /* invoice line items: name on its own row, numbers underneath */
+    .inv-item-row{grid-template-columns:64px 1fr 1fr 36px}
+    .inv-item-row > :first-child{grid-column:1 / -1}
+
+    /* patient messages stack: compact list above the thread */
+    .chat-list{height:auto;max-height:260px}
+    .chat-pane{height:460px}
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SheetJS (xlsx-js-style fork) — styled Excel export for Reports.
+     Community SheetJS can't write cell styles; this fork adds bold
+     headers, borders, column widths and number/currency formats while
+     staying a drop-in `XLSX` global. -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="src/supabase.jsx"></script>
+  <script type="text/babel" src="src/core.jsx"></script>
+  <script type="text/babel" src="src/ui.jsx"></script>
+  <script type="text/babel" src="src/screens1.jsx"></script>
+  <script type="text/babel" src="src/roles.jsx"></script>
+  <script type="text/babel" src="src/multisession.jsx"></script>
+  <!-- TEMPORARY: historical patient import page (?import=1). Remove this line
+       and src/import.jsx after the paper-record migration is complete. -->
+  <script type="text/babel" src="src/import.jsx"></script>
+  <script type="text/babel" src="src/screens2.jsx"></script>
+</body>
+</html>
