@@ -11,7 +11,9 @@
 
 | العنصر | الحالة |
 |---|---|
-| `index.html` | غلاف التطبيق للتطوير (`npm run dev`)؛ يحمّل React و Babel Standalone و `@supabase/supabase-js@2` من CDN، ثم `src/*.jsx` |
+| `index.html` | غلاف التطبيق للتطوير (`npm run dev`)؛ يحمّل React و Babel Standalone من CDN، ثم `src/apiclient.jsx` **أولًا**، ثم بقية `src/*.jsx`. **لم يعد يحمّل `supabase-js`** |
+| `db/` | `0001_baseline.sql` (نقل `Supabase_All_In_One.sql`، مُتحقق منه على PostgreSQL 13.23 و 16.15 بمالك بدون superuser) + `migrate.js` + اختبارات. `0002`/`0003` قيد البناء |
+| `api/` | نواة الـ API (المصادقة، والعيادة الحالية، و `/api/data`، و `/api/rpc`، و `/api/files`، والبريد، والملفات الثابتة)، و 75 اختبارًا على fixture مطابق للعقد. مسارات الإدارة والدعوات والمنصة فارغة حتى المهمة 2.7 |
 | `src/*.jsx` | منقول من المستودع الأصلي `clinksys` (commit `cfd073d`) مع `assets/` و `supabase/` و `scripts/` |
 | البناء | `npm run build` (`scripts/build.mjs`، esbuild) يترجم `src/*.jsx` مسبقًا إلى `dist/` مع React production؛ صفحة الاستيراد ومكتبة Excel تُحمّلان عند الحاجة فقط ([07](07-Performance-Audit.md)) |
 | `server.js` | خادم ملفات ثابتة بدون اعتماديات؛ يخدم `dist/` في الإنتاج، وكل ملفات المستودع في وضع `--dev` فقط |
@@ -46,12 +48,12 @@
 |---|---|
 | Database | **PostgreSQL على cPanel (hosting.com)**. الكود يستهدف **PostgreSQL ≥ 13**، لأن الإصدار على hosting.com لم يُتحقق منه بعد (المهمة 1.15). **بدون أي extension**: لا `pgcrypto` ولا `citext` ولا `pgtap`. `gen_random_uuid()` مدمج في 13+ |
 | صلاحيات القاعدة | التطبيق والـ migrations يتصلان بمستخدم cPanel، وهو مالك القاعدة لكنه ليس superuser ولا يملك `CREATEROLE`. لذلك لا `CREATE ROLE`، ولا `GRANT ... TO anon/authenticated`، ولا `ALTER SYSTEM`. التطوير والاختبار يحاكيان ذلك بـ `scripts/dev-db.sh` |
-| API | **Node.js ≥ 18** (الحد الأعلى على الاستضافة المشتركة 20)، Express، `pg`، `bcryptjs` (JavaScript خالص، بدون تجميع native)، `jsonwebtoken`، `cookie-parser`، `multer`، `nodemailer`. المجلد `api/`، ونقطة البدء `api/app.js` |
-| Data access | المتصفح لا يتصل بالقاعدة. الواجهة تستخدم `src/apiclient.jsx`، وهو عميل متوافق مع الجزء المستخدم من `supabase-js` (`window.supabase.createClient`)، ويحوّل الاستدعاءات إلى `/api/*`. لذلك تبقى `src/supabase.jsx` والشاشات كما هي تقريبًا. الجداول تُقرأ بالتوازي، وتُتجاوز حدود الصفوف (1000) بالعدّ ثم الصفحات (`selectAllRows`) |
+| API | **Node.js ≥ 18** (الحد الأعلى على الاستضافة المشتركة 20)، Express 5، `pg`، `bcryptjs` (JavaScript خالص، بدون تجميع native)، `jsonwebtoken`، `cookie-parser`، `multer`، `nodemailer` **9.x** (الإصدار 10 يتطلب Node 20؛ يُرفع بعد التحقق من hosting.com). المجلد `api/`، ونقطة البدء `api/app.js`. كل اتصال بالقاعدة: `TimeZone=UTC`، و `statement_timeout` 15 ثانية، و `idle_in_transaction_session_timeout` 60 ثانية |
+| Data access | المتصفح لا يتصل بالقاعدة. الواجهة تستخدم `src/apiclient.jsx` ✅، وهو عميل متوافق مع الجزء المستخدم من `supabase-js` (`window.supabase.createClient`؛ يتجاهل الـ URL والمفتاح ويستخدم `/api` على نفس النطاق)، ويحوّل الاستدعاءات إلى `/api/*`. يرسل `X-Org-Slug` من `?org=<slug>` (يُحفظ في `sessionStorage` بالمفتاح `clinicsys.org`)، و `X-Branch-Id` من `window.ACTIVE_BRANCH_ID` أو `localStorage` (`kinetic.active_branch`). لذلك تبقى `src/supabase.jsx` والشاشات كما هي تقريبًا. الجداول تُقرأ بالتوازي، وتُتجاوز حدود الصفوف (1000) بالعدّ ثم الصفحات (`selectAllRows`) |
 | تطبيق الصلاحيات | **RLS داخل PostgreSQL يبقى خط الدفاع الأساسي.** كل طلب يُنفذ داخل transaction يضبط `app.user_id` و `app.org_id` و `app.branch_id` (و `app.system` للعمليات الداخلية فقط) عبر `set_config(..., true)`. كل الجداول `ENABLE` + `FORCE ROW LEVEL SECURITY` حتى تنطبق السياسات على مالك الجداول نفسه |
 | العمليات المميزة | مسارات في الـ API (بديل Edge Functions): إنشاء العيادات، والدعوات، وإنشاء المستخدمين، وإعادة تعيين كلمات المرور، وتغيير الحالات، وكلها تُسجل في `audit_events` |
-| منطق الأعمال الحساس | دوال PostgreSQL الموجودة (`record_quick_payment` وقوالب العلاج وغيرها، 25 دالة يستدعيها المتصفح) تُنقل كما هي، وتُستدعى عبر `POST /api/rpc/:fn` من قائمة سماح فقط |
-| Migrations | `db/migrations/NNNN_name.sql` (ترقيم رباعي)، ويطبقها `node db/migrate.js` مع جدول `schema_migrations`. `0001_baseline.sql` هو نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي. `supabase/` و `Supabase_All_In_One.sql` يبقيان للمرجعية حتى الترحيل النهائي |
+| منطق الأعمال الحساس | دوال PostgreSQL الموجودة تُنقل كما هي (25 دالة في `0001`)، والواجهة تستدعي **23** منها فقط عبر `POST /api/rpc/:fn` من قائمة سماح (`api/src/rpc-whitelist.js`؛ اختبار يفشل إن اختلفت القائمة عن استدعاءات `src/`). الدالتان `create_treatment_method` و `update_treatment_method` قديمتان وغير مستخدمتين |
+| Migrations | `db/migrations/NNNN_name.sql` (ترقيم رباعي)، ويطبقها `node db/migrate.js [--status]` مع جدول `schema_migrations(version = اسم الملف بدون .sql)`؛ كل ملف وسطره في transaction واحد، مع advisory lock، والخروج برمز 1 ورقم السطر عند الخطأ. `db/package.json` مستقل (`npm --prefix db install`). `0001_baseline.sql` هو نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي. `supabase/` و `Supabase_All_In_One.sql` يبقيان للمرجعية حتى الترحيل النهائي |
 | الملفات | على قرص الاستضافة (30GB) **خارج** `public_html`: `FILES_DIR/<organization_id>/<bucket>/<path>`. التنزيل فقط عبر الـ API بعد التحقق من الصلاحية، أو برابط موقّع (HMAC) صالح ≤ 10 دقائق |
 | البريد | SMTP من cPanel عبر `nodemailer`. في التطوير والاختبار `MAIL_TRANSPORT=file` يكتب الرسائل في `api/.outbox/*.json` |
 
@@ -129,14 +131,20 @@ db/
   migrations/0001_baseline.sql, 0002_platform.sql, 0003_tenancy.sql, ...
   seed/dev.sql              عيادتان وهميتان + مستخدم لكل دور (للتطوير والاختبار فقط)
   test/*.test.js            اختبارات العزل بين العيادات
-src/apiclient.jsx           عميل متوافق مع supabase-js → /api
+  src/create-app.js, src/errors.js, src/catalog.js, src/data-query.js,
+  src/rpc-whitelist.js, src/static.js
+  test/fixtures/schema.sql  fixture مطابق للعقد (حتى تُستخدم migrations الحقيقية)
+  README.md                 التشغيل المحلي والنشر على cPanel
+db/package.json             تبعية pg فقط (npm --prefix db install)
+src/apiclient.jsx           عميل متوافق مع supabase-js → /api + newRecordId()
+test/apiclient.test.mjs     89 اختبارًا للعميل (node:test + vm)
 src/tenant.jsx              حل العيادة، صفحات الحالة، اختيار العيادة، قبول الدعوة
 src/platform.jsx            لوحة Super Admin
 e2e/                        اختبارات Playwright للرحلات J1–J4
 scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 ```
 
-**متغيرات البيئة للـ API:** `DATABASE_URL`، `JWT_SECRET`، `APP_BASE_DOMAIN` (`clinicsyseg.com`؛ في التطوير `localhost`)، `COOKIE_DOMAIN`، `COOKIE_SECURE` (`true` في الإنتاج)، `FILES_DIR`، `FILES_SIGNING_SECRET`، `DIST_DIR` (افتراضيًا `../dist`)، `MAIL_TRANSPORT` (`smtp` أو `file`)، `SMTP_HOST`، `SMTP_PORT`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM`، `PORT`. الأسرار تُضبط من شاشة تطبيق Node في cPanel، **ولا تُكتب في Git أبدًا**.
+**متغيرات البيئة للـ API:** `DATABASE_URL`، `JWT_SECRET`، `APP_BASE_DOMAIN` (`clinicsyseg.com`؛ في التطوير `localhost`)، `COOKIE_DOMAIN`، `COOKIE_SECURE` (`true` في الإنتاج)، `FILES_DIR`، `FILES_SIGNING_SECRET`، `DIST_DIR` (افتراضيًا `../dist`)، `MAIL_TRANSPORT` (`smtp` أو `file`)، `MAIL_OUTBOX_DIR`، `SMTP_HOST`، `SMTP_PORT`، `SMTP_SECURE`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM`، `TRUST_PROXY`، `DB_POOL_MAX`، `DB_STATEMENT_TIMEOUT_MS`، `PORT`. في الإنتاج يرفض الخادم البدء دون `DATABASE_URL` وسرّين بطول 32 حرفًا على الأقل ومختلفين. الأسرار تُضبط من شاشة تطبيق Node في cPanel، **ولا تُكتب في Git أبدًا**.
 
 ## API contract
 
@@ -227,6 +235,14 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | `GET /api/platform/specialties`، `GET /api/platform/modules`، `GET/POST/PATCH /api/platform/plans` | الكتالوجات |
 | `GET /api/platform/audit?organization_id=&actor=&action=&from=&to=` | سجل التدقيق مع صفحات |
 
+### ملاحظات التنفيذ (نواة الـ API)
+
+- **أشكال الاستجابة:** `/api/orgs/current` → `{organization, role, branches, current_branch_id}`؛ الرفع → `{path, fullPath}`؛ الحذف → `{removed:[...]}`؛ `signedUrl` نسبي (`/api/files/signed?token=`)؛ `resolve` يعرض العيادة `pending_activation` (لصفحة الدعوة) ويعيد `404` لـ `draft`.
+- **`/api/data` إضافات:** `head:true` (العدد فقط)، و `ignoreDuplicates:true` (upsert بـ DO NOTHING)، و `returning` افتراضيًا `true`، و `count` في الكتابة = عدد الصفوف المتأثرة، والمفتاح الناقص في إدخال متعدد = `DEFAULT`. الحدود: 1000 صف للكتابة، و 50 فلترًا، و 10 أعمدة ترتيب.
+- **الملفات:** `expiresIn` أكبر من 600 يُقصّ إلى 600 (الواجهة تطلب 3600). الملف أكبر من 20MB → `413 file_too_large`. تجاوز مساحة الخطة → `422 plan_limit_storage`. `GET /api/files/object` يقبل `?org=<slug>` في التطوير لأن `<img>` لا يرسل ترويسات.
+- **`/api/admin/set-status`:** العميل يرسل `{staff_id, active, status:'active'|'inactive'}` (عقد Edge Function الأصلي). أخطاء `/api/admin/*` تصل للواجهة بشكل `{ok:false, error, detail}`، و 401 كـ `invalid_token`.
+- **رموز الأخطاء:** `csrf_header_required`، `invalid_credentials`، `too_many_attempts` (429 + `Retry-After`)، `invalid_session`، `session_revoked`، `weak_password` (6–72 بايت)، `invalid_token`، `org_required`، `not_a_member`، `org_inactive`، `invalid_table`، `invalid_column`، `invalid_filter`، `invalid_order`، `invalid_range`، `invalid_values`، `invalid_on_conflict`، `filter_required`، `PGRST116` (406)، `rpc_not_allowed`، `function_not_found` (404)، `invalid_args`، `invalid_path`، `invalid_bucket`، `already_exists` (409)، `file_too_large` (413)، `plan_limit_storage` (422)، `token_expired`. أخطاء الاتصال والخادم في PostgreSQL → 500 «Database error»، وانتهاء المهلة → 503.
+
 ## Security and privacy
 
 | المتطلب | التطبيق |
@@ -235,6 +251,9 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | الأسرار (NFR-004) | `DATABASE_URL` و `JWT_SECRET` و `FILES_SIGNING_SECRET` و SMTP في بيئة تطبيق Node على cPanel فقط، لا في React ولا في Git؛ فحص سجل Git وتدوير أي سر مكشوف؛ حذف كلمة مرور المدير من `DEPLOY.md` و `seed-admin.sql` |
 | التخزين (NFR-005) | الملفات خارج `public_html` في مجلد العيادة؛ التنزيل عبر الـ API بعد التحقق من الجلسة والعيادة، أو برابط موقّع ≤ 10 دقائق؛ رفض أي `path` فيه `..` |
 | حقن SQL | `/api/data` يتحقق من أسماء الجداول والأعمدة من الكتالوج، ويمرر كل القيم كمعاملات؛ `/api/rpc` من قائمة سماح |
+| الملفات (تفصيل) | صلاحيات مأخوذة من سياسات Storage القديمة: القراءة والرفع لـ admin و receptionist و doctor و therapist؛ الاستبدال لـ admin و receptionist؛ الحذف لـ admin و receptionist، ولغيرهم ملفاتهم فقط. العرض المباشر للصور و PDF والنص و MP4 فقط، وغيرها كمرفق مع CSP sandbox. الروابط الموقّعة تتوقف عند إيقاف العيادة |
+| الترويسات | `X-Content-Type-Options`، `Referrer-Policy`، `X-Frame-Options: DENY`، و HSTS عند `COOKIE_SECURE=true`؛ لا تُخدم ملفات dotfiles |
+| ثغرة موروثة (معروفة) | 23 دالة `security definer` في المخطط الحالي تسمح لمستدعٍ **بلا دور** (`NULL`) بالمرور، و `record_quick_payment` و `list_invoices_filtered` بلا فحص دور إطلاقًا. نُقلت كما هي في `0001`، ومحمية الآن لأن `/api/rpc` يتطلب جلسة وعضوية نشطة؛ الإصلاح في المهمة 2.9 |
 | تجاوز السياق | `app.org_id` يضبطه الخادم بعد التحقق من العضوية؛ `organization_id` الذي يرسله العميل في `values` يُرفض إن خالف العيادة الحالية (سياسة `WITH CHECK`) |
 | النقل (NFR-006) | HTTPS إلزامي على النطاق الرئيسي وكل الروابط الفرعية؛ HSTS |
 | التدقيق (NFR-007) | `audit_events` لإنشاء/إيقاف العيادات، تغيير التخصص والميزات والخطة، الدعوات، تغيير الأدوار والعضويات |
@@ -245,7 +264,7 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 ## Performance and reliability targets
 
 - **أول شاشة ≤ 1 ثانية** على جهاز متوسط (معالج أبطأ 4×). **مقاس:** 125 ms على جهاز سريع و 370 ms بالإبطاء، بدل 5,962 ms و 24,757 ms قبل الترجمة المسبقة. لا مترجم داخل المتصفح في الإنتاج.
-- **ميزانية JavaScript الأولية ≤ 300 KB gzip.** الحالي: React 46 + supabase-js 54 + التطبيق 150 = حوالي 250 KB. المكتبات الثقيلة والشاشات النادرة تُحمّل عند الحاجة.
+- **ميزانية JavaScript الأولية ≤ 300 KB gzip.** الحالي: React 46 + التطبيق (مع `apiclient.jsx`) 159 = حوالي 205 KB؛ `supabase-js` (54 KB) أُزيل. المكتبات الثقيلة والشاشات النادرة تُحمّل عند الحاجة.
 - القوائم الشائعة تستجيب خلال **2.5 ثانية** في ظروف الشبكة المستهدفة (NFR-009)؛ فهارس على `organization_id` و `(organization_id, branch_id)` و `(organization_id, date)`.
 - استدعاءات دوال RLS المساعدة تكون `stable` وتُستدعى بنمط `(select fn())` لتجنب التنفيذ لكل صف.
 - اتصالات القاعدة: Pool بحد أقصى 10، لأن الاستضافة المشتركة تحدد عدد العمليات والاتصالات.
@@ -263,7 +282,7 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 
 - **البناء:** `npm install` ثم `npm run build` (`scripts/build.mjs`، esbuild) ينتج `dist/`. `npm start` يخدم `dist/`، و `npm run dev` يخدم المصادر مع Babel للتطوير فقط. على Railway يجب أن يظهر في السجل `serving dist/ (production build)`. على hosting.com يُرفع محتوى `dist/` فقط.
 - **التشغيل محليًا:** `scripts/dev-db.sh start` → `DATABASE_URL=... node db/migrate.js` → `psql $DATABASE_URL -f db/seed/dev.sql` → `npm run build` → `cd api && npm start`.
-- **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test db/test api/test` (تشمل **اختبارات العزل السلبية**) + Playwright (`e2e/`) لكل PR.
+- **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test 'db/test/*.test.js' 'api/test/*.test.js' 'test/*.test.mjs'` (تشمل **اختبارات العزل السلبية**؛ تمرير مجلد بدل نمط لا يعمل على Node 21+) + Playwright (`e2e/`) لكل PR.
 - **CD:** النشر من `main` بعد نجاح CI؛ migrations تُطبق على staging أولًا ثم production بعد الموافقة.
 - **Rollback:** كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
 
@@ -296,3 +315,4 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 |---|---|
 | 21 أكتوبر 2026 | `src/` و `supabase/` منقولان؛ الأقسام التي تغيرت: أسلوب البناء (esbuild)، و Build output، والمكتبات عند الطلب، وقراءة البيانات (توازي + صفحات)، وأهداف الأداء المقاسة، وخطوة البناء في CI/CD، وقرارات جديدة، وقرار وجهة قاعدة البيانات (مفتوح). الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
 | 21 أكتوبر 2026 | **قرار مالك المنتج: نقل القاعدة وكل خدمات Supabase إلى hosting.com.** أُعيدت كتابة Backend and database و Authentication and roles و Architecture، وأُضيفت Repository layout و API contract، وحُدّثت البيئات و CI والأمان والقرارات. |
+| 22 أكتوبر 2026 | نقطة حفظ بعد ثلاثة وكلاء: `index.html` بلا supabase-js و `src/apiclient.jsx`، و `db/` (0001 + migrate.js)، ونواة `api/`. أُضيفت «ملاحظات التنفيذ» (أشكال الاستجابة، ورموز الأخطاء، وإضافات `/api/data`)، والدوال الـ 23، ومتغيرات البيئة، وقواعد الملفات، والثغرة الموروثة في دوال RPC، وأوامر الاختبار بأنماط. |

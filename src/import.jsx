@@ -161,7 +161,7 @@ function HistoricalImportPage() {
 
     setSaving(true);
     try {
-      const pid = "P-" + Date.now().toString().slice(-8);
+      const pid = newRecordId("P-");
       const ageNum = form.age
         ? Number(form.age)
         : (form.dob ? Math.max(0, new Date().getFullYear() - new Date(form.dob).getFullYear()) : null);

@@ -15,6 +15,7 @@
    - `auth.uid()` = `nullif(current_setting('app.user_id', true), '')::uuid`.
    - `auth.password_reset_tokens(token_hash text PK, user_id uuid, expires_at, used_at)`.
    - المراجع الحالية لـ `auth.identities` تُحذف.
+   - **المنفذ في `0001` ✅:** `created_at`/`updated_at` بـ `timestamptz not null default now()`، وفهرس `users_email_lower_key`، و `auth.uid()` دالة SQL `stable`، وفهرس على `password_reset_tokens(user_id)` مع `on delete cascade`.
 3. **سياق الطلب** (يضبطه الـ API بـ `set_config(..., true)` داخل كل transaction)، وتقرأه دوال `stable` في `public`: `app_org_id()` و `app_branch_id()` و `app_is_system()` (`app.system = 'on'` للعمليات الداخلية في الـ API فقط).
 4. **نوعان من الجداول:**
    - **جداول المنصة والهوية** (`auth.*`، `organizations`، `organization_members`، `member_branches`، `platform_admins`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs`، `schema_migrations`): **لا تُعرض عبر `/api/data`**، وبدون RLS. الوصول إليها فقط عبر مسارات الـ API المخصصة التي تتحقق من الصلاحية. لهذا تقرأها دوال الصلاحيات دون أن تستدعي RLS نفسه بشكل متكرر.
@@ -30,9 +31,13 @@
 7. **`app_role()` الجديدة:** دور `auth.uid()` في `organization_members` للعيادة `app_org_id()`، بشرط أن تكون العضوية `active` والعيادة `active`، وإلا `null`. قيم الأدوار: `admin`، `receptionist`، `doctor`، `therapist`، `staff`.
 8. **الفرع:** `branch_id text NOT NULL DEFAULT app_branch_id() REFERENCES branches(id)` على `bookings` و `sessions` و `invoices` و `payments` و `payment_receipts` و `patient_schedules` و `treatments`. سياسة RESTRICTIVE ثانية `branch_scope` تسمح للمستخدم بصفوف فروعه فقط (`can_access_branch(branch_id)`؛ `admin` يرى كل فروع عيادته).
 9. **القيود الفريدة على مستوى العيادة:** كل `UNIQUE` في جدول عيادة يصبح `(organization_id, ...)`، ومنها: `patients(national_id)`، و `patients(medical_file_no)`، و `staff(lower(email))`، و `payments(receipt_no)`، و `custom_sections(slug)`، و `template_categories(name)`، و `treatment_methods(name)`، و `patient_files(storage_path)`.
-10. **المعرّفات:** المفاتيح النصية الحالية (`patient_id`...) تبقى مفتاحًا أساسيًا مفردًا، لكن يجب أن تكون **فريدة عالميًا**. الواجهة تولّدها بـ `newRecordId(prefix)` = `prefix + Date.now().toString(36) + 6 أحرف عشوائية base36`، بدل `"P-" + 5 أرقام`. التصادم بين عيادتين يفشل بخطأ RLS ولا يكشف بيانات.
+10. **المعرّفات** (✅ في الواجهة؛ ⏳ في دوال SQL — المهمة 2.10): المفاتيح النصية الحالية (`patient_id`...) تبقى مفتاحًا أساسيًا مفردًا، لكن يجب أن تكون **فريدة عالميًا**. كل مولدات `src/` تستخدم الآن `newRecordId` بنفس البادئات (P-، A-، B-، S-، SCH-، INV-، U-، TM-، TPL-، TRT-...). المتبقي: مولدات داخل دوال SQL (`PMT-` في `record_quick_payment`، و `TPL-` و `TM-` و `TU-` و `TPC-`) تعتمد الوقت + 4 أحرف hex. الواجهة تولّدها بـ `newRecordId(prefix)` = `prefix + Date.now().toString(36) + 6 أحرف عشوائية base36`، بدل `"P-" + 5 أرقام`. التصادم بين عيادتين يفشل بخطأ RLS ولا يكشف بيانات.
 11. **`clinic_settings`:** يصبح سجلًا لكل عيادة: `PRIMARY KEY (organization_id, id)` مع إبقاء `id = 1`. الاستعلام الحالي `.eq("id", 1)` يعيد سجل العيادة الحالية.
-12. **دوال `security definer` الحالية** تعمل كمالك الجداول، والمالك خاضع لـ FORCE RLS، فتعمل بصلاحيات المستخدم والعيادة الحاليين. هذا مقصود. `search_path` ثابت في كل دالة.
+12. **دوال `security definer` الحالية** تعمل كمالك الجداول، والمالك خاضع لـ FORCE RLS، فتعمل بصلاحيات المستخدم والعيادة الحاليين. هذا مقصود. `search_path` ثابت في كل دالة. **تنبيهات مُتحقق منها لـ `0003`:**
+    - يجب إعادة تعريف `app_role()` لتقرأ `organization_members` **قبل** فرض FORCE RLS على `staff`، وإلا يحدث `stack depth limit exceeded` (سياسة `staff` تستدعي `app_role()` التي تقرأ `staff`).
+    - `SELECT ... FOR UPDATE` داخل الدوال يتطلب سياسة UPDATE أيضًا: مثلًا `record_quick_payment` من طبيب يفشل بـ «appointment not found» بعد فرض RLS على `bookings`. كل دالة تُراجع مقابل الأدوار المقصودة.
+    - `/api/orgs/resolve` يقرأ `clinic_settings` بسياق العيادة فقط (بلا دور)، فيلزم سياسة SELECT لا تتطلب دورًا.
+    - المفتاح الأجنبي المركّب `(organization_id, branch_id) → branches(organization_id, id)` على كل جدول مرتبط بفرع.
 
 
 ## Entities
@@ -292,10 +297,12 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 
 **المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser). `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
 
-1. `0001_baseline.sql` — نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي: schema `auth` التوافقي (القاعدة 2)، وحذف `pgcrypto` و `storage.*` و `auth.identities` و `grant`/`to authenticated`، وتحويل السياسات إلى `TO PUBLIC`، وفصل بذور قوالب العلاج إن لزم. **السلوك لعيادة واحدة يبقى كما هو.**
+1. ✅ `0001_baseline.sql` (4,866 سطرًا؛ مُتحقق منه على 13.23 و 16.15، ومطابق لكتالوج الأصل: الجداول والأعمدة والقيود والفهارس والـ triggers و 57 سياسة و md5 كل دالة). **ما حُذف:** 30 أمر `GRANT ... TO authenticated`، و `storage.buckets` و 4 سياسات `storage.objects`، و**بذرتا** المدير (القسم 14) و 6 حسابات موظفين بكلمة مرور ثابتة (القسم 15)، و `pgcrypto` (كانت تستخدمه البذرتان فقط)، و `notify pgrst`. **ما بقي داخل الملف:** 49 قالب علاج وتصنيفان، و 9 طرق علاج، وسجل `clinic_settings` (id=1). الوصف الأصلي للمهمة: نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي: schema `auth` التوافقي (القاعدة 2)، وحذف `pgcrypto` و `storage.*` و `auth.identities` و `grant`/`to authenticated`، وتحويل السياسات إلى `TO PUBLIC`، وفصل بذور قوالب العلاج إن لزم. **السلوك لعيادة واحدة يبقى كما هو.**
 2. `0002_platform.sql` — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
 3. `0003_tenancy.sql` — دوال السياق، وإعادة تعريف `app_role()`، و `organization_id` و `branch_id` (القاعدتان 5 و 8)، والقيود الفريدة على مستوى العيادة (9)، و `clinic_settings` لكل عيادة (11)، و FORCE RLS و `tenant_isolation` و `branch_scope` على كل جداول العيادة، و triggers حدود الخطة (الفروع والمستخدمون)، وأعمدة التدقيق (`organization_id`، `target_type`، `target_id`، `result`). **إن وُجدت بيانات قديمة:** تُنشأ «العيادة الأولى» (`physio`، `active`) و «الفرع الرئيسي»، وتُسند إليهما كل الصفوف، وتُحوَّل صفوف `staff` المرتبطة بحساب إلى `organization_members` بنفس الدور.
 4. `0004_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+
+**الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
 **بيانات البذر للتطوير والاختبار** (`db/seed/dev.sql`، **لا يُطبق على الإنتاج أبدًا**): Super Admin (`super@clinicsys.test`)، وعيادتان `demo-physio` (علاج طبيعي) و `demo-dental` (أسنان)، بفرعين لكل منهما، ومستخدم لكل دور في كل عيادة (`<role>@<slug>.test`)، وبضعة مرضى ومواعيد. كلمة مرور التطوير الموحدة `Dev@12345` (bcrypt) موثقة هنا فقط. **لا بيانات حقيقية في staging** إلا بعد إخفاء الهوية (BR-009).
 
@@ -309,3 +316,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 |---|---|
 | 21 أكتوبر 2026 | إضافة قسم «Data access rules» (حد الـ 1000 صف، التوازي، الترتيب، الخطة المستقبلية)، وتوحيد تسمية الـ migrations مع مجلد `supabase/migrations/` المنقول. الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
 | 21 أكتوبر 2026 | **القاعدة تنتقل إلى hosting.com:** إضافة «hosting.com PostgreSQL conventions» (12 قاعدة ملزمة)؛ أسماء الأدوار تبقى (`admin`...)؛ `invitations.token_hash`؛ إعادة كتابة Authentication flow و Authorization rules و Migration and seed data لمسار `db/migrations/`. |
+| 22 أكتوبر 2026 | `0001_baseline.sql` ✅ وما حُذف منه؛ تفاصيل schema `auth` المنفذة؛ القاعدة 10 منفذة في الواجهة (ومتبقية في دوال SQL)؛ أربعة تنبيهات مُتحقق منها لـ `0003`؛ مكان بيانات الملفات. |

@@ -187,7 +187,7 @@ async function loadSections() {
 }
 
 function nextSectionId() {
-  return "sec_" + Math.random().toString(36).slice(2, 9);
+  return newRecordId("sec_");
 }
 
 async function addSection(section) {
@@ -247,7 +247,7 @@ const DEFAULT_BRANCHES = [
 ];
 
 function nextBranchId() {
-  return "br_" + Math.random().toString(36).slice(2, 9);
+  return newRecordId("br_");
 }
 
 async function loadBranches() {
@@ -472,7 +472,7 @@ async function getAuthStaff() {
 //     own credentials/profile via the live session.
 const ROLE_SLUGS = ["admin", "receptionist", "doctor", "therapist"];
 function nextStaffId() {
-  return "U-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return newRecordId("U-");
 }
 
 // Map machine error codes from the Edge Function (or raw GoTrue text)
@@ -1307,7 +1307,7 @@ function __receiptNo() {
   return `RCT-${stamp}-${String(Math.floor(Math.random()*100000)).padStart(5,"0")}`;
 }
 function __paymentId() {
-  return "PMT-" + Date.now().toString() + "-" + Math.random().toString(36).slice(2,6);
+  return newRecordId("PMT-");
 }
 
 // Record a Quick Payment. Prefers the transactional RPC (record_quick_payment);
@@ -1468,11 +1468,7 @@ const QuickPay = {
 // available to every terminal and every future treatment plan.
 // ══════════════════════════════════════════════════════════════
 function __txMethodId() {
-  const d = new Date();
-  const pad = (n, w=2) => String(n).padStart(w, "0");
-  const stamp = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `TM-${stamp}-${rand}`;
+  return newRecordId("TM-");
 }
 
 // Case/whitespace-insensitive dedupe.
@@ -1828,7 +1824,7 @@ const RECEIPT_MAX_BYTES     = 8 * 1024 * 1024; // 8MB cap — receipts are small
 const LS_RECEIPTS           = "kinetic.payment_receipts";
 
 function __nextReceiptId() {
-  return "rct_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return newRecordId("rct_");
 }
 function __receiptValid(file) {
   if (!file) return "لم يتم اختيار ملف";
@@ -2107,7 +2103,7 @@ const ALLOWED_MIME_EXACT     = new Set([
 const ALLOWED_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|pdf|docx?|xlsx?|dcm|txt)$/i;
 
 function nextFileId() {
-  return "pf_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return newRecordId("pf_");
 }
 function sanitizeFileName(name) {
   return String(name || "file").replace(/[^\w.\-؀-ۿ]+/g, "_").slice(0, 120);
@@ -2254,11 +2250,7 @@ const LS_TEMPLATES         = 'kinetic.treatment_templates.v1';
 const LS_TEMPLATE_USAGE    = 'kinetic.template_usage.v1';
 
 function __tplId() {
-  const d = new Date();
-  const pad = (n, w = 2) => String(n).padStart(w, '0');
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `TPL-${stamp}-${rand}`;
+  return newRecordId('TPL-');
 }
 function __currentEditorName() {
   return (window.ME && (window.ME.name || window.ME.email)) || '—';
@@ -2508,7 +2500,7 @@ async function applyTreatmentTemplate(templateId, patientId, planId) {
     } catch (e) { return { ok: false, error: e.message || 'تعذّر التطبيق' }; }
   }
   const now = new Date().toISOString();
-  const use_id = `TU-${now.replace(/[^0-9]/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const use_id = newRecordId('TU-');
   writeLS(LS_TEMPLATE_USAGE, [...readLS(LS_TEMPLATE_USAGE, []), {
     use_id, template_id: templateId, patient_id: patientId || null, plan_id: planId || null,
     applied_by_name: __currentEditorName(), applied_at: now,
@@ -2549,11 +2541,7 @@ window.Templates = Templates;
 // never modified by any of these calls.
 // ══════════════════════════════════════════════════════════════
 function __treatmentId() {
-  const d = new Date();
-  const pad = (n, w = 2) => String(n).padStart(w, '0');
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `TRT-${stamp}-${rand}`;
+  return newRecordId('TRT-');
 }
 function __trtDispatch(action, treatment_id) {
   window.dispatchEvent(new CustomEvent('kinetic:treatments-updated', { detail: { action, treatment_id } }));
@@ -2696,7 +2684,7 @@ async function upsertTemplateCategory(category_id, payload) {
     String(r.name || '').trim().toLowerCase() === name.toLowerCase()
     && r.category_id !== category_id);
   if (dupIdx >= 0) return { ok: false, error: 'اسم الفئة موجود مسبقًا' };
-  const id = category_id || ('TPC-LS-' + Date.now().toString(36));
+  const id = category_id || newRecordId('TPC-LS-');
   const existing = rows.find(r => r.category_id === id);
   const now = new Date().toISOString();
   const next = existing

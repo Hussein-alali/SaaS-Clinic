@@ -1637,7 +1637,7 @@ function NewInvoiceModal({ onClose }) {
     if (!patientId) { if (window.showToast) window.showToast("اختر مريضًا", "error"); return; }
     if (subtotal <= 0) { if (window.showToast) window.showToast("أضف بندًا واحدًا على الأقل", "error"); return; }
     try {
-      const invoiceId = "INV-" + Date.now();
+      const invoiceId = newRecordId("INV-");
       const row = {
         invoice_id: invoiceId,
         id: invoiceId,
@@ -1760,7 +1760,7 @@ function Packages({ go }) {
                   { label:"تعديل الباقة", icon:<I.Edit size={13}/>, onClick:()=>setEditing(p) },
                   { label:p.active?"إيقاف الباقة":"تفعيل الباقة", icon:<I.Check size={13}/>, onClick:()=>toggleActive(p) },
                   { label:"مضاعفة", icon:<I.Plus size={13}/>, onClick:async()=>{
-                    const clone = { ...p, id: (p.id||"PK-")+"-Copy-"+Math.random().toString(36).slice(2,6), name:p.name+" — نسخة", sold:0 };
+                    const clone = { ...p, id: newRecordId((p.id||"PK-")+"-Copy-"), name:p.name+" — نسخة", sold:0 };
                     try { await window.KineticData.upsert("packages", clone); }
                     catch (e) { console.warn("clone package failed", e); }
                     if (window.showToast) window.showToast(`تم نسخ ${p.name}`,"success");
@@ -2511,7 +2511,7 @@ function Campaigns({ go }) {
                   <RowMenu size={13} items={[
                     { label:"عرض التحليلات", icon:<I.Chart size={13}/>, onClick:()=>{setSelected(c);setView("analytics");} },
                     { label:"مضاعفة الحملة", icon:<I.Plus size={13}/>, onClick:async()=>{
-                      const clone = { ...c, id: (c.id||"CM-")+"-C-"+Math.random().toString(36).slice(2,6), name: c.name+" — نسخة", status:"مسودة", sent:0, read:0, replied:0 };
+                      const clone = { ...c, id: newRecordId((c.id||"CM-")+"-C-"), name: c.name+" — نسخة", status:"مسودة", sent:0, read:0, replied:0 };
                       try { await window.KineticData.upsert("campaigns", clone); }
                       catch (e) { console.warn("clone campaign failed", e); }
                       if (window.showToast) window.showToast(`تم نسخ الحملة`,"success");
@@ -3433,7 +3433,7 @@ const DOC_STATUS_OPTS = [
   { v:"available", l:"متاح" }, { v:"busy", l:"مشغول" }, { v:"leave", l:"في إجازة" },
 ];
 const DOC_STATUS_AR = { available:"متاح", busy:"مشغول", leave:"في إجازة" };
-const newId = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+const newId = (p) => newRecordId(p);
 
 // ── useRoster: shared search + pagination for staff tables ─────
 // One hook for all three rosters (Doctors, Specialists, Receptionists)
@@ -5947,7 +5947,7 @@ function PatientBookingFlow({ onClose, onDone }) {
     // Persist the booking so it appears in Appointments after the modal closes.
     if (window.KineticData) {
       const therapistRow = (DATA.therapists || []).find(t => t.name === picks.therapist);
-      const bookingId = "B-" + Date.now();
+      const bookingId = newRecordId("B-");
       window.KineticData.upsert("appts", {
         booking_id: bookingId,
         id: bookingId,
@@ -6243,7 +6243,7 @@ function PublicBookingScreen({ onBack, onDone }) {
     // Persist the booking so it shows up in reception/dashboard views.
     if (window.KineticData) {
       const therapistRow = (DATA.therapists || []).find(t => t.name === picks.therapist);
-      const bookingId = "B-" + Date.now();
+      const bookingId = newRecordId("B-");
       window.KineticData.upsert("appts", {
         booking_id: bookingId,
         id: bookingId,

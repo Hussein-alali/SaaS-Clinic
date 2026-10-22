@@ -1986,7 +1986,7 @@ function PatientAdd({ onCancel, onSave }) {
   // see what the user typed. Previously every input was uncontrolled and
   // "إنشاء مريض" saved a hardcoded seed row.
   const [form, setForm] = React.useState({
-    patient_id: "P-" + Math.floor(10000 + Math.random()*90000),
+    patient_id: newRecordId("P-"),
     created_at: new Date().toISOString().slice(0,10),
     name: "", phone: "", email: "", age: "", gender: "Female",
     occupation: "", marital: "أعزب", address: "",
@@ -2336,7 +2336,7 @@ function QuickBookingModal({ onClose, onDone }) {
       let patient = known;
       let createdNew = false;
       if (!patient) {
-        const pid = "P-" + Date.now().toString().slice(-8);
+        const pid = newRecordId("P-");
         patient = await window.KineticData.upsert("patients", {
           patient_id: pid, name, phone,
           diagnosis: "", notes: "حجز سريع — بيانات ناقصة",
@@ -2353,7 +2353,7 @@ function QuickBookingModal({ onClose, onDone }) {
       const therapist = therapists.find(t => t.id === form.therapistId);
       const doctor = form.doctorId ? doctors.find(d => d.id === form.doctorId) : null;
       const dept = doctor ? (DATA.departments || []).find(d => d.id === doctor.department_id) : null;
-      const bid = "A-" + Date.now().toString().slice(-8);
+      const bid = newRecordId("A-");
       await window.KineticData.upsert("appts", {
         booking_id: bid,
         patient_id: patientId,
@@ -2580,7 +2580,6 @@ async function generateFromSchedule(patient, schedule, { startIso, sessions } = 
   const thName = therapistRow ? therapistRow.name : "";
   const patientId = patient.patient_id || patient.id;
   const created = [];
-  const stamp = Date.now().toString().slice(-8);
   for (const dateIso of nextScheduleDates(days, start, count)) {
     if (therapistBusyAt(thName, schedule.therapist_id, dateIso, time)) continue;
     const clash = (DATA.appts || []).some(a =>
@@ -2588,7 +2587,7 @@ async function generateFromSchedule(patient, schedule, { startIso, sessions } = 
       a.status !== "متاح" && apptDateIso(a) === dateIso);
     if (clash) continue;
     const row = await window.KineticData.upsert("appts", {
-      booking_id: `A-${stamp}-${created.length + 1}`,
+      booking_id: newRecordId("A-"),
       patient_id: patientId,
       patient: patient.name || "",
       therapist_id: schedule.therapist_id || null,
@@ -2639,7 +2638,7 @@ function RecurringScheduleModal({ patient, onClose }) {
     setBusy(true);
     try {
       const row = await window.KineticData.upsert("schedules", {
-        schedule_id: existing ? (existing.schedule_id || existing.id) : "SCH-" + Date.now().toString().slice(-8),
+        schedule_id: existing ? (existing.schedule_id || existing.id) : newRecordId("SCH-"),
         patient_id: pid,
         therapist_id: therapistId,
         days,
@@ -3776,7 +3775,7 @@ function BookingFlow({ onDone }) {
     const matched = findPatientByPhone(picks.newPhone);
     if (matched) return matched;
     return await window.KineticData.upsert("patients", {
-      patient_id: "P-" + Date.now().toString().slice(-8),
+      patient_id: newRecordId("P-"),
       name: picks.newName.trim(),
       phone: picks.newPhone.trim(),
       diagnosis: "", notes: "حجز جديد — بيانات أولية",
@@ -3814,7 +3813,7 @@ function BookingFlow({ onDone }) {
         : null;
       const therapistRow = (DATA.therapists || []).find(t => t.name === picks.therapist);
       await window.KineticData.upsert("appts", {
-        booking_id: "A-" + Date.now().toString().slice(-8),
+        booking_id: newRecordId("A-"),
         patient_id: patientId,
         patient: patient.name || "",
         doctor_id: doctor ? doctor.id : null,

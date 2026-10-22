@@ -22,7 +22,7 @@
 | 1.11 قراءة البيانات ✅ | AI agent | `src/supabase.jsx` | `Promise.all` في `hydrateDomainTables`، و `selectAllRows` بعد حد Max rows | AT-18؛ 0.63 ثانية بدل 8.5 ثانية على خادم وهمي (`04abbe3`) | 1.1 |
 | 1.12 قرار وجهة قاعدة البيانات ✅ | المالك | [08](08-Hosting-Migration.md) | **hosting.com** (PostgreSQL + Node.js API) — 21 أكتوبر 2026 | مسجل في TRD و PRD (سؤال 6) | — |
 | ~~1.13 نشر الواجهة فقط على hosting.com (الخيار A)~~ | — | — | **أُلغيت**: الخيار B اعتُمد، والنشر الكامل (API + `dist/`) في Milestone 6 | — | — |
-| 1.15 التحقق من بيئة hosting.com | المالك | الدعم الفني لـ hosting.com | إصدار PostgreSQL (المطلوب ≥ 13)، وإصدارات Node.js في Setup Node.js App، وحدود LVE، وwildcard subdomain + SSL لـ `*.clinicsyseg.com`، وحد إرسال SMTP | الإجابات مسجلة في TRD | — |
+| 1.15 التحقق من بيئة hosting.com | المالك | الدعم الفني لـ hosting.com | إصدار PostgreSQL (المطلوب ≥ 13)، وأن مستخدم القاعدة يملك `CREATE` على القاعدة وعلى schema `public` (في 15+ لا يملكها غير المالك)، وإصدارات Node.js في Setup Node.js App (Node 20 يسمح بـ nodemailer 10)، وكيف يمرر Passenger عنوان IP للعميل (`TRUST_PROXY`)، وعدد عمليات Node (حدود المحاولات في الذاكرة لكل عملية)، وحدود LVE، وwildcard subdomain + SSL لـ `*.clinicsyseg.com`، وحد إرسال SMTP | الإجابات مسجلة في TRD | — |
 | 1.16 قاعدة محلية بصلاحيات cPanel ✅ | AI agent | — | `scripts/dev-db.sh` (مالك بدون superuser/CREATEROLE) | `CREATE ROLE` يُرفض، والقاعدة تعمل | — |
 | 1.14 تحميل البيانات حسب الشاشة (F18) | AI agent | `src/supabase.jsx`، الشاشات | المواعيد بالتاريخ، والمرضى بالبحث والصفحات، والتقارير عبر RPC، وتحديث الصفوف المتأثرة فقط بعد الدفع | لا تحميل لكل الجداول عند البداية؛ زمن ثابت مع 10× بيانات | 1.11 |
 
@@ -35,13 +35,17 @@
 | المهمة | المنفذ | المدخلات | المخرجات | تعريف الإنجاز | يعتمد على |
 |---|---|---|---|---|---|
 | 2.1 نسخة احتياطية من Supabase + اختبار استرجاع | المطور | مشروع Supabase | `pg_dump` لـ `public` و `auth.users` مستعاد محليًا | الاسترجاع ناجح والأعداد مطابقة | — |
-| 2.2 نقل المخطط (baseline) | AI agent | `Supabase_All_In_One.sql` | `db/migrations/0001_baseline.sql` + `db/migrate.js` | يطبق على `dev-db.sh` (بدون superuser) مرتين بلا أخطاء؛ لا extensions ولا أدوار Supabase؛ كل الدوال الـ 25 موجودة | 1.16 |
+| 2.2 نقل المخطط (baseline) ✅ | AI agent | `Supabase_All_In_One.sql` | `db/migrations/0001_baseline.sql` + `db/migrate.js` | يطبق على `dev-db.sh` (بدون superuser) مرتين بلا أخطاء؛ لا extensions ولا أدوار Supabase؛ كل الدوال الـ 25 موجودة | 1.16 |
 | 2.3 جداول المنصة + الكتالوج | AI agent | Schema | `0002_platform.sql` | الجداول والبذور كما في Schema | 2.2 |
 | 2.4 تعدد العيادات + الفروع + RLS | AI agent | Schema (القواعد 3–12) | `0003_tenancy.sql` + `db/seed/dev.sql` | كل جدول عيادة: `organization_id` + FORCE RLS + `tenant_isolation`؛ الجداول المرتبطة بفرع: `branch_id` + `branch_scope`؛ القيود الفريدة بالعيادة | 2.3 |
 | 2.5 اختبارات العزل | AI agent | البذر | `db/test/isolation.test.js` | لكل جدول عيادة: القراءة والإدخال والتعديل والحذف عبر العيادات **مرفوضة**، وداخل العيادة مسموحة حسب الدور (NFR-001، AT-05) | 2.4 |
-| 2.6 نواة الـ API | AI agent | TRD | `api/`: config، db `withContext`، auth (login/logout/session/password/reset)، tenant، `/api/orgs/*`، `/api/data`، `/api/rpc`، `/api/files/*`، mailer | `api/test/*` على قاعدة حقيقية: الجلسة، والسياق، وحد الـ 1000 صف، ورفض الجداول والأعمدة غير المسموحة، والملفات بين العيادات | 2.4 |
+| 2.6 نواة الـ API ✅ (على fixture؛ الدمج مع الـ migrations الحقيقية جارٍ) | AI agent | TRD | `api/`: config، db `withContext`، auth (login/logout/session/password/reset)، tenant، `/api/orgs/*`، `/api/data`، `/api/rpc`، `/api/files/*`، mailer | `api/test/*` على قاعدة حقيقية: الجلسة، والسياق، وحد الـ 1000 صف، ورفض الجداول والأعمدة غير المسموحة، والملفات بين العيادات | 2.4 |
 | 2.7 الإدارة والدعوات والمنصة في الـ API | AI agent | TRD | `/api/admin/*` (عقود Edge Functions نفسها)، `/api/org/invitations`، `/api/invitations/:token`، `/api/platform/*`، `api/scripts/create-super-admin.js` | اختبارات: إنشاء عيادة ذري، ودعوة، وقبول يفعّل العيادة، وحدود الخطة (422)، وإيقاف العيادة يمنع الوصول فورًا، وكلها في `audit_events` | 2.6 |
-| 2.8 عميل الواجهة | AI agent | TRD | `src/apiclient.jsx` (متوافق مع `supabase-js` المستخدم) + حذف CDN supabase-js + `newRecordId()` بدل مولدات المعرّفات | اختبارات وحدة بـ fetch وهمي لكل شكل استدعاء مستخدم في `src/` | — |
+| 2.8 عميل الواجهة ✅ (89 اختبارًا) | AI agent | TRD | `src/apiclient.jsx` (متوافق مع `supabase-js` المستخدم) + حذف CDN supabase-js + `newRecordId()` بدل مولدات المعرّفات | اختبارات وحدة بـ fetch وهمي لكل شكل استدعاء مستخدم في `src/` | — |
+
+| 2.9 إصلاح فحوص الأدوار في دوال RPC (أمان) | AI agent | `0001` | migration جديد: `v_role is null or ...` في 23 دالة، وفحص دور لـ `record_quick_payment` و `list_invoices_filtered`، وقرار حذف/إصلاح `create_treatment_method` و `update_treatment_method` | اختبار `todo` في `db/test/baseline.test.js` ينجح | 2.4 |
+| 2.10 مولدات المعرّفات داخل SQL | AI agent | دوال `0001` | `PMT-` و `TPL-` و `TM-` و `TU-` و `TPC-` بنفس صيغة `newRecordId` | لا تصادم بين عيادتين في اختبار ضغط | 2.4 |
+| 2.11 أسماء الملفات | AI agent | `sanitizeFileName` في `src/supabase.jsx` | دمج النقاط المتكررة (`..`) | رفع `a..b.pdf` ينجح | 2.8 |
 
 **بوابة الانتقال:** نجاح كل اختبارات القاعدة والعزل والـ API محليًا.
 
@@ -50,9 +54,9 @@
 | المهمة | المنفذ | المخرجات | تعريف الإنجاز | يعتمد على |
 |---|---|---|---|---|
 | 3.1 حل العيادة من النطاق | AI agent | `src/tenant.jsx`: النطاق أو `?org=` → `/api/orgs/resolve` → صفحات الحالة S06 | AT-13؛ العيادة الموقوفة تعرض صفحة «متوقفة» | 2.6، 2.8 |
-| 3.2 الدخول والتوجيه واختيار العيادة | AI agent | S02 و S04 عبر `/api/auth/*` | AT-03، AT-04، AT-05 | 3.1 |
+| 3.2 الدخول والتوجيه واختيار العيادة | AI agent | S02 و S04 عبر `/api/auth/*`، وتمرير «أبقني مسجلًا» (`remember`) من شاشة الدخول | AT-03، AT-04، AT-05 | 3.1 |
 | 3.3 قبول الدعوة | AI agent | S03 (`?invite=`) | أول مدير يفعّل العيادة ويدخل | 2.7، 3.2 |
-| 3.4 سياق العيادة والفرع في الواجهة | AI agent | ترويسات `X-Org-Slug` و `X-Branch-Id` من العميل؛ محدد الفرع يغيّر `X-Branch-Id` ويعيد التحميل | كل الشاشات الحالية تعمل داخل عيادة البذر بنفس السلوك | 3.2 |
+| 3.4 سياق العيادة والفرع في الواجهة | AI agent | ترويسات `X-Org-Slug` و `X-Branch-Id` من العميل؛ محدد الفرع يغيّر `X-Branch-Id` ويعيد التحميل؛ ضبط `window.ACTIVE_BRANCH_ID` إلى فرع حقيقي بعد `loadBranches` (لا `br_main`)؛ وضع العرض `?demo=1` بلا أي طلب للـ API (`sb = null`) | كل الشاشات الحالية تعمل داخل عيادة البذر بنفس السلوك | 3.2 |
 | 3.5 القائمة حسب الوحدات والدور | AI agent | إخفاء الوحدات غير المفعلة | AT-07 (الواجهة) | 3.4 |
 | 3.6 لوحة Super Admin | AI agent | `src/platform.jsx`: A01، A02، A03 (معالج)، A04 (عام، الوحدات، الفروع، الأعضاء، الاشتراك اليدوي، السجل) | AT-01، AT-02، AT-10 | 2.7 |
 | 3.7 الفروع | AI agent | شاشة الفروع C07 + محدد الفرع + فلترة الحجز بالفرع | AT-14، AT-16 | 3.4 |
@@ -119,3 +123,4 @@
 |---|---|
 | 21 أكتوبر 2026 | تعليم 1.1 و 1.3 كمنجزتين، و 1.4 كمنجزة جزئيًا؛ إضافة المهام المنجزة 1.9–1.11، والمهام الجديدة 1.12–1.14؛ CI يشمل `npm run build`؛ هدف أول شاشة في Milestone 5. الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
 | 21 أكتوبر 2026 | **قرار hosting.com:** 1.12 منجزة، و 1.13 أُلغيت، وأُضيفت 1.15 (التحقق من بيئة hosting.com) و 1.16 (قاعدة محلية بصلاحيات cPanel ✅). أُعيدت كتابة Milestone 2 (المهام 2.1–2.8) و Milestone 3 (3.1–3.9) لمسار PostgreSQL + Node.js API. |
+| 22 أكتوبر 2026 | 2.2 و 2.6 (على fixture) و 2.8 منجزة؛ مهام جديدة 2.9 (ثغرة فحص الأدوار الموروثة في دوال RPC) و 2.10 (مولدات المعرّفات في SQL) و 2.11 (أسماء الملفات)؛ تفاصيل إضافية لـ 1.15 و 3.2 و 3.4. |

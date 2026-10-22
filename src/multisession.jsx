@@ -173,7 +173,7 @@ function ConcurrentSessions(){
     const completedBefore = plan ? (Number(plan.completed_sessions) || 0)
       : (DATA.sessions || []).filter(s => s.patient_id === pid && s.status !== "in_progress").length;
     const total = plan ? (Number(plan.estimated_sessions) || 0) : 0;
-    const id = "S-"+pid+"-"+Date.now();
+    const id = newRecordId("S-"+pid+"-");
     const startedAt = new Date().toISOString();
     const goals = planGoalsOf(plan);
     setSessions(ss=>[...ss, {

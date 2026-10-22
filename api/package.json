@@ -1,0 +1,24 @@
+{
+  "name": "clinicsys-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ClinicSystem EG Node.js API: auth, tenant context, /api/data, /api/rpc, /api/files and the static dist/ build (hosting.com cPanel Setup Node.js App, startup file app.js).",
+  "main": "app.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemailer": "^9.1.1",
+    "pg": "^8.13.0"
+  }
+}

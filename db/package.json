@@ -1,0 +1,17 @@
+{
+  "name": "clinicsys-db",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PostgreSQL migrations and database tests for ClinicSystem EG (hosting.com / cPanel)",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "migrate": "node migrate.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}
