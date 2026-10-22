@@ -63,7 +63,7 @@ class TestCustomEvent extends Event {
  * Loads `code` into a fresh vm "browser". `handler(req)` answers each fetch
  * (Response, or a thrown error for a network failure).
  */
-function boot({ code = CLIENT_JS, search = "", session = {}, local = {}, handler } = {}) {
+function boot({ code = CLIENT_JS, search = "", hostname = "localhost", session = {}, local = {}, handler } = {}) {
   const requests = [];
   const crypto = { calls: 0, getRandomValues(a) { this.calls++; return webcrypto.getRandomValues(a); } };
   const events = new EventTarget();
@@ -76,7 +76,7 @@ function boot({ code = CLIENT_JS, search = "", session = {}, local = {}, handler
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
     dispatchEvent: events.dispatchEvent.bind(events),
-    location: { search, hostname: "localhost", origin: "http://localhost:3000", pathname: "/", href: "http://localhost:3000/" + search },
+    location: { search, hostname, origin: `http://${hostname}:3000`, pathname: "/", href: `http://${hostname}:3000/` + search },
     sessionStorage: makeStorage(session),
     localStorage: makeStorage(local),
     crypto,
@@ -964,6 +964,194 @@ describe("context headers: X-Org-Slug and X-Branch-Id", () => {
       await env.client().from("bookings").select("*");
       assert.equal("X-Branch-Id" in env.requests[0].headers, false, String(bad));
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+describe("platform context: X-Platform: 1 (plan task 3.6)", () => {
+  const every = async (env) => {
+    const sb = env.client();
+    await sb.from("patients").select("*");
+    await sb.rpc("list_treatments", {});
+    await sb.storage.from("b").upload("p", new Blob(["x"]));
+    await sb.storage.from("b").createSignedUrl("p", 60);
+    await sb.storage.from("b").remove(["p"]);
+    await sb.auth.getUser();
+    await sb.auth.signInWithPassword({ email: "a@b.co", password: "x" });
+    await sb.auth.updateUser({ data: { name: "N" } });
+    await sb.auth.resetPasswordForEmail("a@b.co");
+    await sb.auth.signOut();
+    await sb.functions.invoke("admin-create-user", { body: {} });
+    await env.win.ClinicApi.request("GET", "/platform/stats");
+    await env.win.ClinicApi.request("POST", "/platform/plans", { code: "x" });
+    return env.requests;
+  };
+  const ok = () => json(200, { data: [], user: LOGIN_PAYLOAD.user, signedUrl: "/s" });
+
+  test("?platform=1 → X-Platform: 1 on every request, remembered in sessionStorage 'clinicsys.platform'", async () => {
+    const env = boot({ search: "?platform=1", handler: ok });
+    const reqs = await every(env);
+    assert.equal(reqs.length, 13);
+    for (const r of reqs) {
+      assert.equal(r.headers["X-Platform"], "1", r.path);
+      assert.equal(r.headers["X-Requested-With"], "clinicsys", r.path);
+      assert.equal(r.credentials, "include", r.path);
+    }
+    assert.equal(env.win.sessionStorage.getItem("clinicsys.platform"), "1");
+    assert.equal(env.win.ClinicApi.isPlatformContext(), true);
+  });
+
+  test("the stored flag keeps the context after ?platform is dropped; with neither no header is sent", async () => {
+    const env = boot({ search: "?platform=1" });
+    const sb = env.client();
+    await sb.from("patients").select("*");
+    env.win.location.search = "";
+    await sb.from("patients").select("*");
+    assert.equal(env.requests[1].headers["X-Platform"], "1");
+
+    const stored = boot({ session: { "clinicsys.platform": "1" } });
+    await stored.client().from("patients").select("*");
+    assert.equal(stored.requests[0].headers["X-Platform"], "1");
+
+    const none = boot({ handler: ok });
+    const reqs = await every(none);
+    for (const r of reqs) assert.equal("X-Platform" in r.headers, false, r.path);
+    assert.equal(none.win.ClinicApi.isPlatformContext(), false);
+  });
+
+  test("the admin.<base> host is the platform context without any flag", async () => {
+    for (const hostname of ["admin.clinicsyseg.com", "ADMIN.localhost", "admin.staging.clinicsyseg.com"]) {
+      const env = boot({ hostname });
+      await env.client().from("patients").select("*");
+      assert.equal(env.requests[0].headers["X-Platform"], "1", hostname);
+      assert.equal(env.win.sessionStorage.getItem("clinicsys.platform"), null, hostname);
+    }
+    for (const hostname of ["demo-physio.clinicsyseg.com", "clinicsyseg.com", "myadmin.clinicsyseg.com", "localhost"]) {
+      const env = boot({ hostname });
+      await env.client().from("patients").select("*");
+      assert.equal("X-Platform" in env.requests[0].headers, false, hostname);
+    }
+  });
+
+  test("?platform=0 or an explicit ?org=<slug> leaves the platform context; other values do not set it", async () => {
+    for (const search of ["?platform=0", "?org=demo-physio"]) {
+      const env = boot({ search, session: { "clinicsys.platform": "1" } });
+      await env.client().from("patients").select("*");
+      assert.equal("X-Platform" in env.requests[0].headers, false, search);
+      assert.equal(env.win.sessionStorage.getItem("clinicsys.platform"), null, search);
+    }
+    // ?platform=1 wins over ?org= in the same URL; the clinic slug is still sent (ignored by /api/platform).
+    const both = boot({ search: "?org=demo-physio&platform=1" });
+    await both.client().from("patients").select("*");
+    assert.equal(both.requests[0].headers["X-Platform"], "1");
+    assert.equal(both.requests[0].headers["X-Org-Slug"], "demo-physio");
+    // An invalid ?org= does not end the context.
+    const bad = boot({ search: "?org=-bad", session: { "clinicsys.platform": "1" } });
+    await bad.client().from("patients").select("*");
+    assert.equal(bad.requests[0].headers["X-Platform"], "1");
+    for (const search of ["?platform=true", "?platform=", "?platform=2"]) {
+      const env = boot({ search });
+      await env.client().from("patients").select("*");
+      assert.equal("X-Platform" in env.requests[0].headers, false, search);
+      assert.equal(env.win.sessionStorage.getItem("clinicsys.platform"), null, search);
+    }
+  });
+
+  test("blocked storage: ?platform=1 still sends the header", async () => {
+    const env = boot({ search: "?platform=1" });
+    const boom = () => { throw new Error("SecurityError"); };
+    env.win.sessionStorage = { getItem: boom, setItem: boom, removeItem: boom };
+    await env.client().from("patients").select("*");
+    assert.equal(env.requests[0].headers["X-Platform"], "1");
+    env.win.location.search = "";
+    await env.client().from("patients").select("*");
+    assert.equal("X-Platform" in env.requests[1].headers, false, "nothing remembered when storage is blocked");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+describe("window.ClinicApi: plain JSON requests to /api", () => {
+  test("GET → /api<path> without a body; 2xx → {ok, status, data, error:null}", async () => {
+    const env = boot({ search: "?platform=1", handler: () => json(200, { organizations: { active: 2 } }) });
+    const res = await env.win.ClinicApi.request("GET", "/platform/stats");
+    assert.deepEqual(plain(res), { ok: true, status: 200, data: { organizations: { active: 2 } }, error: null });
+    const r = env.requests[0];
+    assert.equal(r.url, "/api/platform/stats");
+    assert.equal(r.method, "GET");
+    assert.equal(r.rawBody, undefined);
+    assert.equal("Content-Type" in r.headers, false);
+    assert.equal(r.headers["X-Platform"], "1");
+  });
+
+  test("POST / PUT / PATCH send JSON; DELETE 204 → data null; method is upper-cased", async () => {
+    const env = boot({ handler: (req) => (req.method === "DELETE" ? json(204) : json(201, { id: "p1" })) });
+    const api = env.win.ClinicApi;
+    const post = await api.request("post", "/platform/plans", { code: "basic", max_users: null });
+    assert.equal(post.ok, true);
+    assert.equal(post.status, 201);
+    assert.deepEqual(plain(post.data), { id: "p1" });
+    await api.request("PUT", "/platform/organizations/o1/modules", { codes: ["core.patients"] });
+    await api.request("PATCH", "/platform/plans/p1", { max_users: 5 });
+    const del = await api.request("DELETE", "/platform/organizations/o1/invitations/i1");
+    assert.deepEqual(plain(del), { ok: true, status: 204, data: null, error: null });
+    const [a, b, c, d] = env.requests;
+    assert.deepEqual([a.method, b.method, c.method, d.method], ["POST", "PUT", "PATCH", "DELETE"]);
+    assert.deepEqual(a.body, { code: "basic", max_users: null });
+    assert.equal(a.headers["Content-Type"], "application/json");
+    assert.deepEqual(b.body, { codes: ["core.patients"] });
+    assert.deepEqual(c.body, { max_users: 5 });
+    assert.equal(d.rawBody, undefined);
+  });
+
+  test("API errors → {ok:false, status, data, error:{message, code, status}}; never throws", async () => {
+    const env = boot({ handler: () => json(409, { error: { message: "This address is already used", code: "slug_taken" } }) });
+    const res = await env.win.ClinicApi.request("POST", "/platform/organizations", { slug: "demo-physio" });
+    assert.equal(res.ok, false);
+    assert.equal(res.status, 409);
+    assert.deepEqual(plain(res.error), { message: "This address is already used", code: "slug_taken", status: 409 });
+    assert.deepEqual(plain(res.data), { error: { message: "This address is already used", code: "slug_taken" } });
+
+    env.setHandler(() => text(502, "<html>Bad gateway</html>", "text/html"));
+    const html = await env.win.ClinicApi.request("GET", "/platform/stats");
+    assert.equal(html.ok, false);
+    assert.equal(html.data, null);
+    assert.equal(html.error.code, "");
+    assert.match(html.error.message, /HTTP 502/);
+
+    env.setHandler(() => text(200, "<html>proxy page</html>", "text/html"));
+    const page = await env.win.ClinicApi.request("GET", "/platform/stats");
+    assert.equal(page.ok, false, "a 2xx HTML page is not data");
+  });
+
+  test("network failure → status 0, code network_error", async () => {
+    const env = boot({ handler: () => { throw new TypeError("Failed to fetch"); } });
+    const res = await env.win.ClinicApi.request("GET", "/auth/session");
+    assert.equal(res.ok, false);
+    assert.equal(res.status, 0);
+    assert.equal(res.error.code, "network_error");
+    assert.match(res.error.message, /Failed to fetch/);
+  });
+
+  test("paths must be /api-relative: no scheme, no '//' and no '..' (nothing is sent)", async () => {
+    const env = boot();
+    for (const bad of ["platform/stats", "//evil.example/x", "https://evil.example/", "/platform/../admin", "", null]) {
+      const res = await env.win.ClinicApi.request("GET", bad);
+      assert.equal(res.ok, false, String(bad));
+      assert.equal(res.error.code, "invalid_path", String(bad));
+    }
+    assert.equal(env.requests.length, 0);
+    // ".." inside the query string is data, not a path segment.
+    await env.win.ClinicApi.request("GET", "/platform/organizations?q=a..b");
+    assert.equal(env.requests[0].url, "/api/platform/organizations?q=a..b");
+  });
+
+  test("query() encodes values and leaves out null / undefined / ''", () => {
+    const { win } = boot();
+    assert.equal(win.ClinicApi.query({ q: "عيادة أحمد", status: "", specialty: null, x: undefined, limit: 50, offset: 0 }),
+      "?q=%D8%B9%D9%8A%D8%A7%D8%AF%D8%A9%20%D8%A3%D8%AD%D9%85%D8%AF&limit=50&offset=0");
+    assert.equal(win.ClinicApi.query({ action: "organization.*", actor: "a+b@x.co" }), "?action=organization.*&actor=a%2Bb%40x.co");
+    assert.equal(win.ClinicApi.query({}), "");
+    assert.equal(win.ClinicApi.query(null), "");
   });
 });
 

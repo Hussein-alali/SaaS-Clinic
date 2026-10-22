@@ -48,6 +48,11 @@ function BranchSwitcher({ role }) {
   return (
     <div ref={ref} style={{position:"relative",margin:"4px 14px 10px"}}>
       <button
+        type="button"
+        className="branch-switcher"
+        aria-haspopup="listbox"
+        aria-expanded={open ? "true" : "false"}
+        aria-label={`الفرع الحالي: ${active.name} — تبديل الفرع`}
         onClick={()=>setOpen(o=>!o)}
         style={{
           width:"100%", padding:"9px 11px", background:"var(--ink-50)",
@@ -65,13 +70,14 @@ function BranchSwitcher({ role }) {
       </button>
 
       {open && (
-        <div style={{
+        <div role="listbox" aria-label="الفروع" style={{
           position:"absolute", top:"calc(100% + 6px)", insetInlineStart:0, insetInlineEnd:0,
           background:"#fff", border:"1px solid var(--ink-200)", borderRadius:11,
           boxShadow:"var(--shadow-md)", zIndex:30, padding:6, maxHeight:280, overflowY:"auto"
         }}>
           {branches.map(b => (
-            <div key={b.id}
+            <div key={b.id} role="option" aria-selected={b.id === activeId ? "true" : "false"} data-branch={b.id} tabIndex={0}
+              onKeyDown={(e)=>{ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
               onClick={()=>{ if (window.setActiveBranch) window.setActiveBranch(b.id); setOpen(false); if (window.showToast) window.showToast(`تم التبديل إلى ${b.name}`, "success"); }}
               style={{
                 display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
@@ -269,18 +275,23 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
     ]},
   ];
 
-  // ── Hide routes this role can't reach; drop empty sections ────
+  // ── Hide routes this role can't reach or whose module is disabled
+  // for the clinic (src/roles.jsx ROUTE_MODULES); drop empty sections ──
   // Custom sections (prefixed "custom:") are visible only to admin.
   const allowed = (window.ROLE_ROUTES && window.ROLE_ROUTES[role]) || null;
+  const moduleOn = (id) => !window.routeModuleEnabled || window.routeModuleEnabled(id);
   const groups = allGroups
     .map(g => ({ ...g, items: g.items.filter(it => {
       if (it.custom) return role === "مدير";
-      return !allowed || allowed.includes(it.id);
+      return (!allowed || allowed.includes(it.id)) && moduleOn(it.id);
     }) }))
     .filter(g => g.items.length > 0);
 
   const u = user || { name:"أمير", email:"amir@kinetic.eg" };
   const uInit = window.initialsOf ? window.initialsOf(u.name) : "ش ع";
+  // «تبديل العيادة» (docs/03 Alternate journeys) for members of several clinics.
+  const memberships = (window.TENANT_SESSION && window.TENANT_SESSION.memberships) || [];
+  const canSwitchClinic = memberships.length > 1 && !!window.tenantGoRoot;
 
   return (
     <aside className={"sidebar" + (isOpen ? " open" : "")}>
@@ -298,13 +309,15 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
       {/* Clinic switcher */}
       <BranchSwitcher role={role}/>
 
-      <nav style={{flex:1, overflowY:"auto", paddingBottom:14}}>
+      <nav aria-label="القائمة الرئيسية" style={{flex:1, overflowY:"auto", paddingBottom:14}}>
         {groups.map((g,gi)=>(
           <div key={gi}>
             {g.title && <div className="nav-section">{g.title}</div>}
             {g.items.map(it => (
-              <div key={it.id}
+              <div key={it.id} data-route={it.id} role="link" tabIndex={0}
+                aria-current={active===it.id ? "page" : undefined}
                 className={"nav-item" + (active===it.id?" active":"")}
+                onKeyDown={(e)=>{ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNav(it.id); } }}
                 onClick={()=>onNav(it.id)}>
                 {it.icon}
                 <span style={{flex:1}}>{it.label}</span>
@@ -329,7 +342,12 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
           <div style={{fontSize:12.5,fontWeight:600,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.name}</div>
           <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{role || "مدير"} · {u.email}</div>
         </div>
-        <button className="btn btn-ghost btn-icon" title="تسجيل الخروج" onClick={()=>onNav("logout")}>
+        {canSwitchClinic && (
+          <button className="btn btn-ghost btn-icon" title="تبديل العيادة" aria-label="تبديل العيادة" onClick={()=>window.tenantGoRoot()}>
+            <I.Layers size={15}/>
+          </button>
+        )}
+        <button className="btn btn-ghost btn-icon" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={()=>onNav("logout")}>
           <I.Logout size={15}/>
         </button>
       </div>
@@ -1364,9 +1382,9 @@ function isDemoMode() {
   return !window.SB;
 }
 
-function AuthScreen({ onLogin, onBookAsGuest }) {
+function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
   // ── State ──────────────────────────────────────────────────
-  const [mode, setMode] = React.useState("login"); // login | forgot | reset
+  const [mode, setMode] = React.useState("login"); // login | forgot
   // Live clinic branding so the login page picks up name/subtitle/logo
   // changes without a code deploy. Re-renders on kinetic:clinic-updated.
   const [clinic, setClinic] = React.useState(window.CLINIC || {});
@@ -1385,52 +1403,61 @@ function AuthScreen({ onLogin, onBookAsGuest }) {
   const [busy, setBusy] = React.useState(false);
   const [showPw, setShowPw] = React.useState(false);
   const [shake, setShake] = React.useState(false);
+  const [remember, setRemember] = React.useState(true);
+  // Inline message above the form: a refused login, a message from the
+  // app (e.g. signed out because the membership was disabled), or the
+  // one-shot flash after a password reset.
+  const [notice, setNotice] = React.useState(() =>
+    noticeProp || (window.tenantTakeFlash ? window.tenantTakeFlash() : null));
+  React.useEffect(() => { if (noticeProp) setNotice(noticeProp); }, [noticeProp]);
 
   // ── Handlers ───────────────────────────────────────────────
-  const ROLE_TO_AR = {
-    admin:"مدير", receptionist:"موظف استقبال", doctor:"طبيب", therapist:"الأخصائي", patient:"مريض",
-  };
+  function refuse(text) {
+    setShake(true); setTimeout(()=>setShake(false), 400);
+    setNotice({ kind: "error", text });
+  }
 
   async function submit(e) {
     e && e.preventDefault();
+    if (!isDemoMode() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      refuse("أدخل بريدًا إلكترونيًا صحيحًا");
+      return;
+    }
     if (!pw) {
-      setShake(true); setTimeout(()=>setShake(false), 400);
-      if (window.showToast) window.showToast("أدخل كلمة المرور", "error");
+      refuse("أدخل كلمة المرور");
       return;
     }
     setBusy(true);
-    // Prefer Supabase Auth whenever it's configured. Mock login is gated
+    setNotice(null);
+    // Real sign-in whenever the API client is there. Mock login is gated
     // to explicit demo mode so a real deployment can't accidentally hand
     // out the requested role without a credential check.
     if (window.SB && window.signInEmail && !isDemoMode()) {
       try {
-        const res = await window.signInEmail(email, pw);
-        setBusy(false);
+        const res = await window.signInEmail(email.trim(), pw, { remember });
         if (!res.ok) {
-          setShake(true); setTimeout(()=>setShake(false), 400);
-          if (window.showToast) window.showToast(res.error || "بيانات الدخول غير صحيحة", "error");
+          setBusy(false);
+          refuse(res.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة");
           return;
         }
-        const dbRole = res.role || res.staff?.role;
-        const arRole = ROLE_TO_AR[dbRole] || role;
-        const prof = (window.ROLE_PROFILES||{})[arRole] || { name:res.staff?.name || res.user?.email || email, email };
-        // Clinicians scope their caseload by their OWN name (from the staff
-        // record), not a fixed profile — so real accounts see real patients.
-        const isClinician = arRole === "طبيب" || arRole === "الأخصائي";
-        onLogin && onLogin({
-          name: res.staff?.name || prof.name,
-          role: arRole,
-          email: res.user?.email || email,
-          match: isClinician ? (res.staff?.name || prof.match || null) : (prof.match || null),
-          title: prof.title,
-          color: prof.color,
-          scope: window.roleScope ? window.roleScope(arRole) : "all",
-        });
+        // The account is valid; may it enter THIS clinic? (src/tenant.jsx)
+        // A non-member or a deactivated member is signed out again.
+        const verdict = window.tenantLoginVerdict
+          ? window.tenantLoginVerdict(res)
+          : { ok: false, error: "تعذّر التحقق من العضوية" };
+        if (!verdict.ok) {
+          try { await window.signOut(); } catch {}
+          setBusy(false);
+          setPw("");
+          refuse(verdict.error);
+          return;
+        }
+        setBusy(false);
+        onLogin && onLogin(verdict.user, res);
         return;
       } catch (err) {
         setBusy(false);
-        setShake(true); setTimeout(()=>setShake(false), 400);
-        if (window.showToast) window.showToast(err.message || "تعذّر تسجيل الدخول", "error");
+        refuse(window.friendlyAuthError ? window.friendlyAuthError("network_error") : "تعذّر تسجيل الدخول");
         return;
       }
     }
@@ -1528,10 +1555,11 @@ function AuthScreen({ onLogin, onBookAsGuest }) {
         <div style={{width:"100%",maxWidth:420, animation: shake?"shake .35s":""}}>
           {mode==="login" && (
             <>
-              <div className="h1" style={{fontSize:30,marginBottom:6}}>أهلاً بعودتك</div>
+              <h1 className="h1" style={{fontSize:30,marginBottom:6}}>أهلاً بعودتك</h1>
               <div className="muted" style={{fontSize:14,marginBottom:28}}>
-                سجّل الدخول للمتابعة إلى مساحة عيادتك.
+                سجّل الدخول للمتابعة إلى مساحة {clinic.name ? <strong style={{color:"var(--ink-700)"}}>{clinic.name}</strong> : "عيادتك"}.
               </div>
+              {window.TenantNotice && <window.TenantNotice notice={notice}/>}
 
               {/* الدور picker — demo only; production resolves the role from
                   the Supabase account, so picking one here would mislead. */}
@@ -1552,26 +1580,26 @@ function AuthScreen({ onLogin, onBookAsGuest }) {
               </div>
               </>}
 
-              <form onSubmit={submit}>
-                <div className="label">البريد الإلكتروني</div>
-                <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@clinic.com" style={{marginBottom:14,height:42}}/>
+              <form onSubmit={submit} noValidate>
+                <label className="label" htmlFor="login-email" style={{display:"block"}}>البريد الإلكتروني</label>
+                <input id="login-email" className="input" type="email" dir="ltr" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@clinic.com" style={{marginBottom:14,height:42}}/>
 
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div className="label">كلمة المرور</div>
-                  <button type="button" onClick={()=>setMode("forgot")} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>نسيت؟</button>
+                  <label className="label" htmlFor="login-password">كلمة المرور</label>
+                  <button type="button" onClick={()=>{ setNotice(null); setMode("forgot"); }} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>نسيت؟</button>
                 </div>
                 <div style={{position:"relative"}}>
-                  <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{height:42,paddingRight:38}}/>
-                  <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
+                  <input id="login-password" className="input" type={showPw?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>setPw(e.target.value)} style={{height:42,paddingRight:38}}/>
+                  <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
                     <I.Eye size={15}/>
                   </button>
                 </div>
 
                 <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--ink-700)",marginTop:14}}>
-                  <input type="checkbox" defaultChecked/> أبقني مسجلاً لمدة 30 يوم
+                  <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> أبقني مسجلاً لمدة 30 يوم
                 </label>
 
-                <button type="submit" disabled={busy} className="btn btn-blue" style={{width:"100%",height:44,justifyContent:"center",marginTop:18,fontSize:14}}>
+                <button type="submit" disabled={busy} aria-busy={busy ? "true" : undefined} className="btn btn-blue" style={{width:"100%",height:44,justifyContent:"center",marginTop:18,fontSize:14}}>
                   {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : "تسجيل الدخول"}
                   {!busy && <I.ArrowRight size={15}/>}
                 </button>
@@ -1612,21 +1640,8 @@ function AuthScreen({ onLogin, onBookAsGuest }) {
             </>
           )}
 
-          {mode==="forgot" && (
-            <>
-              <div className="h1" style={{fontSize:30,marginBottom:6}}>إعادة تعيين كلمة المرور</div>
-              <div className="muted" style={{fontSize:14,marginBottom:28}}>
-                سنرسل رابطًا لمرة واحدة إلى بريدك المسجّل.
-              </div>
-              <div className="label">البريد الإلكتروني</div>
-              <input className="input" type="email" defaultValue={isDemoMode() ? "amir@kinetic.eg" : ""} placeholder="you@clinic.com" style={{height:42,marginBottom:18}}/>
-              <button className="btn btn-blue" style={{width:"100%",height:44,justifyContent:"center"}} onClick={()=>setMode("login")}>
-                إرسال رابط الإعادة <I.ArrowRight size={15}/>
-              </button>
-              <button onClick={()=>setMode("login")} style={{background:"none",border:"none",color:"var(--ink-500)",fontSize:12.5,marginTop:14,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                <I.ArrowLeft size={13}/> العودة لتسجيل الدخول
-              </button>
-            </>
+          {mode==="forgot" && window.TenantForgotForm && (
+            <window.TenantForgotForm initialEmail={email} onBack={()=>setMode("login")}/>
           )}
         </div>
       </div>
@@ -1705,7 +1720,12 @@ function CommandPalette({ open, onClose, onNav }) {
     { title: "التقارير",       route: "reports",      icon: I.Chart },
     { title: "الإعدادات",      route: "settings",     icon: I.Settings },
   ];
-  NAV.forEach(n => items.push({
+  // Same rules as the sidebar: role routes and the clinic's enabled modules.
+  const navAllowed = (route) =>
+    (!allowedRoutes || allowedRoutes.includes(route)) &&
+    (!window.routeModuleEnabled || window.routeModuleEnabled(route));
+  const NAV_OK = NAV.filter(n => navAllowed(n.route));
+  NAV_OK.forEach(n => items.push({
     kind: "page", route: n.route, id: n.route,
     title: n.title, sub: "الانتقال إلى الصفحة",
     hay: `${n.title} ${n.route}`, icon: n.icon,
@@ -1713,7 +1733,7 @@ function CommandPalette({ open, onClose, onNav }) {
 
   const results = query
     ? items.filter(it => norm(it.hay).includes(query)).slice(0, 30)
-    : NAV.map(n => ({ kind: "page", route: n.route, id: n.route, title: n.title, sub: "الانتقال", icon: n.icon }));
+    : NAV_OK.map(n => ({ kind: "page", route: n.route, id: n.route, title: n.title, sub: "الانتقال", icon: n.icon }));
 
   const sel = results[Math.min(i, results.length - 1)];
 

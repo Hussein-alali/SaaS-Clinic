@@ -11,6 +11,8 @@
 //     createSignedUrl/remove                                 → /api/files/*
 //   sb.auth.*                                                → /api/auth/*
 //   sb.functions.invoke("admin-<name>", {body})              → POST /api/admin/<name>
+//   window.ClinicApi.request(method, path, body)             → /api/<path> (plain JSON,
+//                                                               e.g. the Super Admin panel)
 //
 // Like supabase-js, nothing here throws for an HTTP or network error:
 // every call resolves to { data, error, ... }.
@@ -48,6 +50,7 @@ window.newRecordId = newRecordId;
   var API = "/api";
   var ORG_STORAGE_KEY = "clinicsys.org";           // set from ?org=<slug> (development, no wildcard DNS)
   var BRANCH_STORAGE_KEY = "kinetic.active_branch"; // written by setActiveBranch() in src/supabase.jsx
+  var PLATFORM_STORAGE_KEY = "clinicsys.platform";  // "1" after ?platform=1 (development, no admin.<base> host)
   var SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
   var BRANCH_ID_MAX = 128;
   // The real session is the httpOnly cs_session cookie, which scripts cannot
@@ -80,6 +83,31 @@ window.newRecordId = newRecordId;
     catch (_) { return null; }
   }
 
+  // Super Admin (platform) context: the host admin.<APP_BASE_DOMAIN> in
+  // production; in development (no wildcard DNS) ?platform=1, remembered for
+  // the tab in sessionStorage so later URLs can drop it. ?platform=0 or an
+  // explicit ?org=<slug> (a clinic) leaves it. Outside production the API
+  // takes the platform context from the X-Platform: 1 header
+  // (/api/platform/* answers 403 platform_required without it).
+  function isPlatformContext() {
+    var host = "";
+    try { host = String((window.location && window.location.hostname) || "").toLowerCase(); } catch (_) { host = ""; }
+    if (host.indexOf("admin.") === 0) return true;
+    var params = null;
+    try { params = new URLSearchParams((window.location && window.location.search) || ""); } catch (_) { params = null; }
+    var flag = params ? params.get("platform") : null;
+    if (flag === "1") {
+      try { window.sessionStorage.setItem(PLATFORM_STORAGE_KEY, "1"); } catch (_) {}
+      return true;
+    }
+    if (flag === "0" || (params && normSlug(params.get("org")))) {
+      try { window.sessionStorage.removeItem(PLATFORM_STORAGE_KEY); } catch (_) {}
+      return false;
+    }
+    try { return window.sessionStorage.getItem(PLATFORM_STORAGE_KEY) === "1"; }
+    catch (_) { return false; }
+  }
+
   // The branch picker (Sidebar → setActiveBranch) keeps the selection in
   // window.ACTIVE_BRANCH_ID and mirrors it to localStorage as JSON.
   function currentBranchId() {
@@ -101,6 +129,9 @@ window.newRecordId = newRecordId;
   function requestHeaders(hasJsonBody) {
     var h = { "Accept": "application/json", "X-Requested-With": "clinicsys" };
     if (hasJsonBody) h["Content-Type"] = "application/json";
+    // Ignored by every route except /api/platform/*, and by the server in
+    // production (where the admin.<base> host decides).
+    if (isPlatformContext()) h["X-Platform"] = "1";
     var org = currentOrgSlug();
     if (org) h["X-Org-Slug"] = org;
     var branch = currentBranchId();
@@ -665,4 +696,51 @@ window.newRecordId = newRecordId;
   }
 
   window.supabase = { createClient: createClient };
+
+  // ── Plain JSON requests → /api/* ────────────────────────────
+  // For screens that call API routes directly rather than through the
+  // supabase-js surface (the Super Admin panel → /api/platform/*). Same
+  // transport as the client: cookie session, X-Requested-With, X-Platform /
+  // X-Org-Slug / X-Branch-Id. Never throws; resolves to
+  //   { ok, status, data, error: null | { message, code, status } }
+  // where data is the JSON body (null for 204), also on errors.
+  function request(method, path, body) {
+    var m = String(method || "GET").toUpperCase();
+    var p = String(path || "");
+    var route = p.split("?")[0];
+    if (route.charAt(0) !== "/" || route.indexOf("//") !== -1 || route.indexOf("..") !== -1) {
+      return Promise.resolve({ ok: false, status: 0, data: null,
+        error: { message: "Invalid API path: " + p, code: "invalid_path", status: 0 } });
+    }
+    var opts = (body === undefined || m === "GET" || m === "HEAD") ? {} : { json: body };
+    return send(m, p, opts).then(function (r) {
+      if (r.networkError) {
+        var e = r.networkError || {};
+        return { ok: false, status: 0, data: null,
+          error: { message: (e.name || "Error") + ": " + (e.message || String(e)), code: "network_error", status: 0 } };
+      }
+      if (!r.ok) {
+        var info = errorInfo(r);
+        return { ok: false, status: r.status, data: r.isJson ? r.body : null,
+          error: { message: info.message, code: info.code, status: r.status } };
+      }
+      return { ok: true, status: r.status, data: r.isJson ? r.body : null, error: null };
+    });
+  }
+
+  // { q: "x", limit: 50, empty: "" } → "?q=x&limit=50" (null, undefined and
+  // "" are left out); "" when nothing is left.
+  function queryString(params) {
+    var parts = [];
+    if (params && typeof params === "object") {
+      Object.keys(params).forEach(function (k) {
+        var v = params[k];
+        if (v === null || v === undefined || v === "") return;
+        parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(String(v)));
+      });
+    }
+    return parts.length ? "?" + parts.join("&") : "";
+  }
+
+  window.ClinicApi = { request: request, query: queryString, isPlatformContext: isPlatformContext };
 })();

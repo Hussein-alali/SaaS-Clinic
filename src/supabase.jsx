@@ -14,17 +14,20 @@ const LS_SECTIONS = "kinetic.sections";
 const LS_BRANCHES = "kinetic.branches";
 const LS_ACTIVE_BRANCH = "kinetic.active_branch";
 
-// ── Supabase client (nullable) ────────────────────────────────
-// Demo mode (?demo=1) forces the localStorage fallback so the app stays
-// interactive without a live Supabase backend (schema/RLS may not match).
+// ── API client (nullable) ─────────────────────────────────────
+// Demo mode (?demo=1) runs without any backend: no client is created, so
+// the data layer falls back to localStorage and not a single request
+// reaches /api (docs/06 task 3.4).
+const __DEMO_MODE = (function () {
+  try { return new URLSearchParams(window.location.search).get("demo") === "1"; }
+  catch (_) { return false; }
+})();
 let sb = null;
-if (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient) {
+if (!__DEMO_MODE && SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient) {
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 window.SB = sb;
-// Demo mode removed — all data flows through PostgreSQL. IS_DEMO is
-// kept as a stable `false` so any lingering call sites become no-ops.
-window.IS_DEMO = false;
+window.IS_DEMO = __DEMO_MODE;
 
 // ── Default clinic branding ───────────────────────────────────
 // Empty placeholders only — the authoritative values live in the
@@ -250,16 +253,47 @@ function nextBranchId() {
   return newRecordId("br_");
 }
 
+// Branches the signed-in member may use, as GET /api/orgs/current lists
+// them (src/tenant.jsx sets window.ACCESSIBLE_BRANCH_IDS). Every staff
+// role can READ every branch row, but only these can be X-Branch-Id, so
+// the picker lists only these. null = not known (no restriction applied).
+function __accessibleBranchIds() {
+  const ids = window.ACCESSIBLE_BRANCH_IDS;
+  return Array.isArray(ids) ? new Set(ids) : null;
+}
+
+// Keeps window.ACTIVE_BRANCH_ID on a real branch of `list` (never the
+// "br_main" placeholder): the current choice if it is still listed, else
+// the first (active branches sort first).
+function __ensureActiveBranch(list) {
+  if (!Array.isArray(list) || !list.length) {
+    if (sb) window.ACTIVE_BRANCH_ID = null;
+    return window.ACTIVE_BRANCH_ID;
+  }
+  if (!list.some(b => b.id === window.ACTIVE_BRANCH_ID)) {
+    window.ACTIVE_BRANCH_ID = list[0].id;
+    writeLS(LS_ACTIVE_BRANCH, list[0].id);
+  }
+  return window.ACTIVE_BRANCH_ID;
+}
+
 async function loadBranches() {
   if (sb) {
     const { data, error } = await sb.from("branches").select("*").order("created_at", { ascending: true });
-    if (!error && Array.isArray(data) && data.length) {
-      window.BRANCHES = data;
-      writeLS(LS_BRANCHES, data);
-      window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: data }));
-      return data;
+    if (!error && Array.isArray(data)) {
+      const allowed = __accessibleBranchIds();
+      // Active branches first (inactive ones are kept, never deleted).
+      const list = (allowed ? data.filter(b => allowed.has(b.id)) : data).slice()
+        .sort((a, b) => (a.status === "inactive") - (b.status === "inactive"));
+      window.BRANCHES = list;
+      writeLS(LS_BRANCHES, list);
+      __ensureActiveBranch(list);
+      window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: list }));
+      return list;
     }
     if (error) console.warn("loadBranches failed", error.message || error);
+    // With a backend there is no placeholder branch: keep what is known.
+    return window.BRANCHES || [];
   }
   const cached = readLS(LS_BRANCHES, DEFAULT_BRANCHES);
   window.BRANCHES = cached;
@@ -305,12 +339,18 @@ async function updateBranch(id, patch) {
   return next.find(b => b.id === id);
 }
 
+// Selecting a branch changes X-Branch-Id (src/apiclient.jsx reads
+// window.ACTIVE_BRANCH_ID) and reloads the branch-scoped tables for it.
 function setActiveBranch(id) {
   const list = window.BRANCHES || [];
   if (!list.some(b => b.id === id)) return;
+  const changed = window.ACTIVE_BRANCH_ID !== id;
   window.ACTIVE_BRANCH_ID = id;
   writeLS(LS_ACTIVE_BRANCH, id);
   window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: { activeId: id } }));
+  if (changed && sb && window.ME) {
+    hydrateDomainTables().catch(e => console.warn("hydrate after branch switch failed", e));
+  }
 }
 
 async function removeBranch(id) {
@@ -330,28 +370,54 @@ async function removeBranch(id) {
   window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: next }));
 }
 
-// ── Kick off initial hydration (fire-and-forget, but log failures) ─
+// ── Initial state ─────────────────────────────────────────────
 // Clinic branding is DB-only — do NOT seed from localStorage. A stale LS
 // value was the reason the Settings page appeared to save then revert
-// on refresh. The first paint may render placeholders for one frame;
-// loadClinic() below fires the `kinetic:clinic-updated` event which
-// causes Sidebar / login / PDF header to re-render with the DB values.
+// on refresh. With a backend, sections and branches start empty too: the
+// cached copies may belong to another clinic (one origin serves several
+// clinics in development) and the API decides what this member may see.
 window.CLINIC = { ...DEFAULT_CLINIC };
 try { localStorage.removeItem(LS_CLINIC); } catch (_) {}
-window.CUSTOM_SECTIONS = readLS(LS_SECTIONS, DEFAULT_SECTIONS);
-window.BRANCHES = readLS(LS_BRANCHES, DEFAULT_BRANCHES);
-window.ACTIVE_BRANCH_ID = readLS(LS_ACTIVE_BRANCH, window.BRANCHES[0]?.id || null);
-loadClinic().catch(e => console.warn("loadClinic failed", e));
-loadSections().catch(e => console.warn("loadSections failed", e));
-loadBranches().catch(e => console.warn("loadBranches failed", e));
+if (sb) {
+  window.CUSTOM_SECTIONS = [];
+  window.BRANCHES = [];
+  window.ACTIVE_BRANCH_ID = null;
+} else {
+  window.CUSTOM_SECTIONS = readLS(LS_SECTIONS, DEFAULT_SECTIONS);
+  window.BRANCHES = readLS(LS_BRANCHES, DEFAULT_BRANCHES);
+  window.ACTIVE_BRANCH_ID = readLS(LS_ACTIVE_BRANCH, window.BRANCHES[0]?.id || null);
+}
+
+// ── Boot hydration ────────────────────────────────────────────
+// Without the app's tenant router (e.g. the data layer loaded on its own)
+// everything is loaded once on boot, as before. The app itself clears
+// this timer (src/tenant.jsx) and calls loadClinicData() after sign-in
+// instead, so no request is made before there is a session.
+function __bootHydrate() {
+  window.__kineticBootTimer = null;
+  loadClinic().catch(e => console.warn("loadClinic failed", e));
+  loadSections().catch(e => console.warn("loadSections failed", e));
+  loadBranches().catch(e => console.warn("loadBranches failed", e));
+  hydrateDomainTables().catch(e => console.warn("hydrate failed", e));
+}
+window.__kineticBootTimer = setTimeout(__bootHydrate, 0);
 
 // ══════════════════════════════════════════════════════════════
 // Supabase Auth wrappers (PRD 4.3)
 // ══════════════════════════════════════════════════════════════
-async function signInEmail(email, password) {
+// opts.remember → 30-day session cookie («أبقني مسجلاً»), else 12 hours.
+// The result carries the login payload's memberships (active memberships
+// in active clinics): the caller decides whether the CURRENT clinic is
+// one of them (src/tenant.jsx tenantLoginVerdict) before entering it.
+async function signInEmail(email, password, opts) {
   if (!sb) return { ok: false, error: "supabase-not-configured" };
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) return { ok: false, error: error.message };
+  const credentials = { email, password };
+  if (opts && opts.remember) credentials.options = { remember: true };
+  const { data, error } = await sb.auth.signInWithPassword(credentials);
+  if (error) {
+    const code = error.code || (error.status === 0 ? "network_error" : "");
+    return { ok: false, code, error: __friendlyAuthError(code, "") || "تعذّر تسجيل الدخول" };
+  }
   let role = null, staffRow = null;
   const uid = data.user && data.user.id;
   const meta = (data.user && data.user.user_metadata) || {};
@@ -372,7 +438,12 @@ async function signInEmail(email, password) {
   // app_role() reads); user_metadata is only a display fallback for
   // accounts whose staff row hasn't been provisioned yet.
   role = role || meta.role || null;
-  return { ok: true, session: data.session, user: data.user, role, staff: staffRow };
+  const session = data.session;
+  return {
+    ok: true, session, user: data.user, role, staff: staffRow,
+    memberships: (session && session.memberships) || [],
+    isSuperAdmin: !!(session && session.is_super_admin),
+  };
 }
 
 async function signOut() {
@@ -380,12 +451,19 @@ async function signOut() {
   // Clear identity + any cached role-scoped domain data so the next login
   // doesn't see the previous session's patients/appts/etc.
   window.ME = null;
+  __hydrateGeneration += 1; // a hydrate still in flight must not refill the tables
   try {
     for (const cfg of Object.values(DATA_TABLES)) {
       localStorage.removeItem(cfg.ls);
       if (window.DATA) window.DATA[friendlyName(cfg.key)] = [];
     }
   } catch (e) { console.warn("signOut cache clear failed", e); }
+  if (sb) {
+    window.BRANCHES = [];
+    window.ACTIVE_BRANCH_ID = null;
+    window.ACCESSIBLE_BRANCH_IDS = null;
+    window.CUSTOM_SECTIONS = [];
+  }
   window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "*" } }));
 }
 
@@ -435,13 +513,30 @@ async function getAuthStaff() {
     return { ok: false, reason: "invalid-session", error: e.message || String(e) };
   }
 
+  // getUser() re-read the session: its memberships are now current.
+  try {
+    const fresh = await sb.auth.getSession();
+    if (fresh && fresh.data && fresh.data.session) session = fresh.data.session;
+  } catch (_) { /* keep the first answer */ }
+
   // Role from PostgreSQL — the same row RLS's app_role() reads. The self
   // read policy (auth_uid = auth.uid()) still returns the row for an
   // inactive account, so we can distinguish "disabled" from "no record".
   const q = await sb.from("staff").select("staff_id,name,role,email,status").eq("auth_uid", user.id).maybeSingle();
   if (q.error) {
-    return { ok: false, reason: "staff-lookup-failed", session, user,
-             error: q.error.message || "تعذّرت قراءة سجل الموظف" };
+    // No answer at all (offline) or a server fault says nothing about the
+    // account; a refusal (401/403: not a member of this clinic, membership
+    // disabled, clinic inactive) does.
+    if (!q.status) {
+      return { ok: false, reason: "network-error", session, user,
+               error: __friendlyAuthError("network_error") };
+    }
+    if (q.status >= 500) {
+      return { ok: false, reason: "server-error", session, user,
+               error: "تعذّر التحقق من الحساب الآن — أعد المحاولة بعد قليل" };
+    }
+    return { ok: false, reason: "staff-lookup-failed", session, user, code: q.error.code || "",
+             error: __friendlyAuthError(q.error.code, "") || "تعذّرت قراءة سجل الموظف" };
   }
   if (!q.data || !q.data.role) {
     return { ok: false, reason: "no-staff-role", session, user,
@@ -475,32 +570,70 @@ function nextStaffId() {
   return newRecordId("U-");
 }
 
-// Map machine error codes from the Edge Function (or raw GoTrue text)
-// onto friendly Arabic messages. Never expose the raw Supabase error to
-// the toast.
+// Map the API's error codes (docs/02-TRD.md "رموز الأخطاء") onto friendly
+// Arabic messages. Never show a raw server message or code in the UI.
+// The plan-limit triggers answer 422 {code:"PL422", message:"plan_limit:<what>"}:
+// pass the message as `fallback` and it is recognised too.
+const __AUTH_ERRORS = {
+  invalid_credentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+  too_many_attempts:   "محاولات كثيرة متتالية — انتظر بضع دقائق ثم أعد المحاولة",
+  not_a_member:        "ليست لديك عضوية نشطة في هذه العيادة",
+  org_inactive:        "هذه العيادة غير نشطة حاليًا — تواصل مع إدارة المنصة",
+  org_required:        "لم تُحدَّد العيادة — افتح رابط عيادتك ثم سجّل الدخول",
+  account_disabled:    "هذا الحساب معطّل — تواصل مع مدير العيادة",
+  email_exists:        "هذا البريد له حساب بالفعل (في هذه العيادة أو في عيادة أخرى) — أرسل له دعوة بدل إنشاء حساب جديد",
+  shared_account:      "هذا الحساب مستخدم في عيادة أخرى أو في إدارة المنصة — يغيّر صاحبه كلمة مروره بنفسه من «نسيت كلمة المرور»",
+  no_auth_account:     "لا يوجد حساب دخول مرتبط بهذا الموظف في هذه العيادة",
+  plan_limit_users:    "تجاوزت حد المستخدمين في خطتك — تواصل مع إدارة المنصة لترقية الخطة",
+  "plan_limit:users":  "تجاوزت حد المستخدمين في خطتك — تواصل مع إدارة المنصة لترقية الخطة",
+  "plan_limit:branches": "تجاوزت حد الفروع في خطتك — تواصل مع إدارة المنصة لترقية الخطة",
+  plan_limit_storage:  "تجاوزت مساحة التخزين المسموحة في خطتك",
+  "plan_limit:storage": "تجاوزت مساحة التخزين المسموحة في خطتك",
+  plan_limit_modules:  "هذه الميزة غير متاحة في خطتك",
+  weak_password:       "كلمة المرور يجب أن تكون من 6 إلى 72 حرفًا",
+  invalid_email:       "بريد إلكتروني غير صحيح",
+  invalid_role:        "الدور المحدد غير صالح",
+  missing_name:        "أدخل الاسم الكامل",
+  invalid_name:        "أدخل الاسم (حتى 120 حرفًا)",
+  forbidden:           "لا تملك صلاحية هذا الإجراء — يتطلب دور «مدير»",
+  missing_token:       "انتهت الجلسة — سجّل الدخول من جديد",
+  invalid_token:       "انتهت الجلسة — سجّل الدخول من جديد",
+  invalid_session:     "انتهت الجلسة — سجّل الدخول من جديد",
+  session_revoked:     "انتهت الجلسة — سجّل الدخول من جديد",
+  unauthorized:        "انتهت الجلسة — سجّل الدخول من جديد",
+  token_expired:       "انتهت الجلسة — سجّل الدخول من جديد",
+  already_member:      "هذا البريد عضو بالفعل في العيادة",
+  invitation_exists:   "توجد دعوة معلّقة لهذا البريد بالفعل",
+  invitation_not_found:"رابط الدعوة غير صحيح",
+  invitation_used:     "هذه الدعوة استُخدمت من قبل",
+  invitation_expired:  "انتهت صلاحية هذه الدعوة",
+  invitation_revoked:  "أُلغيت هذه الدعوة",
+  branch_required:     "اختر فرعًا واحدًا على الأقل",
+  invalid_branch_ids:  "أحد الفروع المختارة غير موجود",
+  cannot_deactivate_self: "لا يمكنك تعطيل حسابك الخاص",
+  signup_disabled:     "لا يوجد تسجيل ذاتي — يُنشأ الحساب بدعوة من مدير العيادة",
+  rate_limited:        "طلبات كثيرة متتالية — انتظر قليلًا ثم أعد المحاولة",
+  network_error:       "تعذّر الاتصال بالخادم — تحقق من الاتصال وأعد المحاولة",
+  internal_error:      "حدث خطأ في الخادم — أعد المحاولة بعد قليل",
+  server_misconfigured:"إعدادات الخادم غير مكتملة — تواصل مع الدعم",
+  staff_insert_failed: "تم إنشاء الحساب لكن تعذّر حفظ سجل الموظف",
+  method_not_allowed:  "طلب غير صالح",
+};
 function __friendlyAuthError(code, fallback) {
-  const table = {
-    email_exists:        "هذا البريد مستخدم بالفعل — إن كان من محاولة سابقة فاشلة احذف المستخدم من Supabase → Authentication → Users ثم أعد المحاولة",
-    weak_password:       "كلمة المرور ضعيفة — 6 أحرف على الأقل، ويفضّل مزيج أرقام وحروف",
-    invalid_email:       "بريد إلكتروني غير صحيح",
-    invalid_role:        "الدور المحدد غير صالح",
-    missing_name:        "أدخل الاسم الكامل",
-    forbidden:           "لا تملك صلاحية إنشاء المستخدمين — تحتاج دور «مدير»",
-    missing_token:       "انتهت الجلسة — سجّل الدخول من جديد",
-    invalid_token:       "انتهت الجلسة — سجّل الدخول من جديد",
-    rate_limited:        "تم تجاوز حد إنشاء الحسابات المؤقت — جرّب بعد ساعة، أو فعّل خدمة إنشاء الحسابات غير المحدودة (انظر deploy-edge-function.sh)",
-    server_misconfigured:"إعدادات الخادم غير مكتملة — تواصل مع الدعم",
-    staff_insert_failed: "تم إنشاء الحساب لكن فشل حفظه في جدول الموظفين",
-    method_not_allowed:  "طلب غير صالح",
-  };
-  if (code && table[code]) return table[code];
-  // Common raw GoTrue error phrases.
-  const t = String(fallback || "").toLowerCase();
-  if (t.includes("rate limit"))       return table.rate_limited;
-  if (t.includes("already registered")|| t.includes("duplicate")) return table.email_exists;
-  if (t.includes("password"))         return table.weak_password;
-  if (t.includes("invalid email"))    return table.invalid_email;
-  return fallback || "تعذّر إنشاء الحساب";
+  if (code && __AUTH_ERRORS[code]) return __AUTH_ERRORS[code];
+  const raw = String(fallback || "");
+  // "plan_limit:branches" and friends arrive as the message of a PL422.
+  const plan = raw.match(/plan_limit[:_][a-z_]+/);
+  if (plan && __AUTH_ERRORS[plan[0]]) return __AUTH_ERRORS[plan[0]];
+  const t = raw.toLowerCase();
+  if (t.includes("rate limit") || t.includes("too many")) return __AUTH_ERRORS.rate_limited;
+  if (t.includes("already registered") || t.includes("duplicate")) return __AUTH_ERRORS.email_exists;
+  if (t.includes("password")) return __AUTH_ERRORS.weak_password;
+  if (t.includes("invalid email")) return __AUTH_ERRORS.invalid_email;
+  if (t.includes("failed to fetch") || t.includes("network")) return __AUTH_ERRORS.network_error;
+  // Arabic text from this file is already friendly; anything else is not shown.
+  if (raw && /[؀-ۿ]/.test(raw)) return raw;
+  return fallback === "" ? "" : "تعذّر تنفيذ العملية";
 }
 
 async function adminCreateUser({ email, password, name, role, phone }) {
@@ -572,7 +705,7 @@ async function adminCreateUser({ email, password, name, role, phone }) {
   //   2. Subject to GoTrue rate limits (a handful of signups per hour
   //      per SMTP config) — that's what caused the earlier "email rate
   //      limit exceeded" errors.
-  if (!window.supabase || !window.supabase.createClient) return { ok: false, error: "Supabase غير محمّل" };
+  if (!window.supabase || !window.supabase.createClient) return { ok: false, error: __friendlyAuthError("network_error") };
 
   let uid = null, needsConfirm = false;
   try {
@@ -612,12 +745,17 @@ async function adminCreateUser({ email, password, name, role, phone }) {
   return { ok: true, needsConfirm, uid };
 }
 
+// POST /api/auth/reset/request: always 204 (the API never says whether
+// the address has an account), so the caller shows one generic message.
 async function sendPasswordReset(email) {
   email = (email || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "بريد إلكتروني غير صحيح" };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: __AUTH_ERRORS.invalid_email };
   if (!sb) return { ok: true, demo: true };
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    const code = error.code || (error.status === 0 ? "network_error" : "");
+    return { ok: false, code, error: __friendlyAuthError(code, "") || "تعذّر إرسال رابط إعادة التعيين" };
+  }
   return { ok: true };
 }
 
@@ -625,7 +763,7 @@ async function updateOwnPassword(newPassword) {
   if (!newPassword || newPassword.length < 6) return { ok: false, error: "كلمة المرور 6 أحرف على الأقل" };
   if (!sb) return { ok: true, demo: true };
   const { error } = await sb.auth.updateUser({ password: newPassword });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: __friendlyAuthError(error.code, error.message) };
   return { ok: true };
 }
 
@@ -675,6 +813,13 @@ async function __edgeErrorBody(data, error) {
 }
 
 const __ADMIN_ACTION_ERRORS = {
+  shared_account:        __AUTH_ERRORS.shared_account,
+  plan_limit_users:      __AUTH_ERRORS.plan_limit_users,
+  invalid_status:        "حالة غير صالحة",
+  invalid_session:       "انتهت الجلسة — سجّل الدخول من جديد",
+  session_revoked:       "انتهت الجلسة — سجّل الدخول من جديد",
+  not_a_member:          __AUTH_ERRORS.not_a_member,
+  org_inactive:          __AUTH_ERRORS.org_inactive,
   forbidden:             "لا تملك صلاحية هذا الإجراء — يتطلب دور «مدير»",
   missing_token:         "انتهت الجلسة — سجّل الدخول من جديد",
   invalid_token:         "انتهت الجلسة — سجّل الدخول من جديد",
@@ -688,7 +833,7 @@ const __ADMIN_ACTION_ERRORS = {
   lookup_failed:         "تعذّرت قراءة سجل الموظف",
 };
 function __adminActionError(code, fallback) {
-  return (code && __ADMIN_ACTION_ERRORS[code]) || fallback || "تعذّر تنفيذ العملية";
+  return (code && __ADMIN_ACTION_ERRORS[code]) || __friendlyAuthError(code, fallback);
 }
 
 // Admin: force-set another staff member's password (no current password
@@ -709,7 +854,7 @@ async function adminResetPassword({ staff_id, auth_uid, password }) {
     if (!error && data && data.ok) return { ok: true, staff_id: data.staff_id };
     const eb = await __edgeErrorBody(data, error);
     if (eb) return { ok: false, error: __adminActionError(eb.error, eb.detail) };
-    return { ok: false, error: "خدمة إعادة تعيين كلمة المرور غير منشورة — انشر admin-reset-password (انظر deploy-edge-function.sh)" };
+    return { ok: false, error: __friendlyAuthError("network_error") };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }
@@ -749,7 +894,7 @@ async function adminSetStaffStatus({ staff_id, active }) {
     }
     const eb = await __edgeErrorBody(data, error);
     if (eb) return { ok: false, error: __adminActionError(eb.error, eb.detail) };
-    return { ok: false, error: "خدمة تغيير حالة الحساب غير منشورة — انشر admin-set-status (انظر deploy-edge-function.sh)" };
+    return { ok: false, error: __friendlyAuthError("network_error") };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }
@@ -859,18 +1004,18 @@ const DATA_TABLES = {
                        "medical_file_no","national_id","whatsapp","email","date_of_birth","address","occupation",
                        "emergency_name","emergency_phone","doctor_id","medical_history","allergies","medications",
                        "insurance_info","status","updated_at"] },
-  appts:      { key: "bookings",   pk: "booking_id",  ls: "kinetic.bookings",
+  appts:      { key: "bookings",   pk: "booking_id",  ls: "kinetic.bookings", branchScoped: true,
                 cols: ["booking_id","patient_id","therapist_id","doctor_id","department_id","date","time","status","notes","created_at"] },
-  schedules:  { key: "patient_schedules", pk: "schedule_id", ls: "kinetic.patient_schedules",
+  schedules:  { key: "patient_schedules", pk: "schedule_id", ls: "kinetic.patient_schedules", branchScoped: true,
                 cols: ["schedule_id","patient_id","therapist_id","days","time","sessions_per_week",
                        "allow_consecutive","active","notes","created_at","updated_at"] },
-  sessions:   { key: "sessions",   pk: "session_id",  ls: "kinetic.sessions",
+  sessions:   { key: "sessions",   pk: "session_id",  ls: "kinetic.sessions", branchScoped: true,
                 cols: ["session_id","patient_id","therapist_id","treatment_id","booking_id","date","pain_score",
                        "mood","duration_minutes","goals","completed_exercises","session_notes","session_number",
                        "status","started_at","created_at"] },
-  payments:   { key: "invoices",   pk: "invoice_id",  ls: "kinetic.invoices",
+  payments:   { key: "invoices",   pk: "invoice_id",  ls: "kinetic.invoices", branchScoped: true,
                 cols: ["invoice_id","patient_id","amount","paid","payment_method","status","created_at"] },
-  paymentHistory: { key: "payments", pk: "payment_id", ls: "kinetic.payment_history",
+  paymentHistory: { key: "payments", pk: "payment_id", ls: "kinetic.payment_history", branchScoped: true,
                 cols: ["payment_id","patient_id","cashier_id","cashier_name","amount","method",
                        "reference","transaction_id","notes","receipt_no","allocations",
                        "ip_address","status","created_at"] },
@@ -919,20 +1064,32 @@ function pkOf(cfg, row) {
   return row[cfg.pk] != null ? row[cfg.pk] : row.id;
 }
 
+// Branch-scoped tables (branch_id NOT NULL: bookings, patient_schedules,
+// sessions, invoices, payments) are read for the selected branch only:
+// RLS returns every branch the member may use, while the screens show the
+// branch picked in the sidebar (docs/03 C01/C03 "للفرع المختار").
+function __branchFilterOf(cfg) {
+  if (!cfg.branchScoped) return null;
+  const id = window.ACTIVE_BRANCH_ID;
+  return typeof id === "string" && id ? id : null;
+}
+
 // PostgREST caps every response at the project's "Max rows" setting (1000
 // by default), so a bare select("*") silently drops every row past it. The
 // first request also asks for the exact row count; only a table bigger than
 // what came back is re-read page by page, ordered by its primary key so
 // pages neither overlap nor skip rows.
 async function selectAllRows(cfg) {
-  const first = await sb.from(cfg.key).select("*", { count: "exact" });
+  const branch = __branchFilterOf(cfg);
+  const scoped = (q) => (branch ? q.eq("branch_id", branch) : q);
+  const first = await scoped(sb.from(cfg.key).select("*", { count: "exact" }));
   const total = first.count;
   const pageSize = Array.isArray(first.data) ? first.data.length : 0;
   if (first.error || total == null || !pageSize || pageSize >= total) return first;
   const offsets = [];
   for (let from = 0; from < total; from += pageSize) offsets.push(from);
   const pages = await Promise.all(offsets.map(from =>
-    sb.from(cfg.key).select("*").order(cfg.pk, { ascending: true }).range(from, from + pageSize - 1)));
+    scoped(sb.from(cfg.key).select("*")).order(cfg.pk, { ascending: true }).range(from, from + pageSize - 1)));
   const failed = pages.find(p => p.error);
   if (failed) return { data: null, error: failed.error };
   return { data: pages.flatMap(p => p.data || []), error: null };
@@ -1158,11 +1315,16 @@ window.normalizeDomainData = normalizeDomainData;
 // on boot. Non-blocking: the UI renders first, real data swaps in. The
 // tables are independent, so they are requested in parallel rather than
 // one round trip after another.
+// A newer hydrate (branch switch, sign-out) supersedes an older one still
+// in flight, so a slow answer for the previous branch never wins.
+let __hydrateGeneration = 0;
 async function hydrateDomainTables() {
   if (!sb) return;
+  const generation = ++__hydrateGeneration;
   const names = Object.keys(DATA_TABLES);
   const results = await Promise.all(names.map(name =>
     listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; })));
+  if (generation !== __hydrateGeneration) return;
   const fetched = {};
   names.forEach((name, i) => {
     // Trust the database as the single source of truth — an empty table
@@ -1177,7 +1339,20 @@ async function hydrateDomainTables() {
   }
   window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "*" } }));
 }
-setTimeout(() => hydrateDomainTables().catch(e => console.warn("hydrate failed", e)), 0);
+
+// Everything a signed-in member needs after the clinic context is known
+// (src/tenant.jsx sets X-Branch-Id first): branding, custom sections,
+// branches and the domain tables, in parallel. Each part logs its own
+// failure; the screens render immediately and fill in as data arrives.
+async function loadClinicData() {
+  if (!sb) return;
+  await Promise.all([
+    loadClinic().catch(e => console.warn("loadClinic failed", e)),
+    loadSections().catch(e => console.warn("loadSections failed", e)),
+    loadBranches().catch(e => console.warn("loadBranches failed", e)),
+    hydrateDomainTables().catch(e => console.warn("hydrate failed", e)),
+  ]);
+}
 
 const KineticData = {
   list: listTable,
@@ -2105,8 +2280,16 @@ const ALLOWED_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|pdf|docx?|xlsx?|dcm|txt)$/i;
 function nextFileId() {
   return newRecordId("pf_");
 }
+// Storage paths may not contain ".." or a segment starting with "." (the
+// API answers 400 invalid_path), so runs of dots collapse to one and
+// leading dots are dropped: "تقرير..نهائي.pdf" → "تقرير.نهائي.pdf".
 function sanitizeFileName(name) {
-  return String(name || "file").replace(/[^\w.\-؀-ۿ]+/g, "_").slice(0, 120);
+  const clean = String(name || "file")
+    .replace(/[^\w.\-؀-ۿ]+/g, "_")
+    .replace(/\.{2,}/g, ".")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+  return clean || "file";
 }
 function validatePatientFile(file) {
   if (!file || typeof file.size !== "number") return "ملف غير صالح";
@@ -2793,7 +2976,8 @@ Object.assign(window, {
   loadClinic, saveClinic,
   loadSections, addSection, updateSection, removeSection,
   loadBranches, addBranch, updateBranch, setActiveBranch, removeBranch,
-  signInEmail, signOut, getSession, getAuthStaff, STAFF_ROLES, onAuthChange,
+  signInEmail, signOut, getSession, getAuthStaff, STAFF_ROLES, onAuthChange, loadClinicData,
+  friendlyAuthError: __friendlyAuthError, sanitizeFileName,
   adminCreateUser, sendPasswordReset, updateOwnPassword, updateOwnProfile, updateStaffMember,
   adminResetPassword, adminSetStaffStatus,
   listAvailableAuthUsers,

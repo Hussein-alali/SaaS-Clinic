@@ -4860,12 +4860,34 @@ Object.assign(window, { Reports, SettingsPage, NotFound });
 
 
 // ─────────── App entrypoint ───────────
-// Main app — routing + auth gate
-
+// Boot routing (docs/03-App-Flow.md "Entry points", src/tenant.jsx):
+//   ?demo=1 / ?import=1          → ClinicApp, as before (demo has no backend)
+//   ?invite=<token>              → S03 accept the invitation
+//   ?reset=<token>               → new password, then back to the login
+//   admin.<base> / ?platform=1   → window.PlatformApp (src/platform.jsx)
+//   <slug>.<base> / ?org=<slug>  → ClinicApp: resolve → S06 or login → shell
+//   the bare base domain         → S01/S02/S04: login, then the clinic
 function App() {
+  const [ctx] = React.useState(() =>
+    window.tenantContext ? window.tenantContext() : { kind: "clinic", slug: null });
+  if (ctx.kind === "platform") return <TenantPlatformGate/>;
+  if (ctx.kind === "invite") return <TenantInviteScreen token={ctx.token}/>;
+  if (ctx.kind === "reset") return <TenantResetScreen token={ctx.token}/>;
+  if (ctx.kind === "root") return <TenantRootPortal/>;
+  return <ClinicApp ctx={ctx}/>;
+}
+
+// The clinic workspace (also demo mode and the ?import=1 page). With a
+// backend, the clinic gate runs first: GET /api/orgs/resolve → status
+// page (S06) or the clinic's login → membership check → GET
+// /api/orgs/current + data → the shell. Identity comes from the server
+// session, never from localStorage.
+function ClinicApp({ ctx }) {
   // Re-render the entire app when any DB table changes (upsert / remove /
   // hydrate). Cheap: it just bumps a state counter.
   window.useDataVersion();
+  const demo = ctx.kind === "demo" || !window.SB;
+  const gated = ctx.kind === "clinic" && !!window.SB;
 
   // Keep the document <title> in sync with the clinic name from Postgres,
   // so tabs, PDFs and any recent-clinic-name reads reflect the current
@@ -4886,11 +4908,16 @@ function App() {
   const [rawRoute, setRoute] = React.useState(() => {
     return localStorage.getItem("kinetic.route") || "dashboard";
   });
+  // Demo mode keeps its mock identity across reloads; with a backend the
+  // session cookie is the only source (restored by the clinic gate).
   const [user, setUser] = React.useState(() => {
+    if (!demo) return null;
     try {
       return JSON.parse(localStorage.getItem("kinetic.user")) || null;
     } catch { return null; }
   });
+  // resolving | status | open (login screen or shell)
+  const [gate, setGate] = React.useState(() => (gated ? { phase: "resolving" } : { phase: "open" }));
   const [publicBooking, setPublicBooking] = React.useState(false);
   const [toast, setToast] = React.useState(null);
   const [notifsOpen, setNotifsOpen] = React.useState(false);
@@ -4899,10 +4926,7 @@ function App() {
   // TEMPORARY isolated route for the historical patient import page (?import=1).
   // Bypasses auth/nav entirely. Remove this line, the early return below, and
   // src/import.jsx after the paper-record migration is complete.
-  const importMode = React.useMemo(() => {
-    try { return new URLSearchParams(window.location.search).get("import") === "1"; }
-    catch { return false; }
-  }, []);
+  const importMode = ctx.kind === "import";
   // In the production build the import page is a separate chunk
   // (scripts/build.mjs) fetched only on this route; in dev, index.html has
   // already loaded src/import.jsx.
@@ -4941,33 +4965,103 @@ function App() {
   },[]);
 
   React.useEffect(()=>{
+    if (!demo) return;
     if (user) localStorage.setItem("kinetic.user", JSON.stringify(user));
     else localStorage.removeItem("kinetic.user");
   },[user]);
+  // An identity cached by an older version must not outlive a real login.
+  React.useEffect(() => { if (!demo) { try { localStorage.removeItem("kinetic.user"); } catch {} } }, []);
 
-  // Re-validate the restored session against the server. A deactivated
-  // account (or a revoked / expired token) is forced to log out
-  // immediately — its localStorage identity is stale and its data access
-  // is already denied by RLS (app_role() → null). Skips demo/mock logins,
-  // which have no Supabase session. Runs on mount + whenever the tab
-  // regains focus, so deactivation takes effect the next time the user
-  // touches the app.
+  // ── Sign out (button, expired session, refused membership) ──
+  async function doLogout(notice) {
+    try { if (window.signOut) await window.signOut(); } catch {}
+    window.ME = null;
+    setUser(null);
+    setRoute("dashboard");
+    if (gated) setGate({ phase: "open", notice: notice || null });
+  }
+
+  // ── Enter the clinic: the shell renders at once, the clinic context
+  // (modules, branches, X-Branch-Id) and then the data load behind it ──
+  function enterClinic(u, { restored } = {}) {
+    window.ME = u;
+    setUser(u);
+    setGate({ phase: "open" });
+    if (!restored) setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard");
+    if (!window.tenantLoadClinicData) return;
+    window.tenantLoadClinicData().then((res) => {
+      if (res.ok) return;
+      if (res.status === 401 || res.status === 403) {
+        doLogout({ kind: "error", text: res.error || "انتهت الجلسة — سجّل الدخول من جديد" });
+      } else if (window.showToast) {
+        window.showToast(res.error || "تعذّر تحميل بيانات العيادة", "error");
+      }
+    }).catch((e) => console.warn("loading the clinic failed", e));
+  }
+
+  // ── The clinic gate: resolve the clinic, then restore the session ──
+  React.useEffect(() => {
+    if (!gated || gate.phase !== "resolving") return;
+    let cancelled = false;
+    (async () => {
+      const r = await window.tenantResolveOrg(ctx.slug, ctx.invalidSlug);
+      if (cancelled) return;
+      if (r.state !== "active") { setGate({ phase: "status", status: r.state }); return; }
+      window.tenantApplyOrg(r.org);
+      const s = await window.tenantRestoreSession(ctx.slug);
+      if (cancelled) return;
+      if (s.state === "member") enterClinic(s.user, { restored: true });
+      else if (s.state === "not-member") setGate({ phase: "status", status: "no-membership", session: s.session });
+      else if (s.state === "error") setGate({ phase: "status", status: "error" });
+      else setGate({ phase: "open", notice: s.notice || null });
+    })().catch((e) => {
+      console.warn("clinic gate failed", e);
+      if (!cancelled) setGate({ phase: "status", status: "error" });
+    });
+    return () => { cancelled = true; };
+  }, [gate.phase]);
+
+  // ?import=1: the page has its own auth gate (src/import.jsx); the clinic
+  // data its suggestions use loads once there is a session.
+  React.useEffect(() => {
+    if (!importMode || !window.SB || !ctx.slug || !window.tenantLoadClinicData) return;
+    let loaded = false;
+    const load = (session) => {
+      if (loaded || !session || !window.tenantMembershipFor(session, ctx.slug)) return;
+      loaded = true;
+      window.tenantSetSession(session);
+      window.tenantLoadClinicData().catch(() => {});
+    };
+    window.SB.auth.getSession().then(({ data }) => load(data && data.session)).catch(() => {});
+    const off = window.onAuthChange ? window.onAuthChange((session) => load(session)) : () => {};
+    return off;
+  }, []);
+
+  // Re-validate the session whenever the tab regains focus (and once on
+  // mount for an identity the gate did not just verify). A deactivated
+  // member, a disabled membership or a revoked session is signed out —
+  // its data access is already refused by the API. Offline / server
+  // errors keep the user signed in. Skips demo/mock logins.
   React.useEffect(() => {
     if (!user || user.role === "مريض") return;
-    if (!window.getAuthStaff || isDemoMode()) return;
+    if (!window.getAuthStaff || demo || isDemoMode()) return;
     let cancelled = false;
     async function check() {
       try {
         const res = await window.getAuthStaff();
-        if (cancelled || res.ok) return;
-        if (["account-inactive", "invalid-session", "no-session"].includes(res.reason)) {
-          if (window.showToast) window.showToast(res.error || "انتهت الجلسة — سجّل الدخول من جديد", "error");
-          try { window.signOut && window.signOut(); } catch {}
-          setUser(null); setRoute("dashboard");
+        if (cancelled) return;
+        const stillMember = !ctx.slug || !window.tenantMembershipFor || window.tenantMembershipFor(res.session, ctx.slug);
+        if (res.ok && stillMember) return;
+        if (res.ok || ["account-inactive", "invalid-session", "no-session", "staff-lookup-failed"].includes(res.reason)) {
+          const text = res.ok || res.reason === "staff-lookup-failed"
+            ? "لم تعد لديك عضوية نشطة في هذه العيادة — تم تسجيل خروجك"
+            : (res.error || "انتهت الجلسة — سجّل الدخول من جديد");
+          if (window.showToast) window.showToast(text, "error");
+          doLogout({ kind: "error", text });
         }
       } catch {}
     }
-    check();
+    if (!user.verifiedAt || Date.now() - user.verifiedAt > 5000) check();
     const onFocus = () => check();
     window.addEventListener("focus", onFocus);
     return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
@@ -4975,8 +5069,8 @@ function App() {
 
   function go(r) {
     if (r === "logout") {
-      setUser(null);
-      setRoute("dashboard");
+      if (demo) { setUser(null); setRoute("dashboard"); return; }
+      doLogout();
       return;
     }
     setRoute(r);
@@ -4987,9 +5081,12 @@ function App() {
   React.useEffect(() => { window.navigate = go; }, []);
 
   function handleLogin(u) {
-    window.ME = u;
-    setUser(u);
-    setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard");
+    if (gated) enterClinic(u);
+    else {
+      window.ME = u;
+      setUser(u);
+      setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard");
+    }
     setToast({ msg: `أهلاً بعودتك, ${u.name.split(" ")[0]}`, kind:"success" });
     setTimeout(()=>setToast(null), 2400);
   }
@@ -5011,7 +5108,17 @@ function App() {
     return <>{Gate ? <Gate/> : null}{toast && <Toast msg={toast.msg} kind={toast.kind}/>}</>;
   }
 
-  if (!user) return <><AuthScreen onLogin={handleLogin} onBookAsGuest={()=>setPublicBooking(true)}/>{toast && <Toast msg={toast.msg} kind={toast.kind}/>}</>;
+  if (gated && gate.phase === "resolving") return <TenantLoading text="جارٍ تحميل العيادة…"/>;
+  if (gated && gate.phase === "status") {
+    const session = gate.session || null;
+    return <TenantStatusScreen status={gate.status}
+      email={gate.status === "no-membership" && session && session.user ? session.user.email : ""}
+      isSuperAdmin={gate.status === "no-membership" && !!(session && session.is_super_admin)}
+      onLogout={gate.status === "no-membership" ? () => doLogout() : null}
+      onRetry={gate.status === "error" ? () => setGate({ phase: "resolving" }) : null}/>;
+  }
+
+  if (!user) return <><AuthScreen onLogin={handleLogin} onBookAsGuest={()=>setPublicBooking(true)} notice={gate.notice}/>{toast && <Toast msg={toast.msg} kind={toast.kind}/>}</>;
 
   // Patients get a totally different shell — focused on their care.
   // Set the identity BEFORE the early return so a page refresh (which
@@ -5037,6 +5144,9 @@ function App() {
   const route = (window.roleAllows && !window.roleAllows(user.role, rawRoute))
     ? (window.roleDefaultRoute ? window.roleDefaultRoute(user.role) : "dashboard")
     : rawRoute;
+  // A route of a module the clinic has not enabled (stored route, a link
+  // inside a page, the command palette) shows why instead of the page.
+  const moduleOff = !!(window.routeModuleEnabled && !window.routeModuleEnabled(route));
 
   const titles = {
     dashboard:    { title:"لوحة التحكم",            crumb:["الرئيسية","لوحة التحكم"] },
@@ -5119,6 +5229,8 @@ function App() {
         </div>
 
         <main style={{flex:1}}>
+          {moduleOff && <TenantModuleDisabled go={go}/>}
+          {!moduleOff && <>
           {route==="dashboard" && <RoleHome role={acct.role} go={go} user={acct}/>}
           {route==="patients" && <Patients go={go}/>}
           {route==="appointments" && <Appointments go={go}/>}
@@ -5131,6 +5243,7 @@ function App() {
           {route==="settings" && <SettingsPage go={go}/>}
           {typeof route === "string" && route.startsWith("custom:") && <CustomSectionPage id={route.slice(7)}/>}
           {!titles[route] && !(typeof route === "string" && route.startsWith("custom:")) && <NotFound go={go}/>}
+          </>}
         </main>
       </div>
       {toast && <Toast msg={toast.msg} kind={toast.kind}/>}

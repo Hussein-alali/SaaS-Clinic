@@ -102,6 +102,30 @@ function scopePayments(list){
   });
 }
 
+// ── Clinic modules (docs/03 "القائمة الجانبية تعرض فقط الوحدات المفعلة") ──
+// Route → the module (organization_modules / modules.code) it belongs to.
+// A route without an entry (dashboard, campaigns, custom:*) has no module
+// and follows the role rules only. Hiding is UX; the API/RLS enforce.
+const ROUTE_MODULES = {
+  patients:     "core.patients",
+  appointments: "core.appointments",
+  treatments:   "physio.treatment_plans",
+  sessions:     "physio.sessions",
+  payments:     "core.billing",
+  packages:     "core.billing",
+  reports:      "core.reports",
+  settings:     "core.settings",
+};
+// window.ORG_MODULES = enabled codes of the current clinic (from
+// /api/orgs/resolve, then /api/orgs/current; src/tenant.jsx). Not set
+// (demo mode, the data layer alone) = every module is available.
+function routeModuleEnabled(route){
+  const mods = window.ORG_MODULES;
+  if (!Array.isArray(mods)) return true;
+  const code = ROUTE_MODULES[route];
+  return !code || mods.includes(code);
+}
+
 // Empty-name safe: filter falsy pieces before taking initial characters so
 // double-spaces don't produce "undefined" strings.
 const initialsOf = (n)=> (n||"")
@@ -114,7 +138,7 @@ const initialsOf = (n)=> (n||"")
 
 Object.assign(window, {
   ROLE_PROFILES, ROLE_ROUTES, ROLE_DASH_LABEL, ROLE_DEFAULT,
-  roleScope, roleDefaultRoute, roleAllows,
+  roleScope, roleDefaultRoute, roleAllows, ROUTE_MODULES, routeModuleEnabled,
   scopePatients, scopeAppts, scopeTherapists, scopePayments, initialsOf,
 });
 
