@@ -72,36 +72,44 @@ async function findMembership(db, userId, slug) {
  * admin: every branch of the organization; other roles: their
  * member_branches rows. Runs inside the caller's RLS context (branches has
  * FORCE RLS). Returns full branch rows (to_jsonb) when `full`, otherwise
- * {id} only.
+ * {id, status} only (status null when RLS hides the branch row).
  */
 async function accessibleBranches(client, { orgId, role, memberId }, full = false) {
-  const pick = full ? 'to_jsonb(b) as branch' : 'b.id';
+  const pick = full ? 'to_jsonb(b) as branch' : 'b.id, b.status';
   if (role === 'admin') {
     const { rows } = await client.query(
       `select ${pick} from branches b where b.organization_id = $1
         order by (b.status = 'active') desc, b.created_at nulls last, b.id`,
       [orgId],
     );
-    return full ? rows.map((r) => r.branch) : rows.map((r) => ({ id: r.id }));
+    return full ? rows.map((r) => r.branch) : rows.map((r) => ({ id: r.id, status: r.status }));
   }
   // member_branches is an identity table (no RLS). The branch row itself may
   // be hidden from some roles by RLS, so it is a left join: the assignment
   // still counts, it just sorts last.
   const { rows } = await client.query(
-    `select mb.branch_id as id, ${full ? 'to_jsonb(b)' : 'null::jsonb'} as branch
+    `select mb.branch_id as id, b.status, ${full ? 'to_jsonb(b)' : 'null::jsonb'} as branch
        from member_branches mb
        left join branches b on b.id = mb.branch_id
       where mb.member_id = $1 and mb.organization_id = $2
       order by (b.status = 'active') desc nulls last, b.created_at nulls last, mb.branch_id`,
     [memberId, orgId],
   );
-  return rows.map((r) => (full && r.branch ? r.branch : { id: r.id }));
+  return rows.map((r) => (full ? r.branch || { id: r.id } : { id: r.id, status: r.status }));
 }
 
-/** X-Branch-Id when accessible, else the first accessible branch (active
- *  ones sort first), else null. */
+/**
+ * The request's branch: X-Branch-Id when the member may use it, else the
+ * first active accessible branch, else the first accessible one, else null.
+ * An inactive branch is kept when asked for (its history stays readable and
+ * its rows updatable); the database refuses new rows there with
+ * branch_inactive (0009_inactive_branch_guard → 409), so the request is
+ * never silently moved to another branch.
+ */
 function chooseBranch(branches, requested) {
   if (requested && branches.some((b) => b.id === requested)) return requested;
+  const active = branches.find((b) => b.status === 'active');
+  if (active) return active.id;
   return branches.length ? branches[0].id : null;
 }
 

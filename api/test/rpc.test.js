@@ -160,6 +160,18 @@ test('role guards inside the RPCs answer 400 with their message', async () => {
   const denied = await recep.rpc('list_treatments', {});
   assert.equal(denied.status, 400);
   assert.deepEqual(denied.body, { error: { message: 'غير مصرح', code: 'P0001' } });
+  // The billing RPCs admit admin and receptionist only (0007).
+  const doctor = await h.as('physioDoctor', { slug: 'demo-physio' });
+  for (const [fn, args] of [
+    ['list_invoices_filtered', {}],
+    ['record_quick_payment', { p_patient_id: 'P-PHY-01', p_allocations: [{ type: 'invoice', id: 'INV-PHY-B1-1', amount: 1 }], p_method: 'cash' }],
+  ]) {
+    const r = await doctor.rpc(fn, args);
+    assert.equal(r.status, 400, fn);
+    assert.equal(r.body.error.code, 'P0001', fn);
+    assert.match(r.body.error.message, /^غير مصرح/, fn);
+  }
+  assert.equal((await recep.rpc('list_invoices_filtered', {})).status, 200);
 });
 
 test('record_quick_payment: jsonb allocations arrive as JSON; payment lands in the clinic and branch', async () => {

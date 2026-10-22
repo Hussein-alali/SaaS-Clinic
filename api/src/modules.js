@@ -1,8 +1,9 @@
 'use strict';
 // Clinic modules on the data routes (docs/01-PRD.md AT-07, docs/03 "قاعدة
-// عامة"): a table or function that belongs to a module the clinic has not
-// enabled is refused by /api/data and /api/rpc with 403 module_disabled.
-// The rows are kept; enabling the module again gives them back.
+// عامة"): a table, function or file bucket that belongs to a module the
+// clinic has not enabled is refused by /api/data, /api/rpc and /api/files
+// with 403 module_disabled. The rows and files are kept; enabling the
+// module again gives them back.
 //
 // The same mapping as the clinic menu (src/roles.jsx ROUTE_MODULES). Tables
 // without an entry (rosters, branches, settings, staff, campaigns, …) are
@@ -50,6 +51,11 @@ const RPC_MODULES = Object.freeze({
   delete_template_category: 'physio.templates',
 });
 
+// Storage buckets of /api/files (api/src/files.js BUCKETS).
+const BUCKET_MODULES = Object.freeze({
+  'patient-files': 'core.files',
+});
+
 /**
  * Is `code` enabled for the organization (and active in the catalog — a
  * 'planned' module cannot be used yet)? Read on every call: a module the
@@ -77,5 +83,15 @@ async function assertModule(db, orgId, code) {
 
 const tableModule = (table) => TABLE_MODULES[table] || null;
 const rpcModule = (fn) => RPC_MODULES[fn] || null;
+const bucketModule = (bucket) => BUCKET_MODULES[bucket] || null;
 
-module.exports = { TABLE_MODULES, RPC_MODULES, moduleEnabled, assertModule, tableModule, rpcModule };
+module.exports = {
+  TABLE_MODULES,
+  RPC_MODULES,
+  BUCKET_MODULES,
+  moduleEnabled,
+  assertModule,
+  tableModule,
+  rpcModule,
+  bucketModule,
+};

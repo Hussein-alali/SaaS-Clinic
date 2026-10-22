@@ -261,6 +261,10 @@ test('create organization: pending_activation + main branch + settings + modules
   assert.equal(invitation.role, 'admin');
   assert.equal(invitation.status, 'pending');
   assert.equal(res.body.email_sent, true);
+  // The delivery state is stored (0008) and the detail is read after sending.
+  assert.equal(invitation.email_status, 'sent');
+  assert.ok(Date.parse(invitation.email_status_at) > 0);
+  assert.deepEqual([invitations[0].email_status, invitations[0].email_status_at], ['sent', invitation.email_status_at]);
   assert.equal(subscription.plan_id, org.plan_id);
   assert.equal(subscription.status, 'active');
   assert.deepEqual(usage, { active_members: 0, pending_invitations: 1, active_branches: 1 });
@@ -474,10 +478,28 @@ test('platform invitations for any clinic: first admin of a pending clinic activ
   const res = await sa.post(url, { email: 'first.admin@demo-pending.test', role: 'admin' });
   assert.equal(res.status, 201, res.text);
   assert.equal(res.body.invitation.invited_by, USER.superAdmin.id);
+  assert.equal(res.body.invitation.email_status, 'sent');
   const list = await sa.get(url);
   assert.deepEqual(list.body.map((i) => i.email), ['first.admin@demo-pending.test']);
+  assert.deepEqual(list.body.map((i) => i.email_status), ['sent']);
+  // A re-send whose e-mail fails is stored as 'failed' (0008), seen in the list.
+  const real = h.app.locals.mailer;
+  const origError = console.error;
+  h.app.locals.mailer = { send: async () => { throw new Error('SMTP down'); } };
+  console.error = () => {};
+  try {
+    const failed = await sa.post(`${url}/${res.body.invitation.id}/resend`, {});
+    assert.equal(failed.status, 200);
+    assert.deepEqual([failed.body.email_sent, failed.body.invitation.email_status], [false, 'failed']);
+  } finally {
+    h.app.locals.mailer = real;
+    console.error = origError;
+  }
+  assert.deepEqual((await sa.get(url)).body.map((i) => i.email_status), ['failed']);
   const resent = await sa.post(`${url}/${res.body.invitation.id}/resend`, {});
   assert.equal(resent.status, 200);
+  assert.deepEqual([resent.body.email_sent, resent.body.invitation.email_status], [true, 'sent']);
+  assert.equal((await sa.get(`/api/platform/organizations/${ORG.pending}`)).body.invitations[0].email_status, 'sent');
   const token = tokenFor('first.admin@demo-pending.test');
   assert.equal(h.outbox().filter((m) => m.to === 'first.admin@demo-pending.test').length, 2);
 

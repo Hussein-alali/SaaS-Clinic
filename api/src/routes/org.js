@@ -11,6 +11,10 @@
 // Caller: an active admin of the current clinic. Invitations count against
 // the plan's user limit (trigger → 422 plan_limit:users). Only the SHA-256
 // of the token is stored; the token travels only in the e-mail.
+// email_sent: true | false | null (still sending after 10 s); every
+// invitation object also carries email_status ('pending' | 'sent' |
+// 'failed' | null for rows older than 0008) and email_status_at, stored on
+// the row so every admin sees which e-mails need re-sending.
 
 const express = require('express');
 const auth = require('../auth');
@@ -47,7 +51,7 @@ router.get('/invitations', async (req, res) => {
 });
 
 router.post('/invitations', async (req, res) => {
-  const { db, mailer, config } = req.app.locals;
+  const { db } = req.app.locals;
   const input = invites.parseInvitationInput(req.body);
   const ctx = req.ctx;
   const { invitation, token } = await db.withContext(ctx, async (client) => {
@@ -68,12 +72,12 @@ router.post('/invitations', async (req, res) => {
     return r;
   });
   const org = await currentOrg(db, ctx.orgId);
-  const sent = await invites.sendInvitationEmail({ mailer, config }, { org, invitation, token });
+  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
   res.status(201).json({ invitation: invites.describeInvitation(invitation), email_sent: sent });
 });
 
 router.post('/invitations/:id/resend', async (req, res) => {
-  const { db, mailer, config } = req.app.locals;
+  const { db } = req.app.locals;
   const id = invitationId(req);
   const ctx = req.ctx;
   const { invitation, token } = await db.withContext(ctx, async (client) => {
@@ -92,7 +96,7 @@ router.post('/invitations/:id/resend', async (req, res) => {
     return r;
   });
   const org = await currentOrg(db, ctx.orgId);
-  const sent = await invites.sendInvitationEmail({ mailer, config }, { org, invitation, token });
+  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
   res.json({ invitation: invites.describeInvitation(invitation), email_sent: sent });
 });
 

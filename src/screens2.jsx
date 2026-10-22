@@ -2930,8 +2930,9 @@ function useReportOpts() {
   };
 }
 // Human-readable filter list for the Excel header + on-screen summary.
-function reportActiveFilters(f, show, opts) {
+function reportActiveFilters(f, show, opts, scopeLabel) {
   const list = [{ label: "الفترة", value: `${f.from || "—"} ← ${f.to || "—"}` }];
+  if (scopeLabel) list.push({ label: "الفرع", value: scopeLabel });
   if (show.therapist && f.therapist !== "all") list.push({ label: "الأخصائي", value: f.therapist });
   if (show.doctor && f.doctor !== "all") list.push({ label: "الطبيب", value: f.doctor });
   if (show.patient && f.patient !== "all") {
@@ -3003,14 +3004,14 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
   return (
     <div className="card card-pad">
       <div className="tbl-scroll">
-        <table className="tbl">
+        <table className="tbl report-rows">
           <thead><tr>{columns.map(c => <th key={c.key} style={c.type === "number" || c.type === "currency" ? { textAlign: "start" } : undefined}>{c.label}</th>)}</tr></thead>
           <tbody>
             {view.length === 0 && (
               <tr><td colSpan={columns.length}><div className="tbl-empty"><I.Search size={20} /><div>{empty || "لا نتائج ضمن عوامل التصفية الحالية."}</div></div></td></tr>
             )}
             {view.map((r, i) => (
-              <tr key={r.id || i}>
+              <tr key={r.id || i} data-branch={r.branch_id || undefined}>
                 {columns.map(c => (
                   <td key={c.key} className={(c.type === "number" || c.type === "currency") ? "mono tnum" : undefined}>
                     {c.render ? c.render(r) : (c.type === "currency" ? `EGP ${(Number(r[c.key]) || 0).toLocaleString()}` : (r[c.key] == null || r[c.key] === "" ? "—" : r[c.key]))}
@@ -3034,9 +3035,99 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
   );
 }
 
+// ── Branch scope (docs/03 C05, task 3.19) ─────────────────────
+// The clinic admin of a clinic with more than one branch chooses «الفرع
+// الحالي» (the rows already loaded for the branch picked in the sidebar)
+// or «كل الفروع» (every branch, with a «الفرع» column, a per-branch
+// breakdown, and the search matching the branch name too). Every branch's
+// rows are read for this view only (KineticData.listAllBranches):
+// X-Branch-Id and window.DATA do not change. Other roles keep the current
+// branch, as before.
+const REPORT_SCOPE_TABLES = ["appts", "sessions", "payments"];
+function reportCanPickBranch() {
+  if (!window.SB || !window.KineticData || typeof window.KineticData.listAllBranches !== "function") return false;
+  const role = window.TENANT_ROLE || (window.ME && window.ME.role === "مدير" ? "admin" : "");
+  return role === "admin" && (window.BRANCHES || []).length > 1;
+}
+function reportBranchName(id) {
+  const b = (window.BRANCHES || []).find(x => x.id === id);
+  return b ? b.name : (id || "—");
+}
+function reportBranchActive(b) {
+  return window.branchIsActive ? window.branchIsActive(b) : String((b && b.status) || "active") !== "inactive";
+}
+// scope: "current" | "all" → { scope, all, label, rowsOf(name), loading,
+// waiting (nothing loaded yet), error, retry } for the report tabs.
+function useReportScope(scope, version) {
+  const wide = scope === "all";
+  const [state, setState] = React.useState({ tables: null, loading: false, error: "" });
+  const reqRef = React.useRef(0);
+  const fetchAll = React.useCallback(() => {
+    const n = ++reqRef.current;
+    setState(s => ({ ...s, loading: true, error: "" }));
+    window.KineticData.listAllBranches(REPORT_SCOPE_TABLES).then(
+      tables => { if (n === reqRef.current) setState({ tables, loading: false, error: "" }); },
+      e => { if (n === reqRef.current) setState(s => ({ ...s, loading: false, error: (e && e.message) || "تعذّر تحميل بيانات الفروع" })); });
+  }, []);
+  // Read again whenever the clinic's data changes (a save, a branch switch).
+  React.useEffect(() => { if (wide) fetchAll(); }, [wide, version, fetchAll]);
+  return {
+    scope, all: wide,
+    label: wide ? `كل الفروع (${(window.BRANCHES || []).length})` : `الفرع: ${activeBranchName()}`,
+    rowsOf: (name) => wide ? ((state.tables && state.tables[name]) || []) : ((window.DATA && window.DATA[name]) || []),
+    loading: wide && state.loading, waiting: wide && !state.tables, error: wide ? state.error : "", retry: fetchAll,
+  };
+}
+
+// Per-branch totals for «كل الفروع»: a row for every branch of the clinic
+// (one without rows too), then the clinic total. `metrics`: [{ key, label,
+// calc(rows) → number, fmt(number) → text }].
+function ReportBranchBreakdown({ rows, metrics }) {
+  const branches = window.BRANCHES || [];
+  const ids = branches.map(b => b.id);
+  rows.forEach(r => { if (r.branch_id && !ids.includes(r.branch_id)) ids.push(r.branch_id); });
+  const groups = {};
+  rows.forEach(r => { (groups[r.branch_id] = groups[r.branch_id] || []).push(r); });
+  const cells = (list) => metrics.map(m => {
+    const v = m.calc(list);
+    return <td key={m.key} className="mono tnum" data-metric={m.key} data-value={v}>{m.fmt(v)}</td>;
+  });
+  return (
+    <div className="card card-pad report-branch-breakdown" style={{ marginBottom: 18 }}>
+      <div className="h2" style={{ marginBottom: 12 }}>حسب الفرع</div>
+      <div className="tbl-scroll">
+        <table className="tbl">
+          <thead><tr><th>الفرع</th>{metrics.map(m => <th key={m.key} style={{ textAlign: "start" }}>{m.label}</th>)}</tr></thead>
+          <tbody>
+            {ids.map(id => {
+              const b = branches.find(x => x.id === id);
+              return (
+                <tr key={id} data-branch-row={id}>
+                  <td>{reportBranchName(id)}{b && !reportBranchActive(b) && <span className="badge b-grey" style={{ marginInlineStart: 6 }}>معطّل</span>}</td>
+                  {cells(groups[id] || [])}
+                </tr>
+              );
+            })}
+            <tr data-branch-row="total" style={{ fontWeight: 600, background: "var(--ink-50)" }}>
+              <td>الإجمالي</td>
+              {cells(rows)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+const reportFmtCount = (v) => Number(v || 0).toLocaleString();
+const reportFmtMoney = (v) => `EGP ${Math.round(Number(v) || 0).toLocaleString()}`;
+const reportBranchColumn = { key: "branch", label: "الفرع", type: "text", width: 16 };
+
 function Reports({ go }) {
-  window.useDataVersion && window.useDataVersion();
+  const version = window.useDataVersion ? window.useDataVersion() : 0;
   const [section, setSection] = React.useState("financial");
+  const canPick = reportCanPickBranch();
+  const [scopeChoice, setScopeChoice] = React.useState("current");
+  const view = useReportScope(canPick ? scopeChoice : "current", version);
 
   const cats = [
     { id: "financial",   l: "المالية",     icon: <I.Dollar size={15} /> },
@@ -3052,9 +3143,22 @@ function Reports({ go }) {
           <div className="h1">التقارير</div>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>تحليلات مالية وطبية وتشغيلية — بيانات مباشرة من قاعدة البيانات.</div>
           {window.SB && (
-            <div className="report-branch" style={{marginTop:8}}>
-              <span className="pill"><I.MapPin size={12}/> الفرع: {activeBranchName()}</span>
-              <span className="muted" style={{fontSize:12,marginInlineStart:8}}>بدّل الفرع من القائمة الجانبية لعرض تقاريره.</span>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:8}}>
+              <div className="report-branch" data-scope={view.scope}>
+                <span className="pill"><I.MapPin size={12}/> {view.label}</span>
+                {!canPick && <span className="muted" style={{fontSize:12,marginInlineStart:8}}>بدّل الفرع من القائمة الجانبية لعرض تقاريره.</span>}
+              </div>
+              {canPick && (
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div className="seg report-scope" role="group" aria-label="نطاق التقرير">
+                    {[["current", "الفرع الحالي"], ["all", "كل الفروع"]].map(([id, l]) => (
+                      <button key={id} type="button" className={view.scope === id ? "on" : ""} aria-pressed={view.scope === id}
+                        data-scope={id} onClick={()=>setScopeChoice(id)}>{l}</button>
+                    ))}
+                  </div>
+                  {view.loading && <span className="spin" role="status" aria-label="جارٍ تحميل بيانات الفروع" style={{width:14,height:14,border:"2px solid var(--blue-500)",borderTopColor:"transparent",borderRadius:"50%"}}/>}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -3072,9 +3176,19 @@ function Reports({ go }) {
         </div>
 
         <div>
-          {section==="financial" && <FinancialReport/>}
-          {section==="medical" && <MedicalReport/>}
-          {section==="operational" && <OperationalReport/>}
+          {view.error && (
+            <CaAlert tone="error">{view.error} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={view.retry}>إعادة المحاولة</button></CaAlert>
+          )}
+          {view.waiting && !view.error && (
+            <div className="card card-pad" aria-busy="true"><div className="muted" style={{fontSize:13,marginBottom:10}}>جارٍ تحميل بيانات الفروع…</div><SkeletonRow count={4}/></div>
+          )}
+          {/* Hidden, not unmounted, until the branches' rows arrive: the
+              tab keeps its filters. */}
+          <div style={view.waiting ? {display:"none"} : undefined}>
+            {section==="financial" && <FinancialReport view={view}/>}
+            {section==="medical" && <MedicalReport view={view}/>}
+            {section==="operational" && <OperationalReport view={view}/>}
+          </div>
         </div>
       </div>
     </Page>
@@ -3082,18 +3196,21 @@ function Reports({ go }) {
 }
 
 // ── Financial report (payments / invoices) ────────────────────
-function FinancialReport() {
+function FinancialReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
   const opts = useReportOpts();
   const show = { therapist: false, doctor: false, patient: true };
 
   // Row-level financial data — one row per invoice, straight from the
-  // Supabase-hydrated payments table. No mock/static values.
-  const rows = React.useMemo(() => (DATA.payments || []).map(v => {
+  // hydrated payments table (or every branch's, view.all). No mock values.
+  const base = view.rowsOf("payments");
+  const rows = React.useMemo(() => base.map(v => {
     const amount = Number(v.amount) || 0, paid = Number(v.paid) || 0;
     return {
       id: v.id || v.invoice_id,
+      branch_id: v.branch_id || null,
+      branch: reportBranchName(v.branch_id),
       date: String(v.date || v.created_at || "").slice(0, 10),
       patient: v.patient || "—",
       patient_id: v.patient_id || null,
@@ -3101,13 +3218,13 @@ function FinancialReport() {
       amount, paid, outstanding: Math.max(0, amount - paid),
       status: v.status || "—",
     };
-  }), [DATA.payments]);
+  }), [base]);
 
   const q = f.q.trim().toLowerCase();
   const filtered = React.useMemo(() => rows.filter(r =>
     reportInRange(r.date, f.from, f.to) &&
     (f.patient === "all" || r.patient_id === f.patient) &&
-    (!q || [r.patient, r.method, r.id, r.status].some(x => String(x || "").toLowerCase().includes(q)))
+    (!q || [r.patient, r.method, r.id, r.status, view.all ? r.branch : ""].some(x => String(x || "").toLowerCase().includes(q)))
   ).sort((a, b) => String(b.date).localeCompare(String(a.date))), [rows, f.from, f.to, f.patient, q]);
 
   const collected = filtered.reduce((s, r) => s + r.paid, 0);
@@ -3127,6 +3244,7 @@ function FinancialReport() {
 
   const columns = [
     { key: "date", label: "التاريخ", type: "date", width: 12 },
+    ...(view.all ? [reportBranchColumn] : []),
     { key: "patient", label: "المريض", type: "text", width: 20 },
     { key: "method", label: "طريقة الدفع", type: "text", width: 14 },
     { key: "amount", label: "المبلغ", type: "currency", total: true, width: 14 },
@@ -3137,7 +3255,7 @@ function FinancialReport() {
   async function doExport() {
     const ok = await exportReportExcel({
       filename: `تقرير-مالي-${reportToday()}.xlsx`, sheetName: "التقرير المالي",
-      title: "التقرير المالي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
+      title: "التقرير المالي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
     if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
   }
@@ -3152,6 +3270,13 @@ function FinancialReport() {
         <StatCard label="متبقٍ" value={fmtK(outstanding)} accent="#D49044" icon={<I.Clock size={15} />} />
         <StatCard label="عدد الفواتير" value={filtered.length.toLocaleString()} accent="#7BBDE8" icon={<I.Chart size={15} />} />
       </div>
+
+      {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
+        { key: "count", label: "عدد الفواتير", calc: l => l.length, fmt: reportFmtCount },
+        { key: "invoiced", label: "إجمالي مفوتر", calc: l => l.reduce((s, r) => s + r.amount, 0), fmt: reportFmtMoney },
+        { key: "collected", label: "محصّل", calc: l => l.reduce((s, r) => s + r.paid, 0), fmt: reportFmtMoney },
+        { key: "outstanding", label: "متبقٍ", calc: l => l.reduce((s, r) => s + r.outstanding, 0), fmt: reportFmtMoney },
+      ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1.5fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
@@ -3170,7 +3295,7 @@ function FinancialReport() {
 }
 
 // ── Medical report (treatment sessions / patients) ────────────
-function MedicalReport() {
+function MedicalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
   const opts = useReportOpts();
@@ -3181,11 +3306,15 @@ function MedicalReport() {
     const m = {}; (DATA.patients || []).forEach(p => { m[p.id || p.patient_id] = p; }); return m;
   }, [DATA.patients]);
 
-  // One row per treatment session, from the Supabase-hydrated sessions table.
-  const rows = React.useMemo(() => (DATA.sessions || []).map(s => {
+  // One row per treatment session, from the hydrated sessions table (or
+  // every branch's, view.all).
+  const base = view.rowsOf("sessions");
+  const rows = React.useMemo(() => base.map(s => {
     const p = patientById[s.patient_id] || {};
     return {
       id: s.id || s.session_id,
+      branch_id: s.branch_id || null,
+      branch: reportBranchName(s.branch_id),
       date: String(s.date || s.created_at || "").slice(0, 10),
       patient: s.patient || p.name || "—",
       patient_id: s.patient_id || null,
@@ -3197,7 +3326,7 @@ function MedicalReport() {
       pain: s.pain ?? s.pain_score ?? 0,
       notes: (s.notes || "").toString().slice(0, 120),
     };
-  }), [DATA.sessions, patientById]);
+  }), [base, patientById]);
 
   const q = f.q.trim().toLowerCase();
   const filtered = React.useMemo(() => rows.filter(r =>
@@ -3205,7 +3334,7 @@ function MedicalReport() {
     (f.therapist === "all" || r.therapist === f.therapist) &&
     (f.doctor === "all" || r.doctor === f.doctor) &&
     (f.patient === "all" || r.patient_id === f.patient) &&
-    (!q || [r.patient, r.therapist, r.doctor, r.diagnosis, r.notes].some(x => String(x || "").toLowerCase().includes(q)))
+    (!q || [r.patient, r.therapist, r.doctor, r.diagnosis, r.notes, view.all ? r.branch : ""].some(x => String(x || "").toLowerCase().includes(q)))
   ).sort((a, b) => String(b.date).localeCompare(String(a.date))), [rows, f.from, f.to, f.therapist, f.doctor, f.patient, q]);
 
   const distinctPatients = new Set(filtered.map(r => r.patient_id).filter(Boolean)).size;
@@ -3239,6 +3368,7 @@ function MedicalReport() {
 
   const columns = [
     { key: "date", label: "التاريخ", type: "date", width: 12 },
+    ...(view.all ? [reportBranchColumn] : []),
     { key: "patient", label: "المريض", type: "text", width: 20 },
     { key: "therapist", label: "الأخصائي", type: "text", width: 18 },
     { key: "doctor", label: "الطبيب", type: "text", width: 16 },
@@ -3249,7 +3379,7 @@ function MedicalReport() {
   async function doExport() {
     const ok = await exportReportExcel({
       filename: `تقرير-طبي-${reportToday()}.xlsx`, sheetName: "التقرير الطبي",
-      title: "التقرير الطبي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
+      title: "التقرير الطبي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
     if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
   }
@@ -3264,6 +3394,11 @@ function MedicalReport() {
         <StatCard label="متوسط الجلسات لكل مريض" value={avgPer} accent="#7E6BD3" icon={<I.Chart size={15} />} />
         <StatCard label="متوسط مستوى الألم" value={avgPain} accent="#D49044" icon={<I.Heart size={15} />} />
       </div>
+
+      {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
+        { key: "sessions", label: "عدد الجلسات", calc: l => l.length, fmt: reportFmtCount },
+        { key: "patients", label: "مرضى تحت العلاج", calc: l => new Set(l.map(r => r.patient_id).filter(Boolean)).size, fmt: reportFmtCount },
+      ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
@@ -3283,17 +3418,21 @@ function MedicalReport() {
 }
 
 // ── Operational report (appointments / attendance / rooms) ────
-function OperationalReport() {
+function OperationalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
   const opts = useReportOpts();
   const show = { therapist: true, doctor: true, patient: true };
 
-  // One row per booked appointment, from the Supabase-hydrated appts table.
-  const rows = React.useMemo(() => (DATA.appts || [])
+  // One row per booked appointment, from the hydrated appts table (or
+  // every branch's, view.all).
+  const base = view.rowsOf("appts");
+  const rows = React.useMemo(() => base
     .filter(a => a.status !== "متاح")
     .map(a => ({
       id: a.id || a.booking_id,
+      branch_id: a.branch_id || null,
+      branch: reportBranchName(a.branch_id),
       date: String(a.date || "").slice(0, 10),
       time: a.time || "—",
       patient: a.patient || "—",
@@ -3303,7 +3442,7 @@ function OperationalReport() {
       room: a.room || "—",
       type: a.type || "—",
       status: a.status || "—",
-    })), [DATA.appts]);
+    })), [base]);
 
   const q = f.q.trim().toLowerCase();
   const filtered = React.useMemo(() => rows.filter(r =>
@@ -3311,7 +3450,7 @@ function OperationalReport() {
     (f.therapist === "all" || r.therapist === f.therapist) &&
     (f.doctor === "all" || r.doctor === f.doctor) &&
     (f.patient === "all" || r.patient_id === f.patient) &&
-    (!q || [r.patient, r.therapist, r.doctor, r.room, r.type, r.status].some(x => String(x || "").toLowerCase().includes(q)))
+    (!q || [r.patient, r.therapist, r.doctor, r.room, r.type, r.status, view.all ? r.branch : ""].some(x => String(x || "").toLowerCase().includes(q)))
   ).sort((a, b) => (String(b.date) + b.time).localeCompare(String(a.date) + a.time)), [rows, f.from, f.to, f.therapist, f.doctor, f.patient, q]);
 
   const booked = filtered.length;
@@ -3332,6 +3471,7 @@ function OperationalReport() {
   const columns = [
     { key: "date", label: "التاريخ", type: "date", width: 12 },
     { key: "time", label: "الوقت", type: "text", width: 8 },
+    ...(view.all ? [reportBranchColumn] : []),
     { key: "patient", label: "المريض", type: "text", width: 20 },
     { key: "therapist", label: "الأخصائي", type: "text", width: 18 },
     { key: "doctor", label: "الطبيب", type: "text", width: 16 },
@@ -3342,7 +3482,7 @@ function OperationalReport() {
   async function doExport() {
     const ok = await exportReportExcel({
       filename: `تقرير-تشغيلي-${reportToday()}.xlsx`, sheetName: "التقرير التشغيلي",
-      title: "التقرير التشغيلي", filters: reportActiveFilters(f, show, opts), columns, rows: filtered,
+      title: "التقرير التشغيلي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
     if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
   }
@@ -3357,6 +3497,13 @@ function OperationalReport() {
         <StatCard label="معدل عدم الحضور" value={`${noShowRate}%`} accent="#D49044" icon={<I.X size={15} />} />
         <StatCard label="نسبة الإكمال" value={`${completedRate}%`} accent="#7E6BD3" icon={<I.Activity size={15} />} />
       </div>
+
+      {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
+        { key: "booked", label: "مواعيد مسجلة", calc: l => l.length, fmt: reportFmtCount },
+        { key: "completed", label: "مكتملة", calc: l => l.filter(a => a.status === "مكتمل").length, fmt: reportFmtCount },
+        { key: "noshow", label: "لم يحضر", calc: l => l.filter(a => a.status === "لم يحضر").length, fmt: reportFmtCount },
+        { key: "attend", label: "معدّل الحضور", calc: l => l.length ? Math.round(l.filter(a => a.status === "مكتمل" || a.status === "قيد التنفيذ").length / l.length * 100) : 0, fmt: v => `${v}%` },
+      ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
@@ -4658,16 +4805,24 @@ const CA_MEMBER_STATUS = {
 };
 const CA_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Invitations whose e-mail was not sent (email_sent false / null on create
-// or resend): the API keeps no flag, so this tab remembers them until a
-// resend succeeds.
-const CA_UNSENT_KEY = "clinicsys.unsent_invites";
-function caUnsentRead() {
-  try { const v = JSON.parse(sessionStorage.getItem(CA_UNSENT_KEY) || "[]"); return Array.isArray(v) ? v : []; }
-  catch (_) { return []; }
+// The invitation e-mail as the server last recorded it (docs/06 task 3.15):
+// email_status 'failed' → «لم يُرسل البريد» (red, with a resend), 'pending'
+// → «البريد قيد الإرسال» (neutral), 'sent' or none (older rows or an older
+// API without the field) → nothing.
+function caEmailStatus(inv) {
+  const v = inv && inv.email_status;
+  return v === "failed" || v === "pending" || v === "sent" ? v : null;
 }
-function caUnsentWrite(list) {
-  try { sessionStorage.setItem(CA_UNSENT_KEY, JSON.stringify(list)); } catch (_) {}
+function CaEmailBadge({ inv }) {
+  const st = caEmailStatus(inv);
+  if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>لم يُرسل البريد</span>;
+  if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>البريد قيد الإرسال</span>;
+  return null;
+}
+// Replaces (or adds) one invitation in a list, as the server returned it.
+function caMergeInvite(list, inv) {
+  if (!Array.isArray(list) || !inv || !inv.id) return list;
+  return list.some(x => x.id === inv.id) ? list.map(x => x.id === inv.id ? { ...x, ...inv } : x) : [inv, ...list];
 }
 
 function UsersPanel() {
@@ -4681,7 +4836,6 @@ function StaffInvitesPanel() {
   const [invites, setInvites] = React.useState(null);
   const [loadError, setLoadError] = React.useState("");
   const { usage, reload: reloadUsage } = useOrgUsage();
-  const [unsent, setUnsent] = React.useState(caUnsentRead);
   const [filter, setFilter] = React.useState("open");
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -4705,21 +4859,28 @@ function StaffInvitesPanel() {
   }, [reloadUsage]);
   React.useEffect(() => { load(); }, [load]);
 
-  function markUnsent(id, sent) {
-    setUnsent(prev => {
-      const next = sent ? prev.filter(x => x !== id) : Array.from(new Set([...prev, id]));
-      caUnsentWrite(next);
-      return next;
-    });
-  }
+  // An e-mail still being sent when the server answered (email_status
+  // 'pending'): read the list again a few times until it settles.
+  const sendingCount = (invites || []).filter(i => caEmailStatus(i) === "pending").length;
+  const pollRef = React.useRef(0);
+  React.useEffect(() => {
+    if (!sendingCount) { pollRef.current = 0; return; }
+    if (pollRef.current >= 8) return;
+    const t = setTimeout(() => { pollRef.current += 1; load(); }, 15000);
+    return () => clearTimeout(t);
+  }, [sendingCount, invites, load]);
+
   const toast = (msg, kind) => window.showToast && window.showToast(msg, kind || "success");
 
+  // Create / resend answer {invitation, email_sent}: the row shows the
+  // server's email_status at once, then the list is read again.
   function afterInvite(data) {
     const inv = data && data.invitation;
     if (!inv) return;
-    const sent = data.email_sent === true;
-    markUnsent(inv.id, sent);
-    toast(sent ? `تم إرسال الدعوة إلى ${inv.email}` : `أُنشئت الدعوة لكن لم يُرسل البريد إلى ${inv.email} بعد — أعد الإرسال من القائمة`, sent ? "success" : "error");
+    setInvites(prev => caMergeInvite(prev, inv));
+    if (data.email_sent === true) toast(`تم إرسال الدعوة إلى ${inv.email}`);
+    else if (data.email_sent === false) toast(`أُنشئت الدعوة لكن لم يُرسل البريد إلى ${inv.email} بعد — أعد الإرسال من القائمة`, "error");
+    else toast(`أُنشئت الدعوة — البريد قيد الإرسال إلى ${inv.email}`, "info");
     setFilter("open");
     load();
   }
@@ -4729,9 +4890,11 @@ function StaffInvitesPanel() {
     const r = await window.OrgAdmin.resendInvitation(inv.id);
     setResendId(null);
     if (!r.ok) { toast(r.error, "error"); return; }
-    const sent = !!(r.data && r.data.email_sent === true);
-    markUnsent(inv.id, sent);
-    toast(sent ? `أُعيد إرسال الدعوة إلى ${inv.email}` : `تعذّر إرسال البريد إلى ${inv.email} — أعد المحاولة لاحقًا`, sent ? "success" : "error");
+    const sent = r.data ? r.data.email_sent : false;
+    if (r.data && r.data.invitation) setInvites(prev => caMergeInvite(prev, r.data.invitation));
+    if (sent === true) toast(`أُعيد إرسال الدعوة إلى ${inv.email}`);
+    else if (sent === null) toast(`جُددت الدعوة — البريد قيد الإرسال إلى ${inv.email}`, "info");
+    else toast(`تعذّر إرسال البريد إلى ${inv.email} — أعد المحاولة لاحقًا`, "error");
     load();
   }
 
@@ -4740,7 +4903,7 @@ function StaffInvitesPanel() {
     setRevokeBusy(true);
     const r = await window.OrgAdmin.revokeInvitation(revokeRow.id);
     setRevokeBusy(false);
-    if (r.ok) { markUnsent(revokeRow.id, true); toast(`تم إلغاء دعوة ${revokeRow.email}`); load(); }
+    if (r.ok) { toast(`تم إلغاء دعوة ${revokeRow.email}`); load(); }
     else toast(r.error, "error");
     setRevokeRow(null);
   }
@@ -4891,7 +5054,7 @@ function StaffInvitesPanel() {
             {shownInvites.map(inv => {
               const st = CA_INVITE_STATUS[inv.status] || { label: inv.status, cls: "b-grey" };
               const actionable = inv.status === "pending" || inv.status === "expired";
-              const notSent = actionable && unsent.includes(inv.id);
+              const notSent = actionable && caEmailStatus(inv) === "failed";
               const where = inv.role === "admin" ? "كل الفروع" : (caBranchNames(inv.branch_ids).join("، ") || "—");
               return (
                 <tr key={inv.id} data-invite={inv.email} data-status={inv.status}>
@@ -4905,7 +5068,7 @@ function StaffInvitesPanel() {
                   <td data-label="الحالة">
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       <span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span>
-                      {notSent && <span className="badge b-red invite-unsent" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>لم يُرسل البريد</span>}
+                      {actionable && <CaEmailBadge inv={inv}/>}
                     </div>
                   </td>
                   <td data-label="تنتهي في" style={{fontSize:12.5,whiteSpace:"nowrap"}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>

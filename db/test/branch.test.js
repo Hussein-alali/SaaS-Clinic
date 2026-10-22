@@ -6,7 +6,7 @@
 const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  BRANCH_TABLES, ensureDatabase, inTx, setContext, expectError, loadFixtures, actAs, suffix, ident,
+  BRANCH_TABLES, ensureDatabase, inTx, setContext, expectError, loadFixtures, actAs, suffix, ident, insertCopy,
 } = require('./helpers');
 
 let fx;
@@ -193,5 +193,108 @@ test('deleting a referenced row still SETs NULL across the deferred composite ke
     const { rows: [{ r: del }] } = await c.query(`select public.delete_treatment('TRT-PHY-B1-1') as r`);
     assert.equal(del.deleted, true);
     assert.equal(del.sessions_unlinked, 1);
+  });
+});
+
+// 0009_inactive_branch_guard (plan task 3.18): no NEW row on an inactive
+// branch; reading, updating and deleting its rows still work.
+const PK = {
+  bookings: 'booking_id', sessions: 'session_id', invoices: 'invoice_id', payments: 'payment_id',
+  payment_receipts: 'receipt_id', patient_schedules: 'schedule_id', treatments: 'treatment_id',
+};
+const UNIQUE_EXTRA = { payments: 'receipt_no' }; // other organization-scoped unique columns
+
+test('catalog: every branch-scoped table has the refuse_inactive_branch trigger on its primary key', async () => {
+  await inTx(async (c) => {
+    assert.deepEqual(Object.keys(PK).sort(), [...BRANCH_TABLES].sort());
+    for (const t of BRANCH_TABLES) {
+      const { rows } = await c.query(`
+        select pg_get_triggerdef(g.oid) as def from pg_trigger g
+         where g.tgrelid = $1::regclass and g.tgfoid = 'public.refuse_inactive_branch()'::regprocedure`, [`public.${t}`]);
+      assert.equal(rows.length, 1, t);
+      assert.match(rows[0].def, new RegExp(`BEFORE INSERT OR UPDATE OF branch_id ON public\\.${t} FOR EACH ROW `
+        + `EXECUTE FUNCTION refuse_inactive_branch\\('${PK[t]}'\\)`), t);
+    }
+  });
+});
+
+test('inactive branch: a new row is refused (BR409) in the seven tables; existing rows can still be read, updated, upserted and deleted', async () => {
+  await inTx(async (c) => {
+    const s = suffix();
+    const slug = 'demo-physio';
+    await setContext(c, { system: true });
+    const source = {};
+    for (const t of BRANCH_TABLES) {
+      const { rows: [row] } = await c.query(`select * from public.${ident(t)} where branch_id = $1 limit 1`, [B(slug, 1)]);
+      assert.ok(row, `${t}: a seeded row in branch 1`);
+      source[t] = row;
+    }
+    // The admin deactivates branch 1 (C07) and keeps working in it (X-Branch-Id).
+    await actAs(c, fx, 'admin', slug);
+    assert.equal((await c.query(`update branches set status = 'inactive' where id = $1`, [B(slug, 1)])).rowCount, 1);
+
+    for (const t of BRANCH_TABLES) {
+      const copy = { [PK[t]]: `${PK[t]}-T-${s}` };
+      if (UNIQUE_EXTRA[t]) copy[UNIQUE_EXTRA[t]] = `${UNIQUE_EXTRA[t]}-T-${s}`;
+      await c.query('savepoint copy');
+      try {
+        await insertCopy(c, t, source[t], copy);
+        assert.fail(`${t}: a new row on the inactive branch was accepted`);
+      } catch (err) {
+        assert.match(`${err.code} ${err.message}`, /^BR409 branch_inactive$/, t);
+      }
+      await c.query('rollback to savepoint copy');
+      // Its rows are still visible.
+      assert.ok((await branchCounts(c, t, slug)).b1 >= 1, `${t}: rows of the inactive branch are readable`);
+    }
+
+    // The default branch_id (app.branch_id = the inactive branch) is refused too.
+    await expectError(c, `insert into bookings (booking_id, patient_id, date, time, price) values ($1, 'P-PHY-01', current_date, '09:00', 100)`,
+      [`BK-T7-${s}`], /^BR409 branch_inactive/);
+    // So is a payment recorded there: the RPC rolls back as a whole.
+    await expectError(c, `select public.record_quick_payment(p_patient_id => 'P-PHY-01', p_allocations => $1::jsonb, p_method => 'cash')`,
+      [JSON.stringify([{ type: 'invoice', id: 'INV-PHY-B1-1', amount: 10 }])], /^BR409 branch_inactive/);
+    assert.equal(Number((await c.query(`select paid from invoices where invoice_id = 'INV-PHY-B1-1'`)).rows[0].paid), 0);
+
+    // Updates that leave branch_id alone, upserts of existing rows (how the
+    // screens save) and deletes still work.
+    assert.equal((await c.query(`update bookings set notes = 'old branch' where booking_id = 'BK-PHY-B1-1'`)).rowCount, 1);
+    assert.equal((await c.query(`update invoices set paid = 50 where invoice_id = 'INV-PHY-B1-1'`)).rowCount, 1);
+    await c.query(`insert into bookings (booking_id, patient_id, status) values ('BK-PHY-B1-1', 'P-PHY-01', 'cancelled')
+                   on conflict (booking_id) do update set status = excluded.status`);
+    const { rows: [bk] } = await c.query(`select branch_id, status, notes from bookings where booking_id = 'BK-PHY-B1-1'`);
+    assert.deepEqual(bk, { branch_id: B(slug, 1), status: 'cancelled', notes: 'old branch' });
+    assert.equal((await c.query(`delete from patient_schedules where schedule_id = $1`, [source.patient_schedules.schedule_id])).rowCount, 1);
+
+    // Moving a row INTO the inactive branch is refused; out of it is allowed.
+    await expectError(c, `update bookings set branch_id = $1 where booking_id = 'BK-PHY-B2-1'`, [B(slug, 1)], /^BR409 /);
+    assert.equal((await c.query(`update bookings set branch_id = $1 where booking_id = 'BK-PHY-B1-1'`, [B(slug, 2)])).rowCount, 1);
+
+    // The active branch is untouched.
+    await actAs(c, fx, 'admin', slug, { branch: 2 });
+    await c.query(`insert into bookings (booking_id, patient_id, date, time, price) values ($1, 'P-PHY-03', current_date, '09:00', 100)`,
+      [`BK-T8-${s}`]);
+
+    // Re-activating the branch lifts the refusal.
+    await c.query(`update branches set status = 'active' where id = $1`, [B(slug, 1)]);
+    await actAs(c, fx, 'admin', slug);
+    await c.query(`insert into bookings (booking_id, patient_id, date, time, price) values ($1, 'P-PHY-01', current_date, '09:00', 100)`,
+      [`BK-T9-${s}`]);
+  });
+});
+
+test('inactive branch: the system context (seeds, data import) may still write its history', async () => {
+  await inTx(async (c) => {
+    const s = suffix();
+    await setContext(c, { system: true });
+    await c.query(`update branches set status = 'inactive' where id = $1`, [B('demo-dental', 1)]);
+    const { rows: [row] } = await c.query(`select * from invoices where invoice_id = 'INV-DEN-B1-1'`);
+    await insertCopy(c, 'invoices', row, { invoice_id: `INV-SYS-${s}` });
+    const { rows: [copy] } = await c.query(`select branch_id from invoices where invoice_id = $1`, [`INV-SYS-${s}`]);
+    assert.equal(copy.branch_id, B('demo-dental', 1));
+    // A member in the same branch is refused.
+    await actAs(c, fx, 'receptionist', 'demo-dental');
+    await expectError(c, `insert into invoices (invoice_id, patient_id, amount) values ($1, 'P-DEN-01', 10)`,
+      [`INV-REC-${s}`], /^BR409 branch_inactive/);
   });
 });

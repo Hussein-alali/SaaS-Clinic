@@ -252,6 +252,11 @@ test("C07: the admin adds, edits, deactivates and re-activates branches within t
   const refused = await rec.page.evaluate(() => window.KineticData.upsert("appts", { booking_id: "BK-E2E-OFF", patient_id: "P-NONE", date: "2026-10-30", time: "10:00" })
     .then(() => "saved", (e) => e.message));
   expect(refused).toContain("هذا الفرع معطّل");
+  // Any other new row there is refused by the server (409 branch_inactive,
+  // task 3.18), with the Arabic reason.
+  const refusedInvoice = await rec.page.evaluate(() => window.KineticData.upsert("payments", { invoice_id: "INV-E2E-OFF-" + Date.now(), amount: 10 })
+    .then((r) => r._error, (e) => e.message));
+  expect(refusedInvoice).toBe("هذا الفرع معطّل — اختر فرعًا نشطًا لإضافة حجوزات أو مدفوعات جديدة");
   await rec.close();
 
   // The freed place takes a new branch; re-activating the old one is then
@@ -303,6 +308,108 @@ test("switching the branch filters the bookings (C03) and the reports (C05)", as
   await expect(page.locator(".report-branch")).toContainText("الفرع الرئيسي");
   await expect(rows).toContainText("مريض أول — PHY");
   await expect(rows).not.toContainText("مريض ثالث — PHY");
+});
+
+// ── C05: «كل الفروع» for the clinic admin (task 3.19) ───────────────────
+test("C05 «كل الفروع»: the clinic admin sees every branch with a per-branch breakdown, the current branch only its own rows; other roles keep the current branch", async ({ page }) => {
+  await page.goto("/?org=demo-physio");
+  await clinicLogin(page, "admin@demo-physio.test");
+  await expect(sidebar(page)).toContainText(PHYSIO);
+  if (await page.evaluate(() => window.ACTIVE_BRANCH_ID) !== "br-demo-physio-1") {
+    await picker(page).click();
+    await page.getByRole("option").filter({ hasText: "الفرع الرئيسي" }).click();
+  }
+  await expect.poll(() => page.evaluate(() => window.ACTIVE_BRANCH_ID)).toBe("br-demo-physio-1");
+
+  // A patient and an invoice of this run on each branch (written with that
+  // branch's X-Branch-Id, as its own screens would).
+  const run = uniq();
+  const made = [];
+  for (const [n, branch, amount] of [[1, "br-demo-physio-1", 1111], [2, "br-demo-physio-2", 2222]]) {
+    const headers = { "X-Requested-With": "clinicsys", "X-Org-Slug": "demo-physio", "X-Branch-Id": branch };
+    const name = `مريض التقارير ${n} ${run}`;
+    const pid = `P-E2E-RPT-${run}-${n}`;
+    let r = await page.request.post("/api/data", { headers, data: { table: "patients", action: "insert", values: { patient_id: pid, name } } });
+    expect(r.status(), await r.text()).toBe(200);
+    r = await page.request.post("/api/data", { headers, data: { table: "invoices", action: "insert", values: { invoice_id: `INV-E2E-RPT-${run}-${n}`, patient_id: pid, amount, paid: 0 } } });
+    expect(r.status(), await r.text()).toBe(200);
+    made.push({ name, branch });
+  }
+  await page.reload();
+  await expect(sidebar(page)).toContainText(PHYSIO);
+  await sidebar(page).locator('[data-route="reports"]').click();
+
+  const scope = page.getByRole("group", { name: "نطاق التقرير" });
+  const pickScope = (name) => scope.getByRole("button", { name, exact: true }).click();
+  const rows = page.locator("main .report-rows tbody tr[data-branch]");
+  const breakdown = page.locator(".report-branch-breakdown");
+  const metric = (branch, key) => breakdown.locator(`tr[data-branch-row="${branch}"] [data-metric="${key}"]`);
+  await expect(scope.getByRole("button", { name: "الفرع الحالي" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".report-branch")).toContainText("الفرع: الفرع الرئيسي");
+  await page.getByPlaceholder("بحث بالمريض أو طريقة الدفع…").fill(run);
+
+  // Current branch: its own invoice only, no branch breakdown.
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText(made[0].name);
+  await expect(rows.first()).toHaveAttribute("data-branch", "br-demo-physio-1");
+  await expect(breakdown).toHaveCount(0);
+
+  // «كل الفروع»: both invoices with their branch, per-branch totals and the
+  // clinic total — without changing the branch in use (X-Branch-Id).
+  await pickScope("كل الفروع");
+  await expect(scope.getByRole("button", { name: "كل الفروع" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".report-branch")).toContainText("كل الفروع");
+  await expect(rows).toHaveCount(2);
+  await expect(page.locator("main .report-rows thead")).toContainText("الفرع");
+  await expect(rows.filter({ hasText: made[0].name })).toHaveAttribute("data-branch", "br-demo-physio-1");
+  await expect(rows.filter({ hasText: made[0].name })).toContainText("الفرع الرئيسي");
+  await expect(rows.filter({ hasText: made[1].name })).toHaveAttribute("data-branch", "br-demo-physio-2");
+  await expect(rows.filter({ hasText: made[1].name })).toContainText("فرع المعادي");
+  await expect(breakdown.locator("tr[data-branch-row]")).toHaveCount(3);
+  await expect(breakdown.locator('tr[data-branch-row="br-demo-physio-2"]')).toContainText("فرع المعادي");
+  await expect(metric("br-demo-physio-1", "count")).toHaveAttribute("data-value", "1");
+  await expect(metric("br-demo-physio-2", "count")).toHaveAttribute("data-value", "1");
+  await expect(metric("total", "count")).toHaveAttribute("data-value", "2");
+  await expect(metric("br-demo-physio-1", "invoiced")).toHaveAttribute("data-value", "1111");
+  await expect(metric("br-demo-physio-2", "invoiced")).toHaveAttribute("data-value", "2222");
+  await expect(metric("total", "invoiced")).toHaveAttribute("data-value", "3333");
+  expect(await page.evaluate(() => window.ACTIVE_BRANCH_ID)).toBe("br-demo-physio-1");
+  await expect(picker(page)).toContainText("الفرع الرئيسي");
+  // Without the search: the clinic total is the sum of the branches.
+  await page.getByPlaceholder("بحث بالمريض أو طريقة الدفع…").fill("");
+  const value = async (branch, key) => Number(await metric(branch, key).getAttribute("data-value"));
+  await expect.poll(() => value("total", "count")).toBeGreaterThan(2);
+  expect(await value("total", "count")).toBe(await value("br-demo-physio-1", "count") + await value("br-demo-physio-2", "count"));
+  expect(await value("br-demo-physio-2", "count")).toBeGreaterThanOrEqual(2);
+
+  // The search matches the branch name: one branch's rows of the clinic.
+  await page.getByPlaceholder("بحث بالمريض أو طريقة الدفع…").fill("فرع المعادي");
+  await expect(metric("br-demo-physio-1", "count")).toHaveAttribute("data-value", "0");
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.and(page.locator('[data-branch="br-demo-physio-1"]'))).toHaveCount(0);
+
+  // The operational tab keeps the scope: today's seeded bookings of both
+  // branches are counted.
+  await page.locator(".side-tabs .nav-item", { hasText: "التشغيلية" }).click();
+  await expect(breakdown.locator("tr[data-branch-row]")).toHaveCount(3);
+  await expect.poll(() => value("br-demo-physio-1", "booked")).toBeGreaterThan(0);
+  await expect.poll(() => value("br-demo-physio-2", "booked")).toBeGreaterThan(0);
+  expect(await value("total", "booked")).toBe(await value("br-demo-physio-1", "booked") + await value("br-demo-physio-2", "booked"));
+
+  // Back to the current branch: branch 1 only again.
+  await pickScope("الفرع الحالي");
+  await expect(breakdown).toHaveCount(0);
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.and(page.locator('[data-branch="br-demo-physio-2"]'))).toHaveCount(0);
+
+  // A receptionist of both branches: no choice, the current branch as before.
+  await page.getByRole("button", { name: "تسجيل الخروج" }).click();
+  await clinicLogin(page, "receptionist2@demo-physio.test");
+  await expect(sidebar(page)).toContainText(PHYSIO);
+  await sidebar(page).locator('[data-route="reports"]').click();
+  await expect(page.locator(".report-branch")).toContainText("بدّل الفرع من القائمة الجانبية");
+  await expect(page.getByRole("group", { name: "نطاق التقرير" })).toHaveCount(0);
+  await expect(breakdown).toHaveCount(0);
 });
 
 // ── C06: staff and invitations ──────────────────────────────────────────
@@ -447,28 +554,48 @@ test("C06: resend and revoke an invitation; an e-mail that was not sent is flagg
   expect((await gone.json()).error.code).toBe("invitation_revoked");
   await page.getByRole("button", { name: /بانتظار القبول/ }).click();
 
-  // «e-mail not sent»: the server answers email_sent false (SMTP failure,
-  // simulated here) → flagged, with a resend that clears it.
+  // «e-mail not sent» is the server's email_status (task 3.15). An SMTP
+  // failure is simulated: the create answers email_sent false, and the
+  // list reports email_status 'failed' for this invitation → flagged, also
+  // after a reload (nothing is kept in the browser); 'pending' shows the
+  // neutral «البريد قيد الإرسال»; a real resend clears it.
   const unsent = `ca-unsent-${uniq()}@e2e.test`;
+  let forced = "failed";
   await page.route("**/api/org/invitations", async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
     const res = await route.fetch();
     const body = await res.json();
-    await route.fulfill({ response: res, json: { ...body, email_sent: false } });
+    if (route.request().method() === "POST") {
+      return route.fulfill({ response: res, json: { ...body, email_sent: false, invitation: { ...body.invitation, email_status: "failed" } } });
+    }
+    const list = Array.isArray(body) ? body.map((i) => (i.email === unsent ? { ...i, email_status: forced } : i)) : body;
+    return route.fulfill({ response: res, json: list });
   });
   await invite(page, unsent, { role: "therapist", branches: ["br-demo-physio-1"] });
   await expect(page.getByText(`أُنشئت الدعوة لكن لم يُرسل البريد إلى ${unsent}`)).toBeVisible();
-  await page.unroute("**/api/org/invitations");
   const flagged = inviteRow(page, unsent);
   await expect(flagged).toHaveAttribute("data-status", "pending");
   await expect(flagged.locator(".invite-unsent")).toHaveText(/لم يُرسل البريد/);
-  // Still flagged after a reload (kept for this tab).
+  expect(await page.evaluate(() => sessionStorage.getItem("clinicsys.unsent_invites"))).toBeNull();
   await page.reload();
   await page.locator('[data-settings-tab="users"]').click();
   await expect(inviteRow(page, unsent).locator(".invite-unsent")).toBeVisible();
+  // Still being sent according to the server: neutral, not «لم يُرسل».
+  forced = "pending";
+  await page.reload();
+  await page.locator('[data-settings-tab="users"]').click();
+  await expect(inviteRow(page, unsent).locator(".invite-sending")).toHaveText(/البريد قيد الإرسال/);
+  await expect(inviteRow(page, unsent).locator(".invite-unsent")).toHaveCount(0);
+  forced = "failed";
+  await page.reload();
+  await page.locator('[data-settings-tab="users"]').click();
+  await expect(inviteRow(page, unsent).locator(".invite-unsent")).toBeVisible();
+  // The real server from here on: the resend's e-mail goes out ('sent').
+  await page.unroute("**/api/org/invitations");
   await inviteRow(page, unsent).getByRole("button", { name: `إعادة إرسال دعوة ${unsent}` }).click();
   await expect(page.getByText(`أُعيد إرسال الدعوة إلى ${unsent}`)).toBeVisible();
-  await expect(inviteRow(page, unsent).locator(".invite-unsent")).toHaveCount(0);
+  await expect(inviteRow(page, unsent).locator("[data-email-status]")).toHaveCount(0);
+  const listed = await (await page.request.get("/api/org/invitations", { headers: { "X-Requested-With": "clinicsys", "X-Org-Slug": "demo-physio" } })).json();
+  expect(listed.find((i) => i.email === unsent)).toMatchObject({ status: "pending", email_status: "sent" });
   // Clean up: the seat is freed.
   await inviteRow(page, unsent).getByRole("button", { name: `إلغاء دعوة ${unsent}` }).click();
   await page.getByRole("button", { name: "إلغاء الدعوة" }).click();

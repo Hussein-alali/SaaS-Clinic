@@ -5,6 +5,9 @@
 //   GET  /object/:bucket/*    download with session + current clinic
 //   GET  /signed?token=       download with a signed link (no session)
 //   POST /remove              {bucket, paths:[...]} → {removed:[...]}
+// Every route answers 403 module_disabled while the bucket's module
+// (patient-files → core.files, api/src/modules.js) is off for the clinic;
+// the files stay on disk.
 
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +17,7 @@ const multer = require('multer');
 const { HttpError, badRequest, forbidden, notFound } = require('../errors');
 const { requireOrg } = require('../tenant');
 const files = require('../files');
+const { assertModule, bucketModule } = require('../modules');
 
 const router = express.Router();
 
@@ -56,6 +60,9 @@ function parseUpload(req, res) {
 
 const unlinkQuiet = (p) => fs.promises.unlink(p).catch(() => {});
 
+/** 403 module_disabled when the bucket's module is off for the clinic (AT-07). */
+const assertBucketModule = (db, orgId, bucket) => assertModule(db, orgId, bucketModule(bucket));
+
 /** Storage limit of the clinic's plan (subscription_plans.max_storage_mb). */
 async function storageLimitBytes(db, orgId) {
   const { rows } = await db.query(
@@ -77,6 +84,7 @@ router.post('/upload', requireOrg(), allow('upload'), async (req, res) => {
     if (!req.file) throw badRequest('file_required', 'Missing file');
     const body = req.body || {};
     const bucket = files.validateBucket(body.bucket);
+    await assertBucketModule(db, req.ctx.orgId, bucket);
     const objectPath = files.validateObjectPath(body.path);
     const upsert = /^(true|1)$/i.test(String(body.upsert || ''));
     const loc = files.locate(config, req.ctx.orgId, bucket, objectPath);
@@ -129,9 +137,10 @@ router.post('/upload', requireOrg(), allow('upload'), async (req, res) => {
 });
 
 router.post('/sign', requireOrg(), allow('read'), async (req, res) => {
-  const { config } = req.app.locals;
+  const { config, db } = req.app.locals;
   const body = req.body || {};
   const bucket = files.validateBucket(body.bucket);
+  await assertBucketModule(db, req.ctx.orgId, bucket);
   const objectPath = files.validateObjectPath(body.path);
   let seconds = body.expiresIn === undefined || body.expiresIn === null ? files.MAX_SIGN_SECONDS : body.expiresIn;
   if (!Number.isFinite(seconds) || seconds <= 0) throw badRequest('invalid_expires_in', 'expiresIn must be a positive number of seconds');
@@ -150,7 +159,8 @@ router.post('/sign', requireOrg(), allow('read'), async (req, res) => {
 // <img src> and <a href> cannot send X-Org-Slug, so in development the
 // clinic may also be named with ?org=<slug>; membership is checked as usual.
 router.get('/object/:bucket/*objectPath', requireOrg({ queryParam: 'org' }), allow('read'), async (req, res) => {
-  const { config } = req.app.locals;
+  const { config, db } = req.app.locals;
+  await assertBucketModule(db, req.ctx.orgId, files.validateBucket(req.params.bucket));
   const segments = req.params.objectPath;
   const objectPath = Array.isArray(segments) ? segments.join('/') : String(segments || '');
   const loc = files.locate(config, req.ctx.orgId, req.params.bucket, objectPath);
@@ -165,14 +175,17 @@ router.get('/signed', async (req, res) => {
   // A suspended or closed clinic loses access to its files immediately.
   const { rows } = await db.query('select status from organizations where id = $1', [t.orgId]);
   if (!rows[0] || rows[0].status !== 'active') throw forbidden('org_inactive', 'This clinic is not active');
+  // ... and so does a clinic whose files module was turned off after signing.
+  await assertBucketModule(db, t.orgId, t.bucket);
   if (!(await files.statFile(loc.file))) throw notFound('not_found', 'Object not found');
   await files.sendObject(res, loc.file, t.objectPath, await files.readMeta(loc.meta));
 });
 
 router.post('/remove', requireOrg(), async (req, res) => {
-  const { config } = req.app.locals;
+  const { config, db } = req.app.locals;
   const body = req.body || {};
   const bucket = files.validateBucket(body.bucket);
+  await assertBucketModule(db, req.ctx.orgId, bucket);
   if (!Array.isArray(body.paths) || body.paths.length === 0 || body.paths.length > 1000) {
     throw badRequest('invalid_paths', 'paths must be an array of 1-1000 paths');
   }

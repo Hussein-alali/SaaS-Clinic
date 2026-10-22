@@ -31,9 +31,9 @@ const { shareDatabase } = require('./helpers');
 const DATABASE_URL = process.env.DATABASE_URL;
 const REPO_ROOT = path.join(__dirname, '..', '..');
 
-// The 25 RPC functions of the baseline: the 23 that src/*.jsx calls through
-// sb.rpc(...) plus the two legacy v1 treatment-method RPCs that are still
-// defined (not called by the current frontend).
+// The RPC functions of the baseline: the 23 that src/*.jsx calls through
+// sb.rpc(...) plus two legacy v1 treatment-method RPCs that no screen calls;
+// 0007_rpc_role_guards drops the legacy two.
 const RPCS_CALLED_BY_FRONTEND = [
   'record_quick_payment', 'list_invoices_filtered', 'delete_payment_receipt',
   'upsert_treatment_method', 'delete_treatment_method', 'set_treatment_method_status',
@@ -108,7 +108,7 @@ test('node db/migrate.js (from the repo root) applies the baseline once; a secon
   assert.doesNotMatch(second.stdout, /applied {2}/);
 });
 
-test('catalog: schema_migrations, 25 RPCs, no extensions, policies TO PUBLIC, no Supabase leftovers', async () => {
+test('catalog: schema_migrations, 23 RPCs (legacy two dropped by 0007), no extensions, policies TO PUBLIC, no Supabase leftovers', async () => {
   requireDb();
   const c = await connect();
   try {
@@ -125,9 +125,13 @@ test('catalog: schema_migrations, 25 RPCs, no extensions, policies TO PUBLIC, no
       `select proname from pg_proc where pronamespace = 'public'::regnamespace and proname = any($1)`,
       [[...RPCS_CALLED_BY_FRONTEND, ...LEGACY_RPCS]]);
     const present = new Set(fns.rows.map((r) => r.proname));
-    const missing = [...RPCS_CALLED_BY_FRONTEND, ...LEGACY_RPCS].filter((n) => !present.has(n));
+    const missing = RPCS_CALLED_BY_FRONTEND.filter((n) => !present.has(n));
     assert.deepEqual(missing, [], 'missing RPC functions');
-    assert.equal(RPCS_CALLED_BY_FRONTEND.length + LEGACY_RPCS.length, 25);
+    assert.equal(RPCS_CALLED_BY_FRONTEND.length, 23);
+    // Not called by any screen and not in api/src/rpc-whitelist.js: dropped by 0007.
+    const legacyDropped = versions.includes('0007_rpc_role_guards');
+    assert.deepEqual(LEGACY_RPCS.filter((n) => present.has(n)), legacyDropped ? [] : LEGACY_RPCS,
+      legacyDropped ? 'legacy RPCs must be dropped by 0007' : 'legacy RPCs of the baseline');
 
     // Every name src/*.jsx passes to sb.rpc() must exist (guards against drift).
     const srcDir = path.join(REPO_ROOT, 'src');
@@ -293,8 +297,8 @@ test('single-clinic smoke (old role model): admin records a quick payment and li
       `insert into staff (staff_id, name, role, email, auth_uid, status) values ($1, $2, 'admin', $3, $4, 'active')`,
       [staffId, 'مدير الاختبار', email, user.id]);
 
-    // Anonymous: no role. (The RPC guards do NOT refuse a NULL role — see
-    // the todo test "RPC role guards refuse a caller without a role".)
+    // Anonymous: no role. (0001's RPC guards did NOT refuse a NULL role;
+    // 0007 fixes them — see "RPC role guards refuse a caller without a role".)
     assert.equal((await c.query('select public.app_role() as r')).rows[0].r, null);
 
     // Signed in as the admin (what the API will do inside each transaction).
@@ -417,22 +421,51 @@ test('old-model RLS policies (TO PUBLIC) still gate rows when RLS is forced', as
   });
 });
 
-// Pre-existing in the Supabase functions and kept by the faithful port:
-// guards are written `if v_role not in (...) then raise` (or `<> 'admin'`),
-// which is NULL — not true — when app_role() is NULL, so a caller without a
-// role (anonymous, or no active staff row) passes them. record_quick_payment
-// and list_invoices_filtered have no role check at all. Marked todo so the
-// suite stays green until a later migration fixes the guards; it starts
-// passing once they refuse a NULL role.
-test('RPC role guards refuse a caller without a role', {
-  todo: 'pre-existing NULL-unsafe role guards in 23 RPCs (kept by the faithful port); fix in a later migration',
-}, async () => {
+// Pre-existing in the Supabase functions and kept by the faithful port of
+// 0001: guards written `if v_role not in (...) then raise` (or `<> 'admin'`)
+// are NULL — not true — when app_role() is NULL, so a caller without a role
+// (anonymous, no membership) passed them, and record_quick_payment and
+// list_invoices_filtered had no role check at all. 0007_rpc_role_guards
+// makes every guard NULL-safe. Each RPC is called with NULL arguments: the
+// guard is its first statement, so the role decides before any argument is
+// read. (db/test/role_guards.test.js covers members without a usable role.)
+test('RPC role guards refuse a caller without a role (0007)', async () => {
   requireDb();
   await inRolledBackTx(async (c) => {
-    assert.equal((await c.query('select public.app_role() as r')).rows[0].r, null);
-    await expectError(c, 'select public.list_treatment_templates()', [], /غير مصرح/);
-    await expectError(c, `select public.create_treatment_template('TPL-ANON-${suffix()}', '{"name":"x"}'::jsonb)`,
-      [], /غير مصرح/);
+    const { rows: fns } = await c.query(`
+      select p.proname as name, p.prosecdef as definer,
+             array(select format_type(t, null) from unnest(p.proargtypes::oid[]) with ordinality a(t, n) order by n) as types
+        from pg_proc p
+       where p.pronamespace = 'public'::regnamespace and p.proname = any($1)
+       order by p.proname`, [RPCS_CALLED_BY_FRONTEND]);
+    assert.deepEqual(fns.map((f) => f.name), [...RPCS_CALLED_BY_FRONTEND].sort(), 'one definition per RPC');
+    assert.ok(fns.every((f) => f.definer), 'every RPC is security definer');
+
+    const { rows: [org] } = await c.query(
+      `select ${(await hasTenancy(c)) ? '(select id::text from public.organizations order by created_at limit 1)' : 'null'} as id`);
+    const contexts = [
+      ['anonymous', '', ''],
+      ['a signed-in account without a membership', crypto.randomUUID(), (org && org.id) || crypto.randomUUID()],
+    ];
+    for (const [label, user, orgId] of contexts) {
+      await c.query(
+        `select set_config('app.user_id', $1, true), set_config('app.org_id', $2, true),
+                set_config('app.branch_id', '', true), set_config('app.system', 'off', true)`, [user, orgId]);
+      assert.equal((await c.query('select public.app_role() as r')).rows[0].r, null, label);
+      const problems = [];
+      for (const f of fns) {
+        const call = `select public.${f.name}(${f.types.map((t) => `null::${t}`).join(', ')})`;
+        await c.query('savepoint guard');
+        try {
+          await c.query(call);
+          problems.push(`${f.name}: no error`);
+        } catch (err) {
+          if (!/^P0001 غير مصرح/.test(`${err.code} ${err.message}`)) problems.push(`${f.name}: ${err.code} ${err.message}`);
+        }
+        await c.query('rollback to savepoint guard');
+      }
+      assert.deepEqual(problems, [], `${label}: every RPC must refuse with 'غير مصرح'`);
+    }
   });
 });
 

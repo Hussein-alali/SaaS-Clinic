@@ -329,6 +329,16 @@
     return <span className={"badge " + cls} title={title}><span className="dot" aria-hidden="true"/>{label}</span>;
   }
 
+  // The invitation e-mail as the server last recorded it (email_status,
+  // docs/06 task 3.15): 'failed' → «لم يُرسل البريد», 'pending' → «البريد
+  // قيد الإرسال»; 'sent' or no field (older rows / older API) → nothing.
+  function InviteEmailBadge({ inv }) {
+    const st = inv && inv.email_status;
+    if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed"><I.Mail size={11}/>لم يُرسل البريد</span>;
+    if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending"><I.Mail size={11}/>البريد قيد الإرسال</span>;
+    return null;
+  }
+
   function Spinner({ size = 14 }) {
     return <span className="spin pa-spinner" style={{ width: size, height: size }} aria-hidden="true"/>;
   }
@@ -1668,7 +1678,7 @@
                       <td><Ltr className="mono">{inv.email}</Ltr></td>
                       <td><span className="badge b-grey">{ROLE_LABEL[inv.role] || inv.role}</span></td>
                       <td>{inv.role === "admin" ? "كل الفروع" : branchList(inv.branch_ids)}</td>
-                      <td><Badge map={INVITE_STATUS} value={inv.status}/></td>
+                      <td><div className="row gap-2" style={{ flexWrap: "wrap" }}><Badge map={INVITE_STATUS} value={inv.status}/>{open && <InviteEmailBadge inv={inv}/>}</div></td>
                       <td><DateText value={inv.expires_at}/></td>
                       <td>
                         {open && canInvite && (

@@ -32,6 +32,8 @@ function mapPgError(err) {
   if (code === '23505') return [409, { message, code }];
   if (code === '42501' || /row-level security/i.test(message)) return [403, { message, code }];
   if (code === 'PL422') return [422, { message, code }];
+  // A new row on an inactive branch (0009_inactive_branch_guard).
+  if (code === 'BR409') return [409, { message: 'Branch is inactive', code: 'branch_inactive' }];
   if (code === '57014') return [503, { message: 'Query took too long and was cancelled', code }];
   if (SERVER_CLASSES.has(code.slice(0, 2))) return [500, { message: 'Database error', code }];
   return [400, { message, code }];

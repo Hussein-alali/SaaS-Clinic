@@ -69,10 +69,10 @@ async function loadOrg(db, id, { client = null, lock = false } = {}) {
   return rows[0];
 }
 
-/** Sends an invitation e-mail after the transaction committed. */
+/** Sends an invitation e-mail after the transaction committed and stores
+ *  its outcome on the row (email_status). */
 async function mailInvitation(req, org, invitation, token) {
-  const { mailer, config } = req.app.locals;
-  return invites.sendInvitationEmail({ mailer, config }, { org, invitation, token });
+  return invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
 }
 
 function parseDate(value, field) {

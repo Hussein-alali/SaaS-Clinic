@@ -340,12 +340,98 @@ test('e-mail failures never lose the invitation: email_sent false (error) or nul
     const res = await admin.post('/api/org/invitations', { email: 'nomail@demo-physio.test', role: 'doctor', branch_ids: [BRANCH.physio1] });
     assert.equal(res.status, 201, res.text);
     assert.equal(res.body.email_sent, false);
+    assert.equal(res.body.invitation.email_status, 'failed');
     const resent = await admin.post(`/api/org/invitations/${res.body.invitation.id}/resend`, {});
     assert.equal(resent.body.email_sent, false);
+    assert.equal(resent.body.invitation.email_status, 'failed');
   } finally {
     h.app.locals.mailer = real;
     console.error = origError;
   }
-  const { rows: [inv] } = await h.sql("select status from invitations where email = 'nomail@demo-physio.test'");
-  assert.equal(inv.status, 'pending');
+  const { rows: [inv] } = await h.sql("select status, email_status from invitations where email = 'nomail@demo-physio.test'");
+  assert.deepEqual(inv, { status: 'pending', email_status: 'failed' });
+  // Every admin of the clinic sees which e-mail needs re-sending (0008).
+  const other = await h.as('changer', { slug: 'demo-physio' });
+  const listed = (await other.get('/api/org/invitations')).body.find((i) => i.email === 'nomail@demo-physio.test');
+  assert.equal(listed.email_status, 'failed');
+});
+
+/** Polls until check() is true (at most `ms`). */
+async function until(check, ms = 5000) {
+  const end = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > end) throw new Error('timed out waiting');
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
+test('e-mail delivery state is kept on the invitation (0008): sent, pending while a re-send is on its way, seen by every admin', async () => {
+  const admin = await physioAdmin();
+  const other = await h.as('changer', { slug: 'demo-physio' }); // a second admin of demo-physio
+  const find = async (id) => (await other.get('/api/org/invitations')).body.find((i) => i.id === id);
+  const t0 = Date.now();
+  const res = await admin.post('/api/org/invitations', { email: 'state.doctor@demo-physio.test', role: 'doctor', branch_ids: [BRANCH.physio1] });
+  assert.equal(res.status, 201, res.text);
+  assert.equal(res.body.email_sent, true);
+  const inv = res.body.invitation;
+  assert.equal(inv.email_status, 'sent');
+  const sentAt = Date.parse(inv.email_status_at);
+  assert.ok(sentAt >= t0 - 2000 && sentAt <= Date.now() + 2000, inv.email_status_at);
+  assert.deepEqual(await find(inv.id), inv, 'GET shows the same invitation, delivery state included');
+
+  // A re-send stores 'pending' before its e-mail leaves; while the SMTP
+  // server is slow, every admin sees 'pending'.
+  const real = h.app.locals.mailer;
+  let release = null;
+  h.app.locals.mailer = { send: (m) => new Promise((resolve) => { release = () => resolve(real.send(m)); }) };
+  try {
+    const resending = admin.post(`/api/org/invitations/${inv.id}/resend`, {});
+    await until(() => release !== null);
+    const during = await find(inv.id);
+    assert.equal(during.email_status, 'pending');
+    assert.ok(Date.parse(during.email_status_at) >= sentAt);
+    release();
+    const resent = await resending;
+    assert.equal(resent.status, 200, resent.text);
+    assert.equal(resent.body.email_sent, true);
+    assert.equal(resent.body.invitation.email_status, 'sent');
+    assert.ok(Date.parse(resent.body.invitation.email_status_at) >= Date.parse(during.email_status_at));
+  } finally {
+    h.app.locals.mailer = real;
+    if (release) release();
+  }
+  assert.equal((await find(inv.id)).email_status, 'sent');
+});
+
+test('a slow e-mail: answered null, stored once delivered (after the answer); an older e-mail never overwrites a newer re-send', async () => {
+  const invites = require('../src/invites');
+  const org = { slug: 'demo-physio', name: 'x' };
+  const raw = await rawInvitation({ email: 'slow.state@demo-physio.test' });
+  const stateOf = async () =>
+    (await h.sql('select email_status, email_status_at from invitations where id = $1', [raw.id])).rows[0];
+  assert.deepEqual(await stateOf(), { email_status: null, email_status_at: null }, 'a row not sent by the API: unknown');
+  assert.equal(invites.describeInvitation({ ...raw, status: 'pending', expires_at: new Date(Date.now() + 1000) }).email_status, null);
+
+  const releases = [];
+  const tasks = [];
+  const slow = { send: () => new Promise((resolve) => releases.push(() => resolve({ id: 'x' }))) };
+  const deps = { mailer: slow, config: h.config, db: h.app.locals.db, background: (fn) => tasks.push(fn()) };
+  const invitation = { id: raw.id, email: 'slow.state@demo-physio.test', role: 'doctor' };
+  assert.equal(await invites.sendInvitationEmail(deps, { org, invitation, token: raw.token }, 50), null);
+  assert.equal((await stateOf()).email_status, null, 'nothing stored before the attempt finishes');
+  releases.shift()();
+  await Promise.all(tasks.splice(0));
+  assert.equal((await stateOf()).email_status, 'sent', 'stored after the request had answered');
+  assert.equal(invitation.email_status, 'sent');
+
+  // E-mail A is still on its way when the invitation is re-sent (new
+  // token, 'pending'); A's late result must not mark the new one as sent.
+  assert.equal(await invites.sendInvitationEmail(deps, { org, invitation, token: raw.token }, 50), null);
+  await h.sql(
+    "update invitations set token_hash = $2, email_status = 'pending', email_status_at = now() where id = $1",
+    [raw.id, sha256('a-newer-token-of-the-same-invitation')],
+  );
+  releases.shift()();
+  await Promise.all(tasks.splice(0));
+  assert.equal((await stateOf()).email_status, 'pending');
 });

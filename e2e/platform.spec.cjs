@@ -394,6 +394,22 @@ test("A04 invitations: list, resend, invite (branch required), revoke", async ({
   await expect(toast(page, "أُلغيت الدعوة")).toBeVisible();
   await expect(staffRow).toContainText("ملغاة");
   await expect(staffRow.getByRole("button")).toHaveCount(0);
+
+  // The e-mail state is the server's email_status (task 3.15): the resent
+  // e-mail went out, so no badge; 'failed' and 'pending' (simulated in the
+  // clinic detail) show «لم يُرسل البريد» / «البريد قيد الإرسال».
+  await expect(ownerRow.locator("[data-email-status]")).toHaveCount(0);
+  for (const [status, badge] of [["failed", "لم يُرسل البريد"], ["pending", "البريد قيد الإرسال"]]) {
+    await page.route(`**/api/platform/organizations/${clinicId}`, async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      const invitations = (body.invitations || []).map((i) => (i.email === OWNER ? { ...i, email_status: status } : i));
+      await route.fulfill({ response: res, json: { ...body, invitations } });
+    });
+    await page.reload();
+    await expect(ownerRow.locator(`[data-email-status="${status}"]`)).toHaveText(badge);
+    await page.unroute(`**/api/platform/organizations/${clinicId}`);
+  }
 });
 
 test("A04 status: activate, suspend with a required reason (retention shown), reactivate", async ({ page }) => {

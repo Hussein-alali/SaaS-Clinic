@@ -556,10 +556,54 @@ function SkeletonRow({ count=5 }) {
 }
 
 // ── Modal ──────────────────────────────────────────────────────
-// Open modals, innermost last: Esc closes only the top one.
+// Open modals, innermost last: only the top one handles Esc and Tab.
 const __openModals = [];
-// A dialog (docs/04 Accessibility: role="dialog", named by its title, closed
-// with Esc; focus moves into it unless a field inside already took it).
+// Elements Tab can reach inside `box`, in document order (hidden, disabled
+// and tabindex="-1" ones left out, as the browser skips them).
+const __TABBABLE = 'a[href],area[href],button,input:not([type="hidden"]),select,textarea,iframe,summary,audio[controls],video[controls],[contenteditable]:not([contenteditable="false"]),[tabindex]';
+function __tabbablesIn(box) {
+  return Array.from(box.querySelectorAll(__TABBABLE)).filter(el => {
+    if (el.hasAttribute("data-focus-guard") || el.disabled) return false;
+    const ti = el.getAttribute("tabindex");
+    if (ti != null && ti !== "" && Number(ti) < 0) return false;
+    if (el.closest("fieldset:disabled, [inert]")) return false;
+    if (!el.getClientRects().length) return false;
+    return window.getComputedStyle(el).visibility !== "hidden";
+  });
+}
+// Focus `el` without scrolling the page behind; false when it cannot.
+function __focusEl(el) {
+  if (!el || typeof el.focus !== "function") return false;
+  try { el.focus({ preventScroll: true }); } catch (_) { return false; }
+  return document.activeElement === el;
+}
+// Tab / Shift+Tab inside the top dialog: from the last element back to the
+// first and the other way round, and back inside when focus is elsewhere
+// (e.g. on <body> after a click on the backdrop while saving).
+function __trapTab(e, box) {
+  const list = __tabbablesIn(box);
+  const active = document.activeElement;
+  if (!list.length) { e.preventDefault(); __focusEl(box); return; }
+  const first = list[0], last = list[list.length - 1];
+  if (active === box || !box.contains(active)) {
+    e.preventDefault();
+    __focusEl(e.shiftKey ? last : first);
+  } else if (e.shiftKey && active === first) {
+    e.preventDefault(); __focusEl(last);
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault(); __focusEl(first);
+  }
+}
+// Invisible stops just before and after the dialog: if the browser's own
+// Tab order ever steps past its edge, focus wraps instead of reaching the
+// page behind.
+const __FOCUS_GUARD = { position:"fixed", top:0, left:0, width:1, height:1, opacity:0, overflow:"hidden", pointerEvents:"none" };
+
+// A dialog (docs/04 Accessibility): role="dialog" named by its title;
+// focus moves into it ([data-autofocus] or an autoFocus field inside,
+// else the dialog itself), Tab and Shift+Tab stay inside it, Esc closes it
+// when it may be closed (onClose set), and focus returns to the element
+// that opened it. With stacked dialogs only the top one does this.
 function Modal({ open, onClose, children, title, footer, width=560 }) {
   const isOpen = open !== false;
   const boxRef = React.useRef(null);
@@ -567,28 +611,52 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
   if (!idRef.current) idRef.current = "modal-" + Math.random().toString(36).slice(2, 10);
   const closeRef = React.useRef(onClose);
   closeRef.current = onClose;
+  // The element that opened the dialog, read while rendering: an autoFocus
+  // field inside takes focus before the effect below runs.
+  const openerRef = React.useRef(null);
+  if (!isOpen) openerRef.current = null;
+  else if (!openerRef.current && typeof document !== "undefined") openerRef.current = document.activeElement;
   React.useEffect(() => {
     if (!isOpen) return;
     const me = idRef.current;
     __openModals.push(me);
     const box = boxRef.current;
-    if (box && !box.contains(document.activeElement)) { try { box.focus({ preventScroll: true }); } catch (_) {} }
+    const opener = openerRef.current;
+    if (box && !box.contains(document.activeElement)) {
+      if (!__focusEl(box.querySelector("[data-autofocus]"))) __focusEl(box);
+    }
     const onKey = (e) => {
-      if (e.key !== "Escape" || __openModals[__openModals.length - 1] !== me) return;
-      e.stopPropagation();
-      if (closeRef.current) closeRef.current();
+      if (__openModals[__openModals.length - 1] !== me) return;
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        if (closeRef.current) closeRef.current();
+      } else if (e.key === "Tab" && box && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        __trapTab(e, box);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
       const i = __openModals.lastIndexOf(me);
       if (i >= 0) __openModals.splice(i, 1);
+      // Back to the opener, unless something outside the dialog took focus
+      // on purpose meanwhile.
+      const active = document.activeElement;
+      const lost = !active || active === document.body || !document.contains(active) || (box && box.contains(active));
+      if (lost && opener && opener !== document.body && document.contains(opener)) __focusEl(opener);
     };
   }, [isOpen]);
   if (!isOpen) return null;
   const titleId = idRef.current + "-title";
+  const wrapTo = (toLast) => {
+    const box = boxRef.current;
+    if (!box) return;
+    const list = __tabbablesIn(box);
+    if (!__focusEl(toLast ? list[list.length - 1] : list[0])) __focusEl(box);
+  };
   return (
     <div className="modal-backdrop" onClick={onClose}>
+      <span tabIndex={0} data-focus-guard="start" style={__FOCUS_GUARD} onFocus={()=>wrapTo(true)}/>
       <div ref={boxRef} className="modal" role="dialog" aria-modal="true" tabIndex={-1}
         aria-labelledby={title ? titleId : undefined}
         style={{width,maxWidth:`calc(100% - 40px)`,outline:"none"}} onClick={e=>e.stopPropagation()}>
@@ -601,6 +669,7 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
         <div style={{padding:"20px 22px"}}>{children}</div>
         {footer && <div style={{padding:"14px 22px",borderTop:"1px solid var(--ink-100)",display:"flex",justifyContent:"flex-end",gap:10,background:"var(--ink-50)",borderBottomLeftRadius:18,borderBottomRightRadius:18}}>{footer}</div>}
       </div>
+      <span tabIndex={0} data-focus-guard="end" style={__FOCUS_GUARD} onFocus={()=>wrapTo(false)}/>
     </div>
   );
 }

@@ -176,9 +176,9 @@ needs the header `X-Requested-With: clinicsys` (403 `csrf_header_required`).
 | `POST /api/admin/create-user` `{email, password, name, role, phone[, branch_ids]}` | clinic admin. `{ok:true, uid, staff_id, linked}`; see "Clinic administration" |
 | `POST /api/admin/reset-password` `{staff_id \| auth_uid, password}` | clinic admin. `{ok:true, staff_id}`; ends the account's sessions |
 | `POST /api/admin/set-status` `{staff_id, active}` (or `status`) | clinic admin. `{ok:true, staff_id, status}` |
-| `GET /api/org/invitations` | clinic admin. `[invitation]` (newest first; `status` pending/accepted/revoked/expired) |
-| `POST /api/org/invitations` `{email, role, branch_ids}` | clinic admin. 201 `{invitation, email_sent}`; 409 `already_member` / `invitation_exists`; 422 `plan_limit:users` |
-| `POST /api/org/invitations/:id/resend` | new token + 7 days → `{invitation, email_sent}` |
+| `GET /api/org/invitations` | clinic admin. `[invitation]` (newest first; `status` pending/accepted/revoked/expired; `email_status` pending/sent/failed or null for older rows, `email_status_at`) |
+| `POST /api/org/invitations` `{email, role, branch_ids}` | clinic admin. 201 `{invitation, email_sent}` (`email_sent` true/false, null while the SMTP server is still busy after 10 s; the outcome is stored as `email_status` even then); 409 `already_member` / `invitation_exists`; 422 `plan_limit:users` |
+| `POST /api/org/invitations/:id/resend` | new token + 7 days, `email_status` back to `pending` until the e-mail is sent → `{invitation, email_sent}` |
 | `DELETE /api/org/invitations/:id` | 204; status `revoked` (rows are kept) |
 | `GET /api/invitations/:token` | public. `{organization:{name, slug}, email, role, status, expires_at, account_exists}`; 404 / 410 / 403 `org_inactive` |
 | `POST /api/invitations/:token/accept` `{password, name}` | public. Login payload + `organization`, `role` + cookie |
@@ -188,8 +188,11 @@ Clinic context: the organization comes from the Host `<slug>.<APP_BASE_DOMAIN>`,
 otherwise from `X-Org-Slug`; it is set only for an active member of an
 active clinic (else 403: `org_required`, `not_a_member`, `org_inactive`).
 The branch is `X-Branch-Id` when the member may use it (admin: any branch of
-the clinic; other roles: `member_branches`), otherwise the oldest accessible
-branch.
+the clinic; other roles: `member_branches`), otherwise the oldest active
+accessible branch (or the oldest accessible one). An inactive branch asked for
+in `X-Branch-Id` is kept: its rows can be read and updated, but a new row
+there (`/api/data` insert, an RPC such as `record_quick_payment`) is refused
+by the database with 409 `{code:'branch_inactive', message:'Branch is inactive'}`.
 
 ### `/api/data` request
 
@@ -220,8 +223,9 @@ branch.
 - json/jsonb values are sent as JSON text; numeric/int8 come back as numbers,
   `date` as `YYYY-MM-DD`, timestamps as ISO-8601 (`…T…+00:00`, session time zone UTC).
 - PostgreSQL errors: `23505` → 409, `42501`/row-level security → 403,
-  `PL422` → 422, statement timeout → 503, connection/internal classes → 500,
-  anything else → 400. `code` is the SQLSTATE.
+  `PL422` → 422, `BR409` (new row on an inactive branch) → 409
+  `branch_inactive`, statement timeout → 503, connection/internal classes →
+  500, anything else → 400. `code` is the SQLSTATE (`branch_inactive` for BR409).
 
 ### Files
 
@@ -233,7 +237,10 @@ receptionist, doctor, therapist; replace (`upsert`) — admin, receptionist;
 remove — admin and receptionist anything, others only what they uploaded
 (owner kept in `FILES_DIR/<org>/.meta/<bucket>/<path>.json`). Only images,
 PDF, plain text and MP4 render inline; everything else downloads as
-`application/octet-stream` with a sandbox CSP.
+`application/octet-stream` with a sandbox CSP. Every files route (upload,
+sign, object, signed link, remove) answers 403 `module_disabled` while the
+bucket's module (`patient-files` → `core.files`) is off for the clinic; the
+files are kept.
 
 ## Clinic administration (`/api/admin/*`, `/api/org/*`)
 

@@ -304,6 +304,13 @@ function __ensureActiveBranch(list) {
 
 const INACTIVE_BRANCH_BOOKING = "هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.";
 
+// The API refuses every write on an inactive branch with 409
+// {code:"branch_inactive"} (e.g. deactivated by another admin meanwhile):
+// the Arabic reason, or null for any other error.
+function __branchInactiveText(error) {
+  return error && error.code === "branch_inactive" ? __AUTH_ERRORS.branch_inactive : null;
+}
+
 // Arabic reason for a refused branch write (docs/03 «إضافة فرع»).
 function __branchSaveError(error) {
   const code = (error && error.code) || "";
@@ -713,6 +720,8 @@ const __AUTH_ERRORS = {
   plan_limit_storage:  "تجاوزت مساحة التخزين المسموحة في خطتك",
   "plan_limit:storage": "تجاوزت مساحة التخزين المسموحة في خطتك",
   plan_limit_modules:  "هذه الميزة غير متاحة في خطتك",
+  // 409 from the API: a write on a deactivated branch (docs/06 task 3.18).
+  branch_inactive:     "هذا الفرع معطّل — اختر فرعًا نشطًا لإضافة حجوزات أو مدفوعات جديدة",
   weak_password:       "كلمة المرور يجب أن تكون من 6 إلى 72 حرفًا",
   invalid_email:       "بريد إلكتروني غير صحيح",
   invalid_role:        "الدور المحدد غير صالح",
@@ -1255,8 +1264,10 @@ function __branchFilterOf(cfg) {
 // first request also asks for the exact row count; only a table bigger than
 // what came back is re-read page by page, ordered by its primary key so
 // pages neither overlap nor skip rows.
-async function selectAllRows(cfg) {
-  const branch = __branchFilterOf(cfg);
+// opts.allBranches: every branch RLS lets the member read (reports «كل
+// الفروع»), whatever branch is selected.
+async function selectAllRows(cfg, opts) {
+  const branch = opts && opts.allBranches ? null : __branchFilterOf(cfg);
   const scoped = (q) => (branch ? q.eq("branch_id", branch) : q);
   const first = await scoped(sb.from(cfg.key).select("*", { count: "exact" }));
   const total = first.count;
@@ -1339,8 +1350,11 @@ async function upsertRow(name, row) {
         __ok = false;
         // Keep the FULL PostgreSQL error (code + message + details + hint)
         // so callers can show exactly why the write was rejected — e.g.
-        // 42501 is an RLS policy violation.
-        __error = [error.code, error.message, error.details, error.hint]
+        // 42501 is an RLS policy violation. An inactive branch gets its
+        // Arabic reason (and a toast, after the screen's own generic one).
+        const inactive = __branchInactiveText(error);
+        if (inactive) setTimeout(() => { if (window.showToast) window.showToast(inactive, "error"); }, 0);
+        __error = inactive || [error.code, error.message, error.details, error.hint]
           .filter(Boolean).join(" · ") || String(error);
         console.warn(`upsertRow ${name} failed`, { table: cfg.key, op: "UPSERT (INSERT ON CONFLICT UPDATE)", error });
       }
@@ -1373,7 +1387,8 @@ async function removeRow(name, id) {
     if (error) {
       console.warn(`removeRow ${name} failed`, { table: cfg.key, error });
       throw new Error(
-        [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ")
+        __branchInactiveText(error)
+        || [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ")
         || "تعذّر الحذف"
       );
     }
@@ -1551,10 +1566,40 @@ async function loadClinicData() {
   ]);
 }
 
+// Reports «كل الفروع» (docs/03 C05, task 3.19): branch-scoped tables
+// (e.g. ["appts","sessions","payments"]) for every branch the member may
+// read — RLS can_access_branch gives a clinic admin every branch of the
+// clinic — without touching X-Branch-Id or window.DATA. Rows keep
+// branch_id and get the same UI aliases as window.DATA (names from it).
+// Resolves to { appts, sessions, ... } or throws an Error (Arabic).
+async function listAllBranchesTables(names) {
+  if (!sb) throw new Error("هذه الميزة تحتاج الاتصال بالخادم");
+  const wanted = (names || []).filter(n => DATA_TABLES[n] && DATA_TABLES[n].branchScoped);
+  const results = await Promise.all(wanted.map(n => selectAllRows(DATA_TABLES[n], { allBranches: true })));
+  const D = window.DATA || {};
+  const out = {
+    patients: D.patients || [], therapists: D.therapists || [], staff: D.staff || [],
+    doctors: D.doctors || [], departments: D.departments || [],
+  };
+  wanted.forEach((n, i) => {
+    const { data, error } = results[i] || {};
+    if (error && error.code !== "module_disabled") {
+      console.warn("listAllBranches " + n + " failed", error.message || error);
+      throw new Error(__friendlyAuthError(error.code, "") || "تعذّر تحميل بيانات الفروع");
+    }
+    out[n] = Array.isArray(data) ? data : [];
+  });
+  normalizeDomainData(out);
+  const tables = {};
+  wanted.forEach(n => { tables[n] = out[n]; });
+  return tables;
+}
+
 const KineticData = {
   list: listTable,
   upsert: upsertRow,
   remove: removeRow,
+  listAllBranches: listAllBranchesTables,
   tables: DATA_TABLES,
 };
 
@@ -1731,7 +1776,7 @@ async function recordQuickPayment(input) {
     });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
-      return { ok: false, error: error.message || "تعذّر تسجيل الدفع" };
+      return { ok: false, error: __branchInactiveText(error) || error.message || "تعذّر تسجيل الدفع" };
     }
     // Refresh mirrors so tiles/tables update without a page reload.
     await hydrateDomainTables().catch(()=>{});

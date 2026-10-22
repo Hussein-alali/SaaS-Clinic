@@ -6,6 +6,11 @@
 // (development: http://<slug>.<base>:<PORT>/?invite=<token>&org=<slug>,
 // because there is no wildcard DNS and the frontend reads ?org=).
 // Shared by /api/org/invitations (clinic admin) and /api/platform (Super Admin).
+//
+// The delivery of the last e-mail is kept on the row (0008): email_status
+// 'pending' when the invitation is created or re-sent, then 'sent' or
+// 'failed' once the SMTP attempt finishes (also after the request has
+// answered); NULL for rows older than 0008. email_status_at = last change.
 
 const crypto = require('crypto');
 const { HttpError, badRequest, notFound } = require('./errors');
@@ -44,6 +49,8 @@ function effectiveStatus(row) {
   return row.status;
 }
 
+const isoOrNull = (v) => (v instanceof Date ? v.toISOString() : v ?? null);
+
 /** The invitation as the API shows it (never the token or its hash). */
 function describeInvitation(row) {
   return {
@@ -56,6 +63,8 @@ function describeInvitation(row) {
     invited_by: row.invited_by,
     expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
     created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    email_status: row.email_status ?? null,
+    email_status_at: isoOrNull(row.email_status_at),
   };
 }
 
@@ -102,8 +111,9 @@ async function createInvitation(client, { orgId, email, role, branchIds, invited
   }
   const token = newToken();
   const { rows } = await client.query(
-    `insert into public.invitations (organization_id, email, token_hash, role, branch_ids, invited_by, expires_at)
-     values ($1, $2, $3, $4, $5::text[], $6, now() + ${INVITE_TTL_SQL})
+    `insert into public.invitations
+       (organization_id, email, token_hash, role, branch_ids, invited_by, expires_at, email_status, email_status_at)
+     values ($1, $2, $3, $4, $5::text[], $6, now() + ${INVITE_TTL_SQL}, 'pending', now())
      returning *`,
     [orgId, email, sha256(token), role, branches, invitedBy || null],
   );
@@ -135,7 +145,8 @@ async function resendInvitation(client, { orgId, id }) {
   const token = newToken();
   const { rows } = await client.query(
     `update public.invitations
-        set token_hash = $2, status = 'pending', expires_at = now() + ${INVITE_TTL_SQL}
+        set token_hash = $2, status = 'pending', expires_at = now() + ${INVITE_TTL_SQL},
+            email_status = 'pending', email_status_at = now()
       where id = $1
       returning *`,
     [id, sha256(token)],
@@ -170,10 +181,25 @@ const MAIL_WAIT_MS = 10000;
  * true when sent; a failure is logged (without the address) and returns
  * false: the invitation stays valid and can be re-sent. A slow SMTP server
  * does not hold the request: after MAIL_WAIT_MS the answer is null
- * (still sending) and the result is only logged.
+ * (still sending).
+ *
+ * With deps.db (the routes pass app.locals) the outcome is stored on the
+ * row as email_status 'sent' | 'failed' as soon as the attempt finishes,
+ * also after MAIL_WAIT_MS; deps.background (app.locals.background) lets
+ * close()/drain() wait for that late write. When it finishes in time,
+ * `invitation` is updated in place, so describeInvitation(invitation)
+ * shows the stored state.
  */
-async function sendInvitationEmail({ mailer, config }, { org, invitation, token }, waitMs = MAIL_WAIT_MS) {
-  const sending = deliverInvitation({ mailer, config }, { org, invitation, token });
+async function sendInvitationEmail(deps, { org, invitation, token }, waitMs = MAIL_WAIT_MS) {
+  const { mailer, config, db, background } = deps;
+  let sending = deliverInvitation({ mailer, config }, { org, invitation, token });
+  if (db && invitation.id) {
+    sending = sending.then(async (sent) => {
+      await recordEmailStatus(db, invitation, token, sent);
+      return sent;
+    });
+    if (background) background(() => sending);
+  }
   let timer;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => resolve(null), waitMs);
@@ -183,6 +209,26 @@ async function sendInvitationEmail({ mailer, config }, { org, invitation, token 
     return await Promise.race([sending, timeout]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Stores the outcome of one e-mail. Only while the row still holds that
+ * e-mail's token: a later re-send (new token, 'pending') is never
+ * overwritten by the result of an older e-mail. Never throws, and logs no
+ * address.
+ */
+async function recordEmailStatus(db, invitation, token, sent) {
+  try {
+    const { rows } = await db.query(
+      `update public.invitations set email_status = $3, email_status_at = now()
+        where id = $1 and token_hash = $2
+        returning email_status, email_status_at`,
+      [invitation.id, sha256(token), sent ? 'sent' : 'failed'],
+    );
+    if (rows[0]) Object.assign(invitation, rows[0]);
+  } catch (err) {
+    console.error('[api] invitation e-mail status not saved:', err && err.message);
   }
 }
 

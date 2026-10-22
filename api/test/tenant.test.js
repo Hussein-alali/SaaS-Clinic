@@ -166,6 +166,68 @@ test('an inactive branch is never chosen by default, but can still be asked for'
   }
 });
 
+test('an inactive X-Branch-Id is kept: reads and updates work, new rows → 409 branch_inactive (0009); an active branch can still settle its invoices', async () => {
+  const BRANCH_INACTIVE = { error: { message: 'Branch is inactive', code: 'branch_inactive' } };
+  const eq = (column, value) => [{ column, op: 'eq', value }];
+  const invoicePaid = async () =>
+    Number((await h.asSystem("select paid from invoices where invoice_id = 'INV-PHY-B1-1'")).rows[0].paid);
+  await h.asSystem("update branches set status = 'inactive' where id = $1", [BRANCH.physio1]);
+  try {
+    // The receptionist works only in branch 1: it stays her branch, with or
+    // without X-Branch-Id (never silently switched).
+    for (const branch of [BRANCH.physio1, undefined]) {
+      const recep = await h.as('physioReception', { slug: 'demo-physio', branch });
+      assert.equal((await recep.get('/api/orgs/current')).body.current_branch_id, BRANCH.physio1);
+      const read = await recep.data({ table: 'bookings', filters: eq('booking_id', 'BK-PHY-B1-1') });
+      assert.equal(read.status, 200);
+      assert.equal(read.body.data.length, 1, 'the history of the branch is readable');
+    }
+    const recep = await h.as('physioReception', { slug: 'demo-physio', branch: BRANCH.physio1 });
+
+    // New rows: /api/data (insert, upsert of a new key) and an inserting RPC.
+    const ins = await recep.data({ table: 'bookings', action: 'insert', values: { booking_id: 'BK-INACTIVE-1', patient_id: 'P-PHY-01', date: '2026-10-25', time: '10:00', price: 100 } });
+    assert.equal(ins.status, 409, ins.text);
+    assert.deepEqual(ins.body, BRANCH_INACTIVE);
+    const ups = await recep.data({ table: 'bookings', action: 'upsert', values: { booking_id: 'BK-INACTIVE-2', patient_id: 'P-PHY-01' } });
+    assert.equal(ups.status, 409);
+    assert.deepEqual(ups.body, BRANCH_INACTIVE);
+    const before = await invoicePaid();
+    const pay = await recep.rpc('record_quick_payment', {
+      p_patient_id: 'P-PHY-01', p_allocations: [{ type: 'invoice', id: 'INV-PHY-B1-1', amount: 10 }], p_method: 'cash',
+    });
+    assert.equal(pay.status, 409, pay.text);
+    assert.deepEqual(pay.body, BRANCH_INACTIVE);
+    assert.equal(await invoicePaid(), before, 'the RPC rolled back as a whole');
+    assert.equal((await h.asSystem("select count(*)::int as n from bookings where booking_id like 'BK-INACTIVE-%'")).rows[0].n, 0);
+
+    // Existing rows: update, and upsert of an existing key (how the screens save).
+    const upd = await recep.data({ table: 'bookings', action: 'update', values: { notes: 'inactive branch' }, filters: eq('booking_id', 'BK-PHY-B1-1'), returning: true });
+    assert.equal(upd.status, 200, upd.text);
+    const save = await recep.data({ table: 'bookings', action: 'upsert', values: { booking_id: 'BK-PHY-B1-1', patient_id: 'P-PHY-01', status: 'cancelled' } });
+    assert.equal(save.status, 200, save.text);
+    const { rows: [bk] } = await h.asSystem("select branch_id, status, notes from bookings where booking_id = 'BK-PHY-B1-1'");
+    assert.deepEqual(bk, { branch_id: BRANCH.physio1, status: 'cancelled', notes: 'inactive branch' });
+
+    // The admin, in an active branch (the default now), settles the old
+    // branch-1 invoice: the payment is a new row of branch 2.
+    const admin = await h.as('physioAdmin', { slug: 'demo-physio' });
+    assert.equal((await admin.get('/api/orgs/current')).body.current_branch_id, BRANCH.physio2);
+    const settled = await admin.rpc('record_quick_payment', {
+      p_patient_id: 'P-PHY-01', p_allocations: [{ type: 'invoice', id: 'INV-PHY-B1-1', amount: 10 }], p_method: 'cash',
+    });
+    assert.equal(settled.status, 200, settled.text);
+    assert.equal(await invoicePaid(), before + 10);
+    const { rows: [p] } = await h.asSystem('select branch_id from payments where payment_id = $1', [settled.body.payment_id]);
+    assert.equal(p.branch_id, BRANCH.physio2);
+  } finally {
+    await h.asSystem("update branches set status = 'active' where id = $1", [BRANCH.physio1]);
+  }
+  // Active again: new rows are accepted.
+  const recep = await h.as('physioReception', { slug: 'demo-physio', branch: BRANCH.physio1 });
+  const ok = await recep.data({ table: 'bookings', action: 'insert', values: { booking_id: 'BK-ACTIVE-AGAIN', patient_id: 'P-PHY-01' } });
+  assert.equal(ok.status, 200, ok.text);
+});
+
 test('a non-member gets 403, whatever the route', async () => {
   const outsider = await h.login(USER.outsider.email);
   const c = h.client({ cookie: outsider.cookie, slug: 'demo-physio' });

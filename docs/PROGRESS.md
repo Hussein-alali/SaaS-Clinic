@@ -20,10 +20,10 @@
 | شاشات SaaS | `src/tenant.jsx` (حل العيادة، الدخول، الدعوة، التهيئة، الفروع C07، الموظفون C06)، `src/platform.jsx` (A01–A04)، `src/roles.jsx` (`ROUTE_MODULES`) | |
 | الـ API | `api/` (Express 5، `app.js`) | `/api/auth/*`، `/api/orgs/*`، `/api/data` (قائمة سماح بدل PostgREST، حد 1000 صف)، `/api/rpc` (23 دالة)، `/api/files` (روابط HMAC ≤ 600 ث)، `/api/admin/*`، `/api/org/*` (الدعوات، الأعضاء، الاستخدام)، `/api/invitations/:token`، `/api/platform/*`؛ `403 module_disabled` من `api/src/modules.js` |
 | الجلسة | cookie `cs_session` | JWT `{sub, sv}` مع `session_version`؛ العيادة من `Host` أو `X-Org-Slug`؛ المنصة من `admin.<base>` أو `X-Platform: 1` (غير الإنتاج) |
-| القاعدة | `db/migrations/0001`–`0006` | `0001_baseline`، `0002_platform`، `0003_tenancy`، `0004_audit_integrity`، `0005_branches_no_delete`، `0006_staff_role`. **التالي `0007`. لا تعدّل migration مطبّقًا.** |
-| العزل | PostgreSQL RLS | `set_config` لـ `app.user_id/org_id/branch_id/system` لكل معاملة؛ FORCE RLS + `tenant_isolation` (RESTRICTIVE) + `branch_scope`؛ `organization_id DEFAULT app_org_id()`؛ triggers حدود الخطة بـ SQLSTATE `PL422`؛ الأدوار admin/receptionist/doctor/therapist/staff |
+| القاعدة | `db/migrations/0001`–`0009` | `0001_baseline`، `0002_platform`، `0003_tenancy`، `0004_audit_integrity`، `0005_branches_no_delete`، `0006_staff_role`، `0007_rpc_role_guards`، `0008_invitation_email_status`، `0009_inactive_branch_guard`. **التالي `0010`. لا تعدّل migration مطبّقًا.** |
+| العزل | PostgreSQL RLS | `set_config` لـ `app.user_id/org_id/branch_id/system` لكل معاملة؛ FORCE RLS + `tenant_isolation` (RESTRICTIVE) + `branch_scope`؛ `organization_id DEFAULT app_org_id()`؛ triggers حدود الخطة بـ SQLSTATE `PL422` (→ 422)، والفرع المعطّل بـ `BR409` (→ `409 branch_inactive`)؛ الأدوار admin/receptionist/doctor/therapist/staff |
 
-ربط الوحدات (API + واجهة): `core.patients`→patients؛ `core.appointments`→bookings، patient_schedules؛ `core.files`→patient_files؛ `core.billing`→invoices، payments، payment_receipts، packages، patient_subscriptions + 3 RPC؛ `physio.sessions`→sessions؛ `physio.treatment_plans`→treatments؛ `physio.templates`→جداول القوالب.
+ربط الوحدات (API + واجهة): `core.patients`→patients؛ `core.appointments`→bookings، patient_schedules؛ `core.files`→patient_files وكل `/api/files` (bucket `patient-files`)؛ `core.billing`→invoices، payments، payment_receipts، packages، patient_subscriptions + 3 RPC؛ `physio.sessions`→sessions؛ `physio.treatment_plans`→treatments؛ `physio.templates`→جداول القوالب.
 
 ## 3. التشغيل والاختبار
 
@@ -49,19 +49,14 @@ E2E_DB_PORT=56100 E2E_API_PORT=3200 npx playwright test -c e2e/playwright.config
 | M1 الأداء | نقل `src/`؛ ترجمة مسبقة بـ esbuild (أول شاشة 5,962 → ~125 ms)؛ Excel والاستيراد عند الحاجة؛ تحميل الجداول بالتوازي + `selectAllRows` بعد حد 1000 صف | `baebfa9`، `ddd7943`، `11a2c43`، `04abbe3` |
 | M2 القاعدة والـ API | baseline بلا Supabase، جداول المنصة، تعدد العيادات + الفروع + RLS، اختبارات العزل، الـ API كاملًا، العميل `apiclient.jsx`؛ مراجعة أمنية أصلحت 5 ثغرات (تزوير السجل `0004`، الاستيلاء عبر `create-user`، ReDoS، `COOKIE_SECURE`، حارس أسرار التطوير)؛ مراجعة العقد (28 اختبار توافق) | `a1538eb`، `b60fd08` |
 | M3 رحلة المستخدم | حل العيادة وصفحات الحالة، الدخول والتوجيه، قبول الدعوة، سياق العيادة/الفرع، القائمة حسب الوحدات والدور، لوحة Super Admin، الفروع C07 (تعطيل لا حذف)، الموظفون والدعوات C06، قائمة التهيئة، `staff` role، `Modal` بدلالات dialog، تسميات السجل بالعربية؛ e2e لكل الرحلات J1–J4 و AT-01..10، AT-13..16 | `38d0183`، `c9cd30b`، `e484ff4`، `8a83f6d` |
+| `PROGRESS.md` | هذا الملف ويُحمّل من `CLAUDE.md` | `49413fb` |
+| البند 9 | 2.9 فحوص الأدوار في RPC (`0007`)؛ 3.15 `invitations.email_status` (`0008`) وشاراته في C06 و A04؛ 3.16 `core.files` في `/api/files`؛ 3.17 حبس التركيز في `Modal`؛ 3.18 رفض الصفوف الجديدة على فرع معطّل (`0009`)؛ 3.19 «كل الفروع» في التقارير للمدير (`KineticData.listAllBranches`) | (هذا الـ commit) |
 
-**آخر نتائج تحقق (`8a83f6d`، قواعد جديدة):** القاعدة + الـ API: 212 نجاحًا، 0 فشل، 2 متخطّيان، 1 todo (2.9)؛ العميل 102/102؛ e2e: 66 نجاحًا و 2 متخطّيان (AT-11، AT-12 بلا شاشة)؛ حجم البناء ~221 KB gzip للتطبيق (~267 KB مع React، الميزانية 300 KB).
+**آخر نتائج تحقق (البند 9، قواعد جديدة):** القاعدة + الـ API: 222 نجاحًا، 0 فشل، 2 متخطّيان، 0 todo؛ العميل 102/102؛ e2e: 69 نجاحًا و 2 متخطّيان (AT-11، AT-12 بلا شاشة)؛ حجم البناء ~224 KB gzip للتطبيق (~270 KB مع React، الميزانية 300 KB).
 
 ## 5. المفتوح الآن
 
-**قيد التنفيذ (طلب المستخدم «اكمل 9»):**
-- 2.9 فحوص الأدوار في 23 دالة RPC (`v_role is null or ...`) + فحص دور لـ `record_quick_payment` و `list_invoices_filtered` + قرار `create/update_treatment_method` → migration `0007`، وقلب اختبار `todo` في `db/test/baseline.test.js`.
-- 3.15 حفظ `email_sent` للدعوة في القاعدة/الـ API (اليوم `sessionStorage` `clinicsys.unsent_invites`).
-- 3.16 فرض الوحدات في `/api/files` (`patient-files` → `core.files`).
-- 3.17 حبس التركيز في `Modal` (`src/ui.jsx`).
-- 3.18 رفض الكتابة على فرع معطّل (`X-Branch-Id`) في الـ API/القاعدة.
-- 3.19 عرض «كل الفروع» في التقارير للمدير (C05).
-- 3.10 مراجعة UX وإمكانية الوصول الشاملة (1280×800 و 390×844 مقابل `docs/04`) وإصلاحها.
+**قيد التنفيذ:** 3.10 مراجعة UX وإمكانية الوصول الشاملة (1280×800 و 390×844 مقابل `docs/04`) وإصلاحها، ومنها حبس التركيز في النوافذ التي لا تستخدم `Modal` (إعادة الجدولة في `screens1.jsx`، معالج الحجز في `screens2.jsx`، لوحة الأوامر في `ui.jsx`).
 
 **لاحقًا:** 1.2 تنظيف الأسرار (`DEPLOY.md`، `seed-admin.sql` فيهما كلمة مرور المدير)؛ 1.5 Vite؛ 1.14 تحميل البيانات حسب الشاشة؛ 2.1 نسخة Supabase؛ 2.10 مولدات المعرّفات في SQL و `receipt_no`؛ 2.16–2.19؛ 3.11–3.14؛ Milestones 4–6 (ترحيل بيانات Supabase في 4.7).
 
@@ -77,9 +72,11 @@ E2E_DB_PORT=56100 E2E_API_PORT=3200 npx playwright test -c e2e/playwright.config
 - عملية الـ API في الخلفية يجب ألا ترث stdout (`exec ... </dev/null >log 2>&1 &`).
 - الوكلاء يتوقفون بحد الاستخدام: commit نقاط حفظ متكررة، ومنافذ مختلفة لكل وكيل.
 - `npm run dev` لا يخدم `/api` (المهمة 3.13): للتجربة الكاملة استخدم `dev-stack.sh`.
+- لا `git stash` أثناء عمل وكيل آخر في نفس الشجرة: يرجّع ملفاته مؤقتًا.
 
 ## سجل التغييرات
 
 | التاريخ | التغيير | Commit |
 |---|---|---|
 | 22 أكتوبر 2026 | إنشاء الملف: ملخص كل ما أُنجز حتى `8a83f6d`، وربطه بـ `CLAUDE.md` ليُقرأ في كل جلسة | (هذا الـ commit) |
+| 22 أكتوبر 2026 | البند 9 منجز (2.9، 3.15–3.19)؛ migrations حتى `0009`؛ نتائج الاختبارات الجديدة؛ 3.10 جارية | (هذا الـ commit) |

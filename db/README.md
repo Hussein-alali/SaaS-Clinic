@@ -13,7 +13,12 @@ db/
 │   ├── 0001_baseline.sql    # Supabase_All_In_One.sql ported to plain PostgreSQL
 │   ├── 0002_platform.sql    # platform/identity tables + catalog seed (no RLS)
 │   ├── 0003_tenancy.sql     # organization_id/branch_id, FORCE RLS, plan limits
-│   └── 0004_audit_integrity.sql # members' audit rows: id/actor/time set by the database
+│   ├── 0004_audit_integrity.sql # members' audit rows: id/actor/time set by the database
+│   ├── 0005_branches_no_delete.sql # branches are deactivated, never deleted
+│   ├── 0006_staff_role.sql  # staff.role accepts 'staff'
+│   ├── 0007_rpc_role_guards.sql # NULL-safe RPC role guards; billing RPCs admin/receptionist
+│   ├── 0008_invitation_email_status.sql # invitations.email_status / email_status_at
+│   └── 0009_inactive_branch_guard.sql # no new row on an inactive branch (BR409)
 ├── seed/
 │   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/
@@ -25,6 +30,7 @@ db/
     ├── branch.test.js       # branch_scope / member_branches
     ├── limits.test.js       # plan limits (PL422)
     ├── rpc.test.js          # the 0001 RPCs under tenant context
+    ├── role_guards.test.js  # 0007: RPCs refuse members without a usable role
     └── seed.test.js         # what dev.sql provides
 ```
 
@@ -161,17 +167,19 @@ After `0003_tenancy.sql` replaces `app_role()`, the two old-role-model tests
 skip themselves, and the 0001 seed rows are counted in the system context
 (they are now global rows); the tenancy tests cover the new model.
 
-### Known issue (todo test)
+### RPC role guards (fixed by 0007)
 
-`RPC role guards refuse a caller without a role` is marked **todo**. The
-Supabase functions check roles with `if v_role not in (...) then raise` (or
-`<> 'admin'`). When `app_role()` is NULL that condition is NULL, not true, so
-an anonymous caller, or a user without an active staff row, passes the guard.
-For example, `create_treatment_template` succeeds anonymously.
-`record_quick_payment` and `list_invoices_filtered` have no role check at all.
-The baseline keeps this behaviour on purpose: it is a faithful port. A later
-migration should change the guards to `if v_role is null or v_role not in
-(...)`; the todo test then passes.
+The Supabase functions checked roles with `if v_role not in (...) then raise`
+(or `<> 'admin'`). When `app_role()` is NULL that condition is NULL, not
+true, so an anonymous caller or a non-member passed the guard, and
+`record_quick_payment` and `list_invoices_filtered` had no role check at all.
+The baseline kept this on purpose (a faithful port). `0007_rpc_role_guards`
+re-creates every RPC with `if v_role is null or v_role not in (...)` (or
+`coalesce(public.app_role(), '') not in (...)`), gives the two billing RPCs
+an admin/receptionist check, drops the unused legacy
+`create_treatment_method` / `update_treatment_method`, and fails if a
+security-definer function still has a NULL-unsafe guard. The test
+`RPC role guards refuse a caller without a role (0007)` checks all 23 RPCs.
 
 ## Multi-clinic model (0002 + 0003)
 
@@ -211,6 +219,15 @@ The rules are in `docs/05-Backend-Schema.md` (conventions 3–12). In practice:
   `(organization_id, x) → parent (organization_id, key)`. The ones that replace
   `ON DELETE SET NULL` keys are `DEFERRABLE INITIALLY DEFERRED` (checked at
   commit) next to the original single-column key.
+- **Inactive branches (0009).** A branch is deactivated, never deleted. A
+  BEFORE INSERT / UPDATE OF branch_id trigger on the seven branch-scoped
+  tables refuses a NEW row on an inactive branch with SQLSTATE `BR409`
+  (message `branch_inactive`; the API answers 409 `branch_inactive`).
+  Reading, updating (including an upsert of an existing key) and deleting the
+  branch's rows still work, and the system context may still write there.
+- **Invitation e-mails (0008).** `invitations.email_status` is `pending`
+  (created / re-sent), `sent` or `failed`, with `email_status_at`; NULL for
+  older rows. The API writes it.
 - **Plan limits:** a new active branch, an activated membership or a new
   pending invitation beyond `subscription_plans.max_branches` / `max_users`
   raises SQLSTATE `PL422` with the message `plan_limit:branches` or

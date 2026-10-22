@@ -1,10 +1,13 @@
 'use strict';
 // Disabled clinic modules on the data routes (docs/01-PRD.md AT-07):
-// /api/data and /api/rpc refuse the tables and functions of a module the
-// clinic has not enabled (403 module_disabled); the rows stay, and enabling
-// the module again gives them back (api/src/modules.js).
+// /api/data, /api/rpc and /api/files refuse the tables, functions and file
+// buckets of a module the clinic has not enabled (403 module_disabled); the
+// rows and files stay, and enabling the module again gives them back
+// (api/src/modules.js).
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { setup, ORG } = require('./helpers');
 
 let h;
@@ -112,4 +115,52 @@ test('the check is per request: a module turned off mid-session is refused on th
     await setModules(ORG.physio, before);
   }
   assert.equal((await admin.rpc('list_treatments', {})).status, 200);
+});
+
+test('core.files turned off: every /api/files route answers 403 module_disabled, the files stay, and come back when it is on again', async () => {
+  const before = await enabledCodes(ORG.physio);
+  assert.ok(before.includes('core.files'));
+  const PDF = Buffer.from('%PDF-1.4\n% module test\n');
+  const upload = (c, objectPath) =>
+    c.upload({ bucket: 'patient-files', path: objectPath }, { name: 'a.pdf', type: 'application/pdf', data: PDF });
+  const kept = 'P-PHY-01/F-MOD-1.pdf';
+  const onDisk = (p) => path.join(h.config.filesDir, ORG.physio, 'patient-files', ...p.split('/'));
+  assert.equal((await upload(recep, kept)).status, 200);
+  const signed = await admin.post('/api/files/sign', { bucket: 'patient-files', path: kept, expiresIn: 300 });
+  assert.equal(signed.status, 200, signed.text);
+  const filesBefore = Number((await h.asSystem('select count(*) from patient_files where organization_id = $1', [ORG.physio])).rows[0].count);
+
+  await setModules(ORG.physio, before.filter((c) => c !== 'core.files'));
+  try {
+    const refused = {
+      upload: await upload(admin, 'P-PHY-01/F-MOD-2.pdf'),
+      sign: await admin.post('/api/files/sign', { bucket: 'patient-files', path: kept }),
+      object: await admin.get(`/api/files/object/patient-files/${kept}`),
+      // a link signed before the module was turned off
+      signed: await h.client({ csrf: false }).get(signed.body.signedUrl),
+      remove: await admin.post('/api/files/remove', { bucket: 'patient-files', paths: [kept] }),
+      removeOwn: await recep.post('/api/files/remove', { bucket: 'patient-files', paths: [kept] }),
+      table: await admin.data({ table: 'patient_files' }),
+    };
+    for (const [name, r] of Object.entries(refused)) {
+      assert.equal(r.status, 403, `${name}: ${r.text}`);
+      assert.equal(r.body.error.code, 'module_disabled', name);
+    }
+    // Nothing was written or removed.
+    assert.deepEqual(fs.readFileSync(onDisk(kept)), PDF);
+    assert.equal(fs.existsSync(onDisk('P-PHY-01/F-MOD-2.pdf')), false);
+    assert.deepEqual(fs.readdirSync(path.join(h.config.filesDir, '.tmp')), [], 'the refused upload left no temporary file');
+    // Other modules still work.
+    assert.equal((await admin.data({ table: 'patients' })).status, 200);
+  } finally {
+    await setModules(ORG.physio, before);
+  }
+
+  const back = await admin.get(`/api/files/object/patient-files/${kept}`);
+  assert.equal(back.status, 200);
+  assert.deepEqual(back.raw, PDF);
+  assert.equal((await h.client({ csrf: false }).get(signed.body.signedUrl)).status, 200, 'the old link works again until it expires');
+  assert.equal(Number((await h.asSystem('select count(*) from patient_files where organization_id = $1', [ORG.physio])).rows[0].count), filesBefore);
+  const removed = await admin.post('/api/files/remove', { bucket: 'patient-files', paths: [kept] });
+  assert.deepEqual(removed.body, { removed: [kept] });
 });

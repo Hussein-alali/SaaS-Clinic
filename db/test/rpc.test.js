@@ -80,10 +80,11 @@ test('record_quick_payment: writes the payment in the caller\'s clinic and branc
       assert.deepEqual([p2.organization_id, p2.branch_id], [org, b2]);
 
       // Payments are written by admin/receptionist only (0001 policies; under
-      // Supabase the RPC bypassed them): a doctor's call finds no booking.
+      // Supabase the RPC bypassed them), and since 0007 the RPC itself
+      // refuses the other roles first.
       await actAs(c, fx, 'doctor', k.slug);
       await expectError(c, `select public.record_quick_payment(p_patient_id => $1, p_allocations => $2::jsonb, p_method => 'cash')`,
-        [patient, JSON.stringify([{ type: 'appointment', id: booking, amount: 10 }])], /not found/);
+        [patient, JSON.stringify([{ type: 'appointment', id: booking, amount: 10 }])], /^P0001 غير مصرح/);
     });
   }
 });

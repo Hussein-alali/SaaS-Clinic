@@ -138,6 +138,8 @@
 | `invited_by` | uuid | |
 | `expires_at` | timestamptz | الافتراضي `now() + 7 days` |
 | `created_at` | timestamptz | |
+| `email_status` | text | ✅ `0008`: `pending` / `sent` / `failed`؛ `NULL` = صف أقدم من `0008` (غير معروف). الـ API يكتب `pending` عند الإنشاء وإعادة الإرسال، ثم النتيجة بعد محاولة SMTP |
+| `email_status_at` | timestamptz | ✅ `0008`: وقت آخر تغيير لـ `email_status` |
 
 **Indexes:** `unique(organization_id, lower(email)) where status = 'pending'`، و `unique(token_hash)`.
 
@@ -251,7 +253,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | `organization_modules`, `subscriptions` | Super Admin؛ أعضاء المؤسسة (قراءة) | Super Admin | Super Admin | Super Admin |
 | `clinic_settings` (لكل عيادة) | أعضاء العيادة | تلقائي عند إنشاء العيادة | `admin` | — |
 | `patients` | أعضاء المؤسسة حسب الدور (الطبيب/المعالج: مرضاه) | admin, receptionist | admin, receptionist, doctor | admin |
-| `bookings` | `can_access_branch` + الدور | admin, receptionist (في فرعه) | admin, receptionist | admin |
+| `bookings` | `can_access_branch` + الدور | admin, receptionist (في فرعه، **النشط فقط** — `0009`) | admin, receptionist | admin |
 | `invoices`, `payments` | admin, receptionist (فرعه) | admin, receptionist | admin | admin (مع سجل تدقيق) |
 | `sessions`, `treatments` | admin, doctor, therapist (فرعه/مرضاه) + `org_module_enabled('physio.sessions')` | doctor, therapist | doctor, therapist | admin |
 | `patient_files` + الملفات | أعضاء العيادة حسب الدور؛ الملف في مجلد العيادة على القرص | admin, receptionist, doctor, therapist | — | المرفوع أو admin |
@@ -308,7 +310,10 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 4. ✅ `0004_audit_integrity.sql` — trigger `audit_events_stamp` قبل الإدخال (خارج سياق النظام): `id` من التسلسل، و `actor_uid = auth.uid()`، و `actor_role = app_role()`، و `created_at = now()`. السبب: التسلسل المشترك سمح لعضو عيادة بحجز معرّفات تحتاجها كتابات التدقيق في كل العيادات (اكتشفته المراجعة الأمنية).
 5. ✅ `0005_branches_no_delete.sql` — سياسة «admin write branches» (`FOR ALL`) استُبدلت بـ «admin insert branches» و «admin update branches»؛ لا سياسة DELETE إلا `system_access`، فحذف العضو لا يطابق أي صف (فحص ذاتي في الملف). الفروع تُعطّل (`status='inactive'`) ولا تُحذف.
 6. ✅ `0006_staff_role.sql` — `staff_role_check` يسمح بـ `admin` و `receptionist` و `doctor` و `therapist` و `staff`، وصفوف أعضاء `staff` الموجودة مُلئت. الدور `staff` ما زال بلا صلاحية بيانات.
-7. `0007_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+7. ✅ `0007_rpc_role_guards.sql` — إعادة إنشاء 21 دالة `security definer` من آخر تعريف لها مع فحص دور آمن من `NULL` (`v_role is null or v_role not in (...)`، و `coalesce(public.app_role(), '')` في دوال القراءة)؛ فحص دور جديد (admin، receptionist) لـ `record_quick_payment` و `list_invoices_filtered`؛ حذف `create_treatment_method` و `update_treatment_method` (خارج قائمة السماح وغير مستخدمتين). فحص ذاتي: يفشل إن بقي نمط غير آمن في أي دالة `security definer` في `public`، أو نقص الفحص في أي من الدوال الـ 23، أو بقيت الدالتان.
+8. ✅ `0008_invitation_email_status.sql` — العمودان `invitations.email_status` (check) و `email_status_at`. لا يمس trigger حد المستخدمين.
+9. ✅ `0009_inactive_branch_guard.sql` — trigger `<table>_branch_active` (الدالة `refuse_inactive_branch(pk)`) على الجداول السبعة المرتبطة بفرع: `BEFORE INSERT` و `BEFORE UPDATE OF branch_id` يرفضان فرعًا معطّلًا بـ SQLSTATE `BR409` (`branch_inactive`). مستثنى: سياق النظام، و upsert لمفتاح أساسي موجود (الشاشات تحفظ هكذا)، وفرع لا يراه المستدعي (ترفضه القيود الأخرى). فحص ذاتي: كل جدول فيه `branch_scope` عليه الـ trigger مفعّلًا ومعامله المفتاح الأساسي.
+10. `0010_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -320,7 +325,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 
 ## فرض الوحدات (Milestone 3)
 
-الوحدات المعطلة تُفرض في الـ API (`403 module_disabled`، والصفوف محفوظة؛ الربط في TRD «ملاحظات التنفيذ»)، **لا** في سياسات القاعدة بعد (`org_module_enabled()` غير مستخدمة في RLS — المهمة 2.16). **مفاتيح تخزين الواجهة الجديدة:** `clinicsys.onboarding_hidden` (`localStorage`)، و `clinicsys.onboarding_later` و `clinicsys.unsent_invites` (`sessionStorage`).
+الوحدات المعطلة تُفرض في الـ API (`403 module_disabled`، والصفوف والملفات محفوظة؛ الربط في TRD «ملاحظات التنفيذ»؛ ✅ يشمل `/api/files` منذ المهمة 3.16)، **لا** في سياسات القاعدة بعد (`org_module_enabled()` غير مستخدمة في RLS — المهمة 2.16). **مفاتيح تخزين الواجهة الجديدة:** `clinicsys.onboarding_hidden` (`localStorage`)، و `clinicsys.onboarding_later` (`sessionStorage`). حُذف `clinicsys.unsent_invites`: حالة البريد في `invitations.email_status`.
 
 ## سجل التغييرات
 
@@ -331,3 +336,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 22 أكتوبر 2026 | `0001_baseline.sql` ✅ وما حُذف منه؛ تفاصيل schema `auth` المنفذة؛ القاعدة 10 منفذة في الواجهة (ومتبقية في دوال SQL)؛ أربعة تنبيهات مُتحقق منها لـ `0003`؛ مكان بيانات الملفات. |
 | 22 أكتوبر 2026 | Milestone 2: `0002`/`0003`/`0004` ✅ وتفاصيلها؛ `system_access` والـ initplans وسياسات القوالب العامة؛ شروط `app_role()`؛ المفاتيح المركبة المؤجلة؛ سياسات الكتابة الجديدة وإصلاح 3 دوال موروثة؛ سلامة التدقيق؛ فجوات معروفة (حذف الفروع، دور `staff`)؛ قواعد المقاعد والوحدات وانتقالات الحالة؛ تفاصيل البذر. |
 | 22 أكتوبر 2026 | `0005_branches_no_delete` و `0006_staff_role` ✅؛ إغلاق فجوتي حذف الفروع ودور `staff`؛ فرض الوحدات في الـ API لا في RLS؛ مفاتيح تخزين جديدة. |
+| 22 أكتوبر 2026 | `0007_rpc_role_guards` (2.9)، `0008_invitation_email_status` (3.15)، `0009_inactive_branch_guard` (3.18) ✅؛ عمودان جديدان في `invitations`؛ الحجز على الفرع النشط فقط؛ فرض الوحدات يشمل الملفات؛ حذف مفتاح `clinicsys.unsent_invites`. (هذا الـ commit) |
