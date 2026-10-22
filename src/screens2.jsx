@@ -3378,7 +3378,13 @@ function OperationalReport() {
 function SettingsPage({ go }) {
   const role = (window.ME && window.ME.role) || "";
   const isAdmin = !role || role === "مدير";
-  const [tab, setTab] = React.useState("clinic");
+  // A link may ask for a tab (the first-use checklist: «الأقسام والفريق»,
+  // «المستخدمون والأدوار»); it is used once.
+  const [tab, setTab] = React.useState(() => {
+    const asked = window.__settingsTabRequest;
+    window.__settingsTabRequest = null;
+    return ["clinic", "branding", "depts", "users"].includes(asked) ? asked : "clinic";
+  });
 
   if (!isAdmin) {
     return (
@@ -4170,6 +4176,167 @@ function useOrgUsage() {
   return { usage, failed, reload };
 }
 
+// ── First-use checklist «ابدأ الإعداد» (docs/03 «First-use journey», J2) ──
+// On the clinic admin's dashboard (C01) of a new clinic. Each step is done
+// when the clinic's own data says so — nothing is ticked by hand:
+//   branch    an active branch has an address or a phone (C07)
+//   settings  the clinic's phone, e-mail or address is filled in (C08)
+//   team      a doctor or a specialist is on the roster (الأقسام والفريق)
+//   invite    another member or a pending invitation (C06, core.staff)
+//   booking   a patient and an appointment exist (C02/C03)
+// «لاحقًا» folds it into one line for this browser tab; «إخفاء» removes it
+// for this admin in this clinic. It disappears once every step is done.
+// Not shown in demo mode, to other roles, or before the first data load.
+const ONBOARDING_KEYS = { hidden: "clinicsys.onboarding_hidden", later: "clinicsys.onboarding_later" };
+function onboardingScope() {
+  const slug = window.TENANT_SLUG || "";
+  const uid = (window.ME && window.ME.id) || "";
+  return slug && uid ? `${slug}|${uid}` : "";
+}
+function onboardingFlag(kind, key) {
+  try {
+    const store = kind === "hidden" ? window.localStorage : window.sessionStorage;
+    const map = JSON.parse(store.getItem(ONBOARDING_KEYS[kind]) || "{}") || {};
+    return !!(key && map[key]);
+  } catch (_) { return false; }
+}
+function setOnboardingFlag(kind, key, on) {
+  if (!key) return;
+  try {
+    const store = kind === "hidden" ? window.localStorage : window.sessionStorage;
+    const map = JSON.parse(store.getItem(ONBOARDING_KEYS[kind]) || "{}") || {};
+    if (on) map[key] = true; else delete map[key];
+    store.setItem(ONBOARDING_KEYS[kind], JSON.stringify(map));
+  } catch (_) {}
+}
+function onboardingSteps(usage) {
+  const D = window.DATA || {};
+  const c = window.CLINIC || {};
+  const branches = window.BRANCHES || [];
+  const active = (b) => String((b && b.status) || "active") !== "inactive";
+  const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
+  const steps = [
+    { id: "branch", title: "أكمل بيانات الفرع الأول", hint: "العنوان، والهاتف، وساعات العمل.",
+      done: branches.some(b => active(b) && (String(b.address || "").trim() || String(b.phone || "").trim())),
+      action: "فتح الفروع", route: "branches" },
+    { id: "settings", title: "راجع إعدادات العيادة", hint: "اسم العرض، وبيانات التواصل، وساعات التقويم.",
+      done: !!(String(c.phone || "").trim() || String(c.email || "").trim() || String(c.address || "").trim()),
+      action: "فتح الإعدادات", route: "settings", tab: "clinic" },
+    { id: "team", title: "أضف الأقسام والأطباء والأخصائيين", hint: "يظهرون في الحجز والتقويم.",
+      done: ((D.doctors || []).length + (D.therapists || []).length) > 0,
+      action: "فتح الأقسام والفريق", route: "settings", tab: "depts" },
+  ];
+  if (staffOn) {
+    steps.push({ id: "invite", title: "ادعُ فريقك وحدد فروعهم", hint: "استقبال، وأطباء، وأخصائيون — كلٌّ بدوره.",
+      done: !!(usage && usage.users && Number(usage.users.used) > 1),
+      action: "دعوة الموظفين", route: "settings", tab: "users", needsUsage: true });
+  }
+  steps.push({ id: "booking", title: "أضف أول مريض واحجز أول موعد", hint: "من صفحة المواعيد: «حجز جديد».",
+    done: (D.patients || []).length > 0 && (D.appts || []).length > 0,
+    action: "فتح المواعيد", route: "appointments" });
+  return steps;
+}
+
+function OnboardingChecklist({ go }) {
+  window.useDataVersion && window.useDataVersion();
+  const key = onboardingScope();
+  const [hiddenNow, setHiddenNow] = React.useState(false);
+  const hidden = hiddenNow || onboardingFlag("hidden", key);
+  const isAdmin = window.ME && window.ME.role === "مدير";
+  // Nothing to show (and no /api/org/usage request): demo mode, other
+  // roles, hidden or finished before, or the clinic's settings and tables
+  // not read yet (the steps would look undone for a moment).
+  if (!window.SB || !isAdmin || !key || hidden || !window.DATA_LOADED || !window.CLINIC_LOADED) return null;
+  return <OnboardingChecklistBody go={go} scopeKey={key} onHide={() => { setOnboardingFlag("hidden", key, true); setHiddenNow(true); }}/>;
+}
+
+function OnboardingChecklistBody({ go, scopeKey, onHide }) {
+  const [, bump] = React.useState(0);
+  React.useEffect(() => {
+    const on = () => bump(n => n + 1);
+    window.addEventListener("kinetic:branches-updated", on);
+    return () => window.removeEventListener("kinetic:branches-updated", on);
+  }, []);
+  const { usage, failed } = useOrgUsage();
+  const [later, setLater] = React.useState(() => onboardingFlag("later", scopeKey));
+  const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
+  const waiting = staffOn && !usage && !failed; // the invitation step is still loading
+  const steps = waiting ? [] : onboardingSteps(usage).filter(st => !(st.needsUsage && !usage));
+  const doneCount = steps.filter(st => st.done).length;
+  const complete = !waiting && steps.length > 0 && doneCount === steps.length;
+  // Every step done: the checklist goes away for good (docs/03).
+  React.useEffect(() => { if (complete) onHide(); }, [complete]);
+  if (waiting || complete) return null;
+
+  const open = (st) => {
+    if (st.tab) window.__settingsTabRequest = st.tab;
+    go && go(st.route);
+  };
+  const fold = (on) => { setOnboardingFlag("later", scopeKey, on); setLater(on); };
+  const pct = Math.round((doneCount / steps.length) * 100);
+  const progressText = `أنجزت ${doneCount} من ${steps.length}`;
+
+  if (later) {
+    return (
+      <section className="card onboarding onboarding-folded" aria-label="ابدأ الإعداد" data-onboarding="folded"
+        style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",marginBottom:18,flexWrap:"wrap",borderColor:"var(--blue-100)",background:"var(--blue-50)"}}>
+        <I.Sparkle size={16} style={{color:"var(--blue-700)",flexShrink:0}}/>
+        <div style={{flex:1,minWidth:180,fontSize:13.5}}>
+          <strong>ابدأ الإعداد</strong> <span className="muted" data-onboarding-progress="">— {progressText}</span>
+        </div>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={() => fold(false)}>متابعة الإعداد</button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card card-pad onboarding" aria-labelledby="onboarding-title" data-onboarding="open"
+      style={{marginBottom:18,borderColor:"var(--blue-100)"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
+        <div style={{minWidth:0}}>
+          <h2 id="onboarding-title" className="h2" style={{display:"flex",alignItems:"center",gap:8,margin:0}}>
+            <I.Sparkle size={17} style={{color:"var(--blue-700)"}}/> ابدأ الإعداد
+          </h2>
+          <div className="muted" style={{fontSize:12.5,marginTop:4}}>خطوات قليلة لتجهيز عيادتك لأول حجز.</div>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={() => fold(true)}>لاحقًا</button>
+          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={onHide}>إخفاء</button>
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <div role="progressbar" aria-label="تقدم الإعداد" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount}
+          style={{flex:1,height:6,background:"var(--ink-100)",borderRadius:999,overflow:"hidden"}}>
+          <div style={{width:`${pct}%`,height:"100%",background:"var(--green)",borderRadius:999,transition:"width .2s"}}/>
+        </div>
+        <span className="muted" data-onboarding-progress="" style={{fontSize:12,whiteSpace:"nowrap"}}>{progressText}</span>
+      </div>
+      <ol style={{listStyle:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:8}}>
+        {steps.map((st, i) => (
+          <li key={st.id} data-step={st.id} data-done={st.done ? "true" : "false"}
+            style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:10,
+              background: st.done ? "var(--ink-50)" : "#fff",flexWrap:"wrap"}}>
+            <span aria-hidden="true" style={{width:24,height:24,borderRadius:999,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+              fontSize:11.5,fontWeight:600,background: st.done ? "var(--green)" : "var(--ink-100)",color: st.done ? "#fff" : "var(--ink-500)"}}>
+              {st.done ? <I.Check size={13}/> : i + 1}
+            </span>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:13.5,fontWeight:500,color: st.done ? "var(--ink-500)" : "var(--ink-900)",textDecoration: st.done ? "line-through" : "none"}}>
+                {st.title}<span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>{st.done ? " — تم" : " — لم يتم بعد"}</span>
+              </div>
+              <div className="muted" style={{fontSize:12,marginTop:2}}>{st.hint}</div>
+            </div>
+            {st.done
+              ? <span className="badge b-green"><I.Check size={11}/> تم</span>
+              : <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={() => open(st)}>{st.action}</button>}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+window.OnboardingChecklist = OnboardingChecklist;
+
 // Inline page alert (docs/04 «Alert ثابت داخل الصفحة»): tone warn | error | info.
 function CaAlert({ tone = "warn", children, onClose, id }) {
   const tones = {
@@ -4185,6 +4352,15 @@ function CaAlert({ tone = "warn", children, onClose, id }) {
       {onClose && <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق التنبيه" onClick={onClose} style={{padding:2,color:"inherit"}}><I.X size={13}/></button>}
     </div>
   );
+}
+
+// An e-mail, left-to-right, that may wrap only before its "@" (narrow
+// table columns) instead of splitting a word.
+function caEmail(email) {
+  const v = String(email || "");
+  const at = v.indexOf("@");
+  if (at <= 0) return <bdi dir="ltr">{v || "—"}</bdi>;
+  return <bdi dir="ltr">{v.slice(0, at)}<wbr/>{v.slice(at)}</bdi>;
 }
 
 // YYYY-MM-DD (ISO) kept left-to-right inside Arabic text.
@@ -4590,6 +4766,19 @@ function StaffInvitesPanel() {
 
   return (
     <div className="staff-panel">
+      {/* Phones (< 640px): each row becomes a card (docs/04 Layout rules). */}
+      <style>{`
+        @media (max-width: 639px) {
+          .staff-panel .tbl-scroll { max-height: none; overflow: visible; }
+          .staff-panel .tbl-scroll > .tbl.ca-cards { min-width: 0; }
+          .staff-panel .ca-cards thead { display: none; }
+          .staff-panel .ca-cards, .staff-panel .ca-cards tbody { display: block; }
+          .staff-panel .ca-cards tbody tr { display: block; border: 1px solid var(--ink-200); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; background: #fff; }
+          .staff-panel .ca-cards tbody td { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 !important; border: none !important; background: transparent !important; }
+          .staff-panel .ca-cards tbody td[data-label]::before { content: attr(data-label); font-size: 11.5px; color: var(--ink-500); flex-shrink: 0; }
+          .staff-panel .ca-cards tbody td.ca-cell-menu { justify-content: flex-end; width: auto !important; }
+        }
+      `}</style>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,gap:12,flexWrap:"wrap"}}>
         <div>
           <div className="h2">المستخدمون والأدوار</div>
@@ -4629,17 +4818,18 @@ function StaffInvitesPanel() {
         <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> تغيير كلمة المرور</button>
       </div>
 
-      {/* Members */}
+      {/* Members — name with the e-mail under it, so the table fits the
+          card without sideways scrolling on a desktop screen. */}
       <div className="h3" style={{marginBottom:8}}>أعضاء العيادة</div>
       <div className="tbl-scroll" style={{marginBottom:22}}>
-        <table className="tbl members-table">
-          <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>إجراءات</span></th></tr></thead>
+        <table className="tbl members-table ca-cards">
+          <thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>إجراءات</span></th></tr></thead>
           <tbody>
             {members === null && !loadError && (
-              <tr><td colSpan={6} style={{padding:0}}><SkeletonRow count={3}/></td></tr>
+              <tr><td colSpan={5} style={{padding:0}}><SkeletonRow count={3}/></td></tr>
             )}
             {members && members.length === 0 && (
-              <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title="لا أعضاء بعد" body="ادعُ أول موظف بالبريد من زر «دعوة موظف»."/></td></tr>
+              <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title="لا أعضاء بعد" body="ادعُ أول موظف بالبريد من زر «دعوة موظف»."/></td></tr>
             )}
             {(members || []).map(m => {
               const st = CA_MEMBER_STATUS[m.status] || CA_MEMBER_STATUS.active;
@@ -4658,17 +4848,21 @@ function StaffInvitesPanel() {
                   : { label:"إعادة تفعيل الحساب", icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:m, active:true }) });
               }
               items.push({ label:"نسخ البريد", icon:<I.Mail size={13}/>, onClick:()=>{ try { navigator.clipboard.writeText(m.email || ""); toast("تم نسخ البريد"); } catch (_) {} } });
+              // A disabled member is greyed by colour, not opacity: opacity
+              // would trap the row menu (position:fixed) under the next table.
               return (
-                <tr key={m.id} data-member={m.email} data-status={m.status} style={active ? undefined : {opacity:.8}}>
-                  <td><div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <div className="av sm">{initials(m.name)}</div>
-                    <span style={{fontWeight:500}}>{m.name}</span>{m.is_self && <span className="muted" style={{fontSize:11}}>(أنا)</span>}
+                <tr key={m.id} data-member={m.email} data-status={m.status} style={active ? undefined : {color:"var(--ink-500)"}}>
+                  <td><div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                    <div className="av sm" style={{flexShrink:0}}>{initials(m.name)}</div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:500}}>{m.name}{m.is_self && <span className="muted" style={{fontSize:11,fontWeight:400,marginInlineStart:6}}>(أنا)</span>}</div>
+                      <div className="mono muted" style={{fontSize:11.5,overflowWrap:"break-word"}}>{caEmail(m.email)}</div>
+                    </div>
                   </div></td>
-                  <td className="mono" style={{fontSize:12}}><bdi dir="ltr">{m.email}</bdi></td>
-                  <td><span className={"badge " + roleBadgeClass(m.role)}><span className="dot"></span>{CA_ROLE_AR[m.role] || m.role}</span></td>
-                  <td style={{fontSize:12.5}}>{branches.length ? branches.join("، ") : <span className="muted">—</span>}</td>
-                  <td><span className={"badge " + st.cls}><span className="dot"></span>{st.label}</span></td>
-                  <td><RowMenu size={13} items={items}/></td>
+                  <td data-label="الدور"><span className={"badge " + roleBadgeClass(m.role)} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{CA_ROLE_AR[m.role] || m.role}</span></td>
+                  <td data-label="الفروع" style={{fontSize:12.5}}>{branches.length ? branches.join("، ") : <span className="muted">—</span>}</td>
+                  <td data-label="الحالة"><span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span></td>
+                  <td className="ca-cell-menu" style={{width:44}}><RowMenu size={13} items={items}/></td>
                 </tr>
               );
             })}
@@ -4676,7 +4870,7 @@ function StaffInvitesPanel() {
         </table>
       </div>
 
-      {/* Invitations */}
+      {/* Invitations — e-mail with the role and branches under it. */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:8}}>
         <div className="h3">الدعوات</div>
         <div className="seg" role="group" aria-label="تصفية الدعوات">
@@ -4685,41 +4879,46 @@ function StaffInvitesPanel() {
         </div>
       </div>
       <div className="tbl-scroll">
-        <table className="tbl invitations-table">
-          <thead><tr><th>البريد الإلكتروني</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>تنتهي في</th><th>إجراءات</th></tr></thead>
+        <table className="tbl invitations-table ca-cards">
+          <thead><tr><th>المدعو</th><th>الحالة</th><th>تنتهي في</th><th>إجراءات</th></tr></thead>
           <tbody>
             {invites === null && !loadError && (
-              <tr><td colSpan={6} style={{padding:0}}><SkeletonRow count={2}/></td></tr>
+              <tr><td colSpan={4} style={{padding:0}}><SkeletonRow count={2}/></td></tr>
             )}
             {invites && shownInvites.length === 0 && (
-              <tr><td colSpan={6}><div className="tbl-empty"><I.Mail size={20}/><div>{filter === "open" ? "لا توجد دعوات بانتظار القبول." : "لم تُرسل أي دعوة بعد."}</div></div></td></tr>
+              <tr><td colSpan={4}><div className="tbl-empty"><I.Mail size={20}/><div>{filter === "open" ? "لا توجد دعوات بانتظار القبول." : "لم تُرسل أي دعوة بعد."}</div></div></td></tr>
             )}
             {shownInvites.map(inv => {
               const st = CA_INVITE_STATUS[inv.status] || { label: inv.status, cls: "b-grey" };
               const actionable = inv.status === "pending" || inv.status === "expired";
               const notSent = actionable && unsent.includes(inv.id);
+              const where = inv.role === "admin" ? "كل الفروع" : (caBranchNames(inv.branch_ids).join("، ") || "—");
               return (
                 <tr key={inv.id} data-invite={inv.email} data-status={inv.status}>
-                  <td className="mono" style={{fontSize:12}}><bdi dir="ltr">{inv.email}</bdi></td>
-                  <td><span className={"badge " + roleBadgeClass(inv.role)}><span className="dot"></span>{CA_ROLE_AR[inv.role] || inv.role}</span></td>
-                  <td style={{fontSize:12.5}}>{inv.role === "admin" ? "كل الفروع" : (caBranchNames(inv.branch_ids).join("، ") || "—")}</td>
                   <td>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <span className={"badge " + st.cls}><span className="dot"></span>{st.label}</span>
-                      {notSent && <span className="badge b-red invite-unsent"><I.Mail size={11}/>لم يُرسل البريد</span>}
+                    <div className="mono" style={{fontSize:12,overflowWrap:"break-word"}}>{caEmail(inv.email)}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginTop:4,fontSize:12}}>
+                      <span className={"badge " + roleBadgeClass(inv.role)} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{CA_ROLE_AR[inv.role] || inv.role}</span>
+                      <span className="muted invite-branches">{where}</span>
                     </div>
                   </td>
-                  <td style={{fontSize:12.5}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>
-                  <td>
+                  <td data-label="الحالة">
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span>
+                      {notSent && <span className="badge b-red invite-unsent" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>لم يُرسل البريد</span>}
+                    </div>
+                  </td>
+                  <td data-label="تنتهي في" style={{fontSize:12.5,whiteSpace:"nowrap"}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>
+                  <td data-label="إجراءات">
                     {actionable ? (
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        <button type="button" className={"btn " + (notSent || inv.status === "expired" ? "btn-blue" : "btn-secondary")} style={{fontSize:12,padding:"5px 10px"}}
+                        <button type="button" className={"btn " + (notSent || inv.status === "expired" ? "btn-blue" : "btn-secondary")} style={{fontSize:12,padding:"5px 10px",whiteSpace:"nowrap"}}
                           disabled={resendId === inv.id} aria-label={`إعادة إرسال دعوة ${inv.email}`} onClick={()=>resend(inv)}>
                           {resendId === inv.id
                             ? <span className="spin" aria-hidden="true" style={{width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%"}}/>
                             : <I.Send size={12}/>} إعادة الإرسال
                         </button>
-                        <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"var(--red)"}}
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"var(--red)",whiteSpace:"nowrap"}}
                           aria-label={`إلغاء دعوة ${inv.email}`} onClick={()=>setRevokeRow(inv)}>
                           <I.X size={12}/> إلغاء
                         </button>

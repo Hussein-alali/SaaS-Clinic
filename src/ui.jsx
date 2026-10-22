@@ -556,15 +556,46 @@ function SkeletonRow({ count=5 }) {
 }
 
 // ── Modal ──────────────────────────────────────────────────────
+// Open modals, innermost last: Esc closes only the top one.
+const __openModals = [];
+// A dialog (docs/04 Accessibility: role="dialog", named by its title, closed
+// with Esc; focus moves into it unless a field inside already took it).
 function Modal({ open, onClose, children, title, footer, width=560 }) {
-  if (open === false) return null;
+  const isOpen = open !== false;
+  const boxRef = React.useRef(null);
+  const idRef = React.useRef(null);
+  if (!idRef.current) idRef.current = "modal-" + Math.random().toString(36).slice(2, 10);
+  const closeRef = React.useRef(onClose);
+  closeRef.current = onClose;
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const me = idRef.current;
+    __openModals.push(me);
+    const box = boxRef.current;
+    if (box && !box.contains(document.activeElement)) { try { box.focus({ preventScroll: true }); } catch (_) {} }
+    const onKey = (e) => {
+      if (e.key !== "Escape" || __openModals[__openModals.length - 1] !== me) return;
+      e.stopPropagation();
+      if (closeRef.current) closeRef.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const i = __openModals.lastIndexOf(me);
+      if (i >= 0) __openModals.splice(i, 1);
+    };
+  }, [isOpen]);
+  if (!isOpen) return null;
+  const titleId = idRef.current + "-title";
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" style={{width,maxWidth:`calc(100% - 40px)`}} onClick={e=>e.stopPropagation()}>
+      <div ref={boxRef} className="modal" role="dialog" aria-modal="true" tabIndex={-1}
+        aria-labelledby={title ? titleId : undefined}
+        style={{width,maxWidth:`calc(100% - 40px)`,outline:"none"}} onClick={e=>e.stopPropagation()}>
         {title && (
           <div style={{padding:"18px 22px",borderBottom:"1px solid var(--ink-100)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div className="h3">{title}</div>
-            <button className="btn btn-ghost btn-icon" onClick={onClose}><I.X size={16}/></button>
+            <div className="h3" id={titleId}>{title}</div>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={onClose}><I.X size={16}/></button>
           </div>
         )}
         <div style={{padding:"20px 22px"}}>{children}</div>
@@ -602,14 +633,28 @@ function Page({ children }) {
 function RowMenu({ items = [], size = 13, stopRowClick = true }) {
   const [open, setOpen] = React.useState(false);
   // Fixed positioning (computed from the trigger) lets the popover escape
-  // horizontally-scrolling table wrappers on small screens.
+  // horizontally-scrolling table wrappers on small screens. It is rendered
+  // into document.body (a portal), so a row's own stacking context (e.g.
+  // opacity) or a later sticky table header cannot cover it.
   const [pos, setPos] = React.useState({ top: 0, left: 0 });
   const ref = React.useRef(null);
+  const popRef = React.useRef(null);
+  const btnRef = React.useRef(null);
+  const anchor = React.useRef(null); // trigger position when opened
   React.useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const inside = (t) => (ref.current && ref.current.contains(t)) || (popRef.current && popRef.current.contains(t));
+    const onDoc = (e) => { if (!inside(e.target)) setOpen(false); };
     const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
-    const onAway = () => setOpen(false);
+    // Close when the trigger moves (page or table scrolled, window
+    // resized). A scroll event that arrives after opening for a scroll made
+    // before it (they fire on the next frame) leaves the trigger in place
+    // and keeps the menu open.
+    const onAway = () => {
+      const a = anchor.current;
+      const r = btnRef.current && btnRef.current.getBoundingClientRect();
+      if (!a || !r || Math.abs(r.top - a.top) > 1 || Math.abs(r.left - a.left) > 1) setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onAway, true);
@@ -624,20 +669,23 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
   const MENU_W = 180;
   return (
     <div ref={ref} style={{position:"relative",display:"inline-block"}}>
-      <button className="btn btn-ghost btn-icon" title="المزيد" onClick={(e)=>{
+      <button ref={btnRef} type="button" className="btn btn-ghost btn-icon" title="المزيد" aria-haspopup="true" aria-expanded={open ? "true" : "false"} onClick={(e)=>{
         if (stopRowClick) e.stopPropagation();
         if (!open) {
           const r = e.currentTarget.getBoundingClientRect();
+          anchor.current = { top: r.top, left: r.left };
           const left = Math.max(8, Math.min(r.right - MENU_W, window.innerWidth - MENU_W - 8));
-          const top = Math.min(r.bottom + 4, window.innerHeight - 60);
+          // Below the trigger, or above it when the menu would leave the screen.
+          const h = items.length * 34 + 14;
+          const top = (r.bottom + 4 + h <= window.innerHeight - 8) ? r.bottom + 4 : Math.max(8, r.top - 4 - h);
           setPos({ top, left });
         }
         setOpen(o=>!o);
       }}>
         <I.More size={size}/>
       </button>
-      {open && (
-        <div className="row-menu-pop" style={{position:"fixed",top:pos.top,left:pos.left,minWidth:MENU_W,background:"#fff",border:"1px solid var(--ink-200)",borderRadius:10,boxShadow:"var(--shadow-md)",zIndex:120,padding:6}}>
+      {open && __rowMenuPortal(
+        <div ref={popRef} className="row-menu-pop" style={{position:"fixed",top:pos.top,left:pos.left,minWidth:MENU_W,background:"#fff",border:"1px solid var(--ink-200)",borderRadius:10,boxShadow:"var(--shadow-md)",zIndex:120,padding:6}}>
           {items.map((it, i) => (
             <button key={i} onClick={(e)=>{ e.stopPropagation(); setOpen(false); if (it.onClick) it.onClick(); }}
               style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",fontSize:13,textAlign:"start",background:"transparent",border:"none",borderRadius:6,cursor:"pointer",color:it.danger?"var(--red)":"var(--ink-700)",fontFamily:"inherit"}}
@@ -652,6 +700,12 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
       )}
     </div>
   );
+}
+// document.body portal when ReactDOM offers one (React 16+), else in place.
+function __rowMenuPortal(node) {
+  return (window.ReactDOM && typeof window.ReactDOM.createPortal === "function" && document.body)
+    ? window.ReactDOM.createPortal(node, document.body)
+    : node;
 }
 window.RowMenu = RowMenu;
 

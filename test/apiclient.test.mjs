@@ -1457,6 +1457,29 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.deepEqual(rec.body.filters, [{ column: "deleted_at", op: "is", value: null }, { column: "invoice_id", op: "eq", value: "INV-1" }]);
   });
 
+  test("a module the clinic has not enabled (403 module_disabled): no rows, the cached copy is dropped; DATA_LOADED / CLINIC_LOADED follow the session (AT-07)", async () => {
+    const refused = () => json(403, { error: { message: "The module core.billing is not enabled for this clinic", code: "module_disabled" } });
+    let invoices = () => json(200, { data: [{ invoice_id: "INV-1", amount: 100, paid: 0 }], count: 1 });
+    const env = await bootApp({ "invoices:select": (req) => invoices(req) });
+    assert.equal(env.win.DATA_LOADED, true, "boot hydrate finished");
+    assert.equal(env.win.CLINIC_LOADED, true, "clinic_settings read");
+    assert.equal((await env.win.KineticData.list("payments")).length, 1);
+    assert.ok(env.win.localStorage.getItem("kinetic.invoices").includes("INV-1"));
+    invoices = refused;
+    const rows = await env.win.KineticData.list("payments");
+    assert.deepEqual(plain(rows), []);
+    assert.equal(env.win.localStorage.getItem("kinetic.invoices"), "[]");
+    // Any other failure (offline) still falls back to the cached copy.
+    invoices = () => { throw new TypeError("Failed to fetch"); };
+    env.win.localStorage.setItem("kinetic.invoices", JSON.stringify([{ invoice_id: "INV-CACHED" }]));
+    assert.deepEqual(plain((await env.win.KineticData.list("payments")).map((r) => r.invoice_id)), ["INV-CACHED"]);
+    // Signing out forgets that the tables were read.
+    await env.win.signOut();
+    assert.equal(env.win.DATA_LOADED, false);
+    assert.equal(env.win.CLINIC_LOADED, false);
+    assert.equal(vm.runInContext("__AUTH_ERRORS.module_disabled", env.win), "هذه الميزة غير مفعلة لعيادتك");
+  });
+
   test("the active branch from setActiveBranch() is sent as X-Branch-Id", async () => {
     const env = await bootApp({
       "branches:select": () => json(200, { data: [{ id: "br_a", name: "A" }, { id: "br_b", name: "B" }] }),

@@ -218,6 +218,14 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | `GET/POST /api/org/invitations` | `{email, role, branch_ids}` | قائمة/إنشاء دعوة وإرسال البريد |
 | `POST /api/org/invitations/:id/resend`، `DELETE /api/org/invitations/:id` | — | إعادة إرسال / إلغاء |
 
+**مسارات إضافية لمدير العيادة (Milestone 3):**
+
+| Method & path | الوصف |
+|---|---|
+| `GET /api/org/members` | `[{id, user_id, email, name, role, status, branch_ids, joined_at, created_at, staff_id, staff_status, phone, is_self}]`، النشطون أولًا؛ `admin` فقط (`403 forbidden` لغيره) |
+| `PATCH /api/org/members/:id` | `{role?, branch_ids?}`؛ الأدوار غير `admin` تحتاج فرعًا نشطًا واحدًا على الأقل (`branch_required` / `invalid_branch` / `invalid_branch_ids`)؛ `cannot_change_own_role`؛ `member_not_found` (404)؛ دور خارج أدوار العيادة → `400 invalid_role` + صف تدقيق مرفوض؛ تغيير الدور يُنهي جلسات العضو؛ تدقيق `member.update` |
+| `GET /api/org/usage` | الخطة وحدودها + الاستخدام (الفروع النشطة، والأعضاء النشطون + الدعوات المعلقة) لعدادات الشاشات |
+
 ### الدعوات (عام)
 
 | Method & path | الوصف |
@@ -271,6 +279,12 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 - **وضع العرض (`?demo=1`):** صفر طلبات إلى `/api`.
 - **الحجم:** `dist/app.*.js` ≈ 206 KB gzip (منها `platform.jsx` ≈ 33 KB، و `tenant.jsx` ≈ 12 KB) + React ≈ 46 KB = ≈ 252 KB (الميزانية 300 KB). لوحة المنصة في الحزمة الرئيسية؛ تحويلها إلى ملف يُحمّل عند الحاجة مهمة لاحقة (3.12).
 - **`npm run dev`** لا يخدم `/api`، فيعمل عليه وضع العرض فقط؛ للتطوير الكامل استخدم `scripts/dev-stack.sh` (المهمة 3.13 لإضافة proxy).
+
+### ملاحظات التنفيذ (Milestone 3 — المرحلة الثانية)
+
+- **فرض الوحدات في الـ API:** `/api/data` و `/api/rpc` يعيدان `403 {code:'module_disabled'}` لجداول ودوال وحدة غير مفعلة أو مخططة، ويُقرأ ذلك في كل طلب (`api/src/modules.js`)؛ البيانات محفوظة. الربط: `core.patients` → `patients`؛ `core.appointments` → `bookings`، `patient_schedules`؛ `core.files` → `patient_files`؛ `core.billing` → `invoices`، `payments`، `payment_receipts`، `packages`، `patient_subscriptions` + `record_quick_payment`، `list_invoices_filtered`، `delete_payment_receipt`؛ `physio.sessions` → `sessions`؛ `physio.treatment_plans` → `treatments` ودوالها؛ `physio.templates` → جداول القوالب ودوالها. **غير مغطى:** `/api/files` (المهمة 3.16) وقاعدة البيانات (2.16).
+- **الواجهة:** `listTable` يعامل `module_disabled` كأن لا صفوف ويحذف النسخة المخزنة؛ `window.DATA_LOADED` و `window.CLINIC_LOADED` بعد أول قراءة وتُمسح عند الخروج. `Modal` المشترك: `role=dialog` و `aria-modal` ومسمّى بعنوانه، و Esc يغلق الأعلى، والتركيز ينتقل إليه (لا حبس كامل للتركيز بعد — 3.17). `RowMenu` يُعرض في `document.body` ويفتح للأعلى قرب أسفل الشاشة.
+- **الحجم:** `dist/app.*.js` = 220.9 KB gzip + React ≈ 46 = **≈ 267 KB** (الميزانية 300).
 
 ## Security and privacy
 
@@ -354,3 +368,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 22 أكتوبر 2026 | أدوات التطوير `scripts/dev-stack.sh` و `scripts/pw-cdn.cjs`؛ ملفا `src/tenant.jsx` و `src/platform.jsx` مسجلان في `index.html` قبل `screens2.jsx` (Milestone 3). |
 | 22 أكتوبر 2026 | إطار اختبارات المتصفح `e2e/` (`@playwright/test` 1.56.1 مثبت على إصدار Chromium المتاح) و `npm run test:e2e`. |
 | 22 أكتوبر 2026 | ملاحظات تنفيذ الواجهة لـ Milestone 3: ترتيب تحديد السياق، وبوابة العيادة، والتنقل بالـ hash، و `window.ClinicApi` و `X-Platform`، ومفاتيح التخزين، والحجم المقاس (≈ 252 KB)، وحدود `npm run dev`. |
+| 22 أكتوبر 2026 | Milestone 3 (المرحلة الثانية): مسارات `/api/org/members` و `/api/org/usage`؛ فرض الوحدات في `/api/data` و `/api/rpc` (`module_disabled`) مع الربط؛ ملاحظات Modal و RowMenu؛ الحجم ≈ 267 KB. |

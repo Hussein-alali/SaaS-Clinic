@@ -7,6 +7,7 @@ const express = require('express');
 const { HttpError, badRequest } = require('../errors');
 const { requireOrg } = require('../tenant');
 const { parseRequest, referencedColumns, checkOrganization, buildQuery } = require('../data-query');
+const { assertModule, tableModule } = require('../modules');
 
 const router = express.Router();
 
@@ -16,6 +17,8 @@ router.post('/', requireOrg(), async (req, res) => {
 
   const meta = await catalog.getTable(q.table);
   if (!meta) throw badRequest('invalid_table', `Table "${q.table}" is not available`);
+  // A table of a module the clinic has not enabled (AT-07): 403, rows kept.
+  await assertModule(db, req.ctx.orgId, tableModule(q.table));
   const missing = await catalog.missingColumns(q.table, referencedColumns(q));
   if (missing.length) throw badRequest('invalid_column', `Unknown column(s) on ${q.table}: ${missing.join(', ')}`);
   // Re-read after a possible refresh so column metadata is current.

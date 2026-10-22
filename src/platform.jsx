@@ -95,11 +95,12 @@
     "staff.password_reset": "إعادة تعيين كلمة مرور",
     "staff.activate": "تفعيل موظف",
     "staff.deactivate": "تعطيل موظف",
+    "member.update": "تعديل دور عضو أو فروعه",
     "user.create": "إنشاء حساب",
     "platform_admin.create": "إنشاء مدير منصة",
     "platform_admin.grant": "منح صلاحية مدير منصة",
   };
-  const TARGET_LABEL = { organization: "عيادة", invitation: "دعوة", plan: "خطة", platform: "المنصة", staff: "موظف", user: "حساب" };
+  const TARGET_LABEL = { organization: "عيادة", invitation: "دعوة", plan: "خطة", platform: "المنصة", staff: "موظف", user: "حساب", member: "عضو" };
 
   // ── Small helpers ────────────────────────────────────────────
   const P = (path) => "/platform" + path;
@@ -2104,6 +2105,8 @@
   // A07 — audit log
   // ══════════════════════════════════════════════════════════════
   const AUDIT_PAGE = 25;
+  // audit_events.result (0003): success is the norm and shows nothing.
+  const AUDIT_RESULT_LABEL = { denied: "مرفوضة", error: "فشلت" };
 
   function AuditTable({ rows, loading, compact, showOrg = true, onEmpty }) {
     const [payload, setPayload] = useState(null);
@@ -2137,7 +2140,7 @@
                   </td>
                   <td>
                     <span>{ACTION_LABEL[a.action] || a.action}</span>
-                    {a.result && a.result !== "success" && <span className="badge b-red" style={{ marginInlineStart: 6 }}>{a.result}</span>}
+                    {a.result && a.result !== "success" && <span className="badge b-red" data-result={a.result} style={{ marginInlineStart: 6 }}>{AUDIT_RESULT_LABEL[a.result] || a.result}</span>}
                     <div><Ltr className="mono pa-code">{a.action}</Ltr></div>
                   </td>
                   {!compact && <td>{a.target_type ? <>{TARGET_LABEL[a.target_type] || a.target_type} <Ltr className="mono pa-code">{shortId(a.target_id || a.row_pk)}</Ltr></> : <span className="muted">—</span>}</td>}

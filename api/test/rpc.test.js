@@ -124,9 +124,23 @@ test('RLS still applies inside security definer RPCs: other clinics and other br
   assert.equal(crossGet.status, 200);
   assert.equal(crossGet.body, null, "another clinic's treatment reads as not found");
 
+  // The dental clinic has no physio modules (its specialty defaults), so the
+  // function is refused there (api/test/modules.test.js); with the modules
+  // switched on it sees exactly its own treatments.
   const dental = await h.as('dentalAdmin', { slug: 'demo-dental' });
-  const d = await dental.rpc('list_treatments', {});
-  assert.deepEqual(d.body.rows.map((r) => r.treatment_id).sort(), ['TRT-DEN-B1-1', 'TRT-DEN-B2-1']);
+  const refused = await dental.rpc('list_treatments', {});
+  assert.equal(refused.status, 403);
+  assert.equal(refused.body.error.code, 'module_disabled');
+  const physioModules = `select $1::uuid, m.id, true from modules m where m.code in ('physio.sessions', 'physio.treatment_plans')`;
+  await h.sql(`insert into organization_modules (organization_id, module_id, enabled) ${physioModules}
+               on conflict (organization_id, module_id) do update set enabled = true`, [ORG.dental]);
+  try {
+    const d = await dental.rpc('list_treatments', {});
+    assert.deepEqual(d.body.rows.map((r) => r.treatment_id).sort(), ['TRT-DEN-B1-1', 'TRT-DEN-B2-1']);
+  } finally {
+    await h.sql(`delete from organization_modules where organization_id = $1
+                   and module_id in (select id from modules where code in ('physio.sessions', 'physio.treatment_plans'))`, [ORG.dental]);
+  }
 
   // the therapist works in branch 1 only (branch_scope)
   const therapist = await h.as('physioTherapist', { slug: 'demo-physio' });

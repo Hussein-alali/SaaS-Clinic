@@ -85,6 +85,7 @@ async function loadClinic() {
   }
   const merged = { ...DEFAULT_CLINIC, ...(data || {}) };
   window.CLINIC = merged;
+  window.CLINIC_LOADED = true; // the full settings row, not only resolve's branding
   window.dispatchEvent(new CustomEvent("kinetic:clinic-updated", { detail: merged }));
   return merged;
 }
@@ -553,6 +554,8 @@ async function signOut() {
   // Clear identity + any cached role-scoped domain data so the next login
   // doesn't see the previous session's patients/appts/etc.
   window.ME = null;
+  window.DATA_LOADED = false;
+  window.CLINIC_LOADED = false;
   __hydrateGeneration += 1; // a hydrate still in flight must not refill the tables
   try {
     for (const cfg of Object.values(DATA_TABLES)) {
@@ -734,6 +737,7 @@ const __AUTH_ERRORS = {
   platform_required:   "افتح لوحة إدارة المنصة من رابطها",
   slug_taken:          "هذا الرابط مستخدم لعيادة أخرى",
   module_dependency:   "لا يمكن تعطيل ميزة تعتمد عليها ميزة أخرى مفعّلة",
+  module_disabled:     "هذه الميزة غير مفعلة لعيادتك",
   invalid_transition:  "لا يمكن نقل العيادة إلى هذه الحالة من حالتها الحالية",
   csrf_header_required:"طلب غير صالح — أعد تحميل الصفحة ثم أعد المحاولة",
   already_exists:      "يوجد ملف بالاسم نفسه بالفعل",
@@ -1278,6 +1282,13 @@ async function listTable(name) {
       writeLS(cfg.ls, data);
       return data;
     }
+    // A module the clinic has not enabled (e.g. core.billing turned off by
+    // the platform, AT-07): the API refuses its tables — show nothing, and
+    // drop any copy cached before it was turned off.
+    if (error && error.code === "module_disabled") {
+      writeLS(cfg.ls, []);
+      return [];
+    }
     if (error) console.warn(`listTable ${name} failed`, error.message || error);
   }
   return readLS(cfg.ls, (window.DATA && window.DATA[name]) || []);
@@ -1520,6 +1531,9 @@ async function hydrateDomainTables() {
     // cache (listTable fallback) are schema-shaped too.
     normalizeDomainData(window.DATA);
   }
+  // The tables of this session have been read once (screens that judge
+  // "nothing yet", e.g. the first-use checklist, wait for it).
+  window.DATA_LOADED = true;
   window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "*" } }));
 }
 

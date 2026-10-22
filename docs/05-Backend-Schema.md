@@ -246,7 +246,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | `organizations` | Super Admin؛ الأعضاء: سجل مؤسستهم فقط (حقول عامة عبر `/api/orgs/*`) | Super Admin (`/api/platform`) | Super Admin | لا أحد (`closed` بدل الحذف) |
 | `organization_members` | Super Admin؛ `admin` العيادة | مسارات الدعوة و `create-user` فقط | Super Admin؛ `admin` لعيادته عبر `set-status` (لا يمنح Super Admin، ولا يغيّر `auth.users.status` أبدًا؛ التعطيل يزيد `session_version`) | لا (`disabled`) |
 | `invitations` | Super Admin؛ `admin` لعيادته | Super Admin؛ `admin` (ضمن حد المستخدمين) | إعادة إرسال (رمز جديد + 7 أيام) أو إلغاء (`revoked`) | لا تُحذف أبدًا |
-| `branches` | أعضاء العيادة | `admin` (ضمن حد الفروع؛ trigger يرفض التجاوز) | `admin` | لا (`status='inactive'`) — **فجوة مفتوحة:** القاعدة ما زالت تسمح بحذف فرع غير مرتبط بأي صف، والواجهة الحالية تعتمد على ذلك (المهمة 2.15) |
+| `branches` | أعضاء العيادة | `admin` (ضمن حد الفروع؛ trigger يرفض التجاوز) | `admin` | لا (`status='inactive'`) — ✅ أُغلقت الفجوة: `0005` يمنع الحذف، والواجهة تعطّل فقط |
 | `specialties`, `modules`, `subscription_plans` | كل مستخدم مسجل | Super Admin | Super Admin | Super Admin |
 | `organization_modules`, `subscriptions` | Super Admin؛ أعضاء المؤسسة (قراءة) | Super Admin | Super Admin | Super Admin |
 | `clinic_settings` (لكل عيادة) | أعضاء العيادة | تلقائي عند إنشاء العيادة | `admin` | — |
@@ -279,7 +279,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | حدود الخطة | trigger قبل الإدخال على `organization_members`/`invitations` (عدد المستخدمين) و `branches` (عدد الفروع)؛ ومجموع أحجام الملفات في مجلد العيادة قبل الرفع (في الـ API) |
 | تبعيات الوحدات | لا يُفعل `X` إن لم تكن كل `depends_on` مفعلة؛ ولا تُعطل وحدة تعتمد عليها وحدة مفعلة |
 | تطابق المؤسسة | FK مركبة `(organization_id, …)` بين جداول العيادة |
-| الدور | `admin` لا يمنح دورًا خارج القائمة ولا يعدل `platform_admins`. **فجوة:** `staff_role_check` في `0001` لا يحتوي `staff`، فعضو بدور `staff` يبقى `staff.role` له `NULL` (المهمة 2.14) |
+| الدور | `admin` لا يمنح دورًا خارج القائمة ولا يعدل `platform_admins`. ✅ `0006` أضاف `staff` إلى `staff_role_check` |
 | انتقالات حالة العيادة | تُفرض في الـ API (لا توجد دالة `set_organization_status` في القاعدة بعد) |
 | المقاعد | الأعضاء النشطون + الدعوات المعلقة غير المنتهية؛ الـ API يفحصها عند `create-user` و `set-status active` وإعادة إرسال دعوة منتهية، والـ triggers تغطي الإدخال. الفروع: النشطة فقط، وإعادة التفعيل تُفحص. خطأ `PL422` برسالة `plan_limit:branches` أو `plan_limit:users`؛ الحد `NULL` أو بلا خطة = بلا حد |
 | الوحدات | `core.*` مسموحة دائمًا؛ الوحدات `planned` أو غير النشطة لا تُفعّل؛ التبعيات تُفحص |
@@ -306,7 +306,9 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 2. ✅ `0002_platform.sql` (12 جدولًا بلا RLS، و trigger يرفض الـ slugs المحجوزة، و 16 وحدة منها 5 `planned`) — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
 3. ✅ `0003_tenancy.sql` (1,206 سطرًا؛ ينتهي بفحص ذاتي يُفشل الـ migration إن نقص جدول عيادة شيئًا. مع بيانات قديمة: عيادة `clinic` باسم `clinic_settings.name`، و `created_by` = حساب المدير أو أقدم حساب أو حساب معطّل `migration@clinicsys.invalid`، وكل موظف مرتبط بحساب يصبح عضوًا (المعطّل → `disabled`)، وغير المديرين على الفرع الرئيسي، وصفوف المكتبة `TM-DFLT-*` و `TPC-SEED-*` و `TPL-SEED-*` تصبح عامة) — دوال السياق، وإعادة تعريف `app_role()`، و `organization_id` و `branch_id` (القاعدتان 5 و 8)، والقيود الفريدة على مستوى العيادة (9)، و `clinic_settings` لكل عيادة (11)، و FORCE RLS و `tenant_isolation` و `branch_scope` على كل جداول العيادة، و triggers حدود الخطة (الفروع والمستخدمون)، وأعمدة التدقيق (`organization_id`، `target_type`، `target_id`، `result`). **إن وُجدت بيانات قديمة:** تُنشأ «العيادة الأولى» (`physio`، `active`) و «الفرع الرئيسي»، وتُسند إليهما كل الصفوف، وتُحوَّل صفوف `staff` المرتبطة بحساب إلى `organization_members` بنفس الدور.
 4. ✅ `0004_audit_integrity.sql` — trigger `audit_events_stamp` قبل الإدخال (خارج سياق النظام): `id` من التسلسل، و `actor_uid = auth.uid()`، و `actor_role = app_role()`، و `created_at = now()`. السبب: التسلسل المشترك سمح لعضو عيادة بحجز معرّفات تحتاجها كتابات التدقيق في كل العيادات (اكتشفته المراجعة الأمنية).
-5. `0005_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+5. ✅ `0005_branches_no_delete.sql` — سياسة «admin write branches» (`FOR ALL`) استُبدلت بـ «admin insert branches» و «admin update branches»؛ لا سياسة DELETE إلا `system_access`، فحذف العضو لا يطابق أي صف (فحص ذاتي في الملف). الفروع تُعطّل (`status='inactive'`) ولا تُحذف.
+6. ✅ `0006_staff_role.sql` — `staff_role_check` يسمح بـ `admin` و `receptionist` و `doctor` و `therapist` و `staff`، وصفوف أعضاء `staff` الموجودة مُلئت. الدور `staff` ما زال بلا صلاحية بيانات.
+7. `0007_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -316,6 +318,10 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 
 **التحقق بعد الترحيل:** مطابقة أعداد السجلات لكل جدول قبل وبعد، وعدم وجود `organization_id IS NULL`، وكل `branch_id` يتبع نفس العيادة، وتقرير ترحيل محفوظ (AT-11).
 
+## فرض الوحدات (Milestone 3)
+
+الوحدات المعطلة تُفرض في الـ API (`403 module_disabled`، والصفوف محفوظة؛ الربط في TRD «ملاحظات التنفيذ»)، **لا** في سياسات القاعدة بعد (`org_module_enabled()` غير مستخدمة في RLS — المهمة 2.16). **مفاتيح تخزين الواجهة الجديدة:** `clinicsys.onboarding_hidden` (`localStorage`)، و `clinicsys.onboarding_later` و `clinicsys.unsent_invites` (`sessionStorage`).
+
 ## سجل التغييرات
 
 | التاريخ | التغيير |
@@ -324,3 +330,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 21 أكتوبر 2026 | **القاعدة تنتقل إلى hosting.com:** إضافة «hosting.com PostgreSQL conventions» (12 قاعدة ملزمة)؛ أسماء الأدوار تبقى (`admin`...)؛ `invitations.token_hash`؛ إعادة كتابة Authentication flow و Authorization rules و Migration and seed data لمسار `db/migrations/`. |
 | 22 أكتوبر 2026 | `0001_baseline.sql` ✅ وما حُذف منه؛ تفاصيل schema `auth` المنفذة؛ القاعدة 10 منفذة في الواجهة (ومتبقية في دوال SQL)؛ أربعة تنبيهات مُتحقق منها لـ `0003`؛ مكان بيانات الملفات. |
 | 22 أكتوبر 2026 | Milestone 2: `0002`/`0003`/`0004` ✅ وتفاصيلها؛ `system_access` والـ initplans وسياسات القوالب العامة؛ شروط `app_role()`؛ المفاتيح المركبة المؤجلة؛ سياسات الكتابة الجديدة وإصلاح 3 دوال موروثة؛ سلامة التدقيق؛ فجوات معروفة (حذف الفروع، دور `staff`)؛ قواعد المقاعد والوحدات وانتقالات الحالة؛ تفاصيل البذر. |
+| 22 أكتوبر 2026 | `0005_branches_no_delete` و `0006_staff_role` ✅؛ إغلاق فجوتي حذف الفروع ودور `staff`؛ فرض الوحدات في الـ API لا في RLS؛ مفاتيح تخزين جديدة. |

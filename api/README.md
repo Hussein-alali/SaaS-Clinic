@@ -287,6 +287,20 @@ Every action writes `audit_events` in its transaction: `staff.create`,
 `invitation.create|resend|revoke|accept`, `user.create`,
 `organization.activate`.
 
+### Members and plan usage (clinic admin)
+
+| Route | Notes |
+|---|---|
+| `GET /api/org/members` | Members of the current clinic, active first: `{id, user_id, email, name, role, status, branch_ids, joined_at, created_at, staff_id, staff_status, phone, is_self}`. Admin only (403 `forbidden`). |
+| `PATCH /api/org/members/:id` `{role?, branch_ids?}` | Non-admin roles need at least one active branch (`branch_required`, `invalid_branch`, `invalid_branch_ids`). `cannot_change_own_role`, 404 `member_not_found`. A role outside the clinic roles is 400 `invalid_role` and is audited as a denied `member.update`. A role change ends the member's open sessions. |
+| `GET /api/org/usage` | The clinic's plan and limits plus usage (active branches; active members + pending unexpired invitations) for the screen counters. |
+
+Since migration 0006 a `staff` membership's staff row has `role = 'staff'`. Since 0005 branches cannot be deleted by members (RLS); deactivate them with `status = 'inactive'`.
+
+### Disabled modules
+
+`/api/data` and `/api/rpc` answer **403 `module_disabled`** for the tables and functions of a module the clinic has not enabled (or that is planned); the rows are kept. The mapping lives in `src/modules.js` (tests: `test/modules.test.js`): `core.patients` → patients; `core.appointments` → bookings, patient_schedules; `core.files` → patient_files; `core.billing` → invoices, payments, payment_receipts, packages, patient_subscriptions + record_quick_payment, list_invoices_filtered, delete_payment_receipt; `physio.sessions` → sessions; `physio.treatment_plans` → treatments and its RPCs; `physio.templates` → template tables and RPCs. `/api/files` is not gated yet.
+
 ## Platform (Super Admin, `/api/platform/*`)
 
 Needs a session, a `platform_admins` row (403 `not_super_admin`) and the

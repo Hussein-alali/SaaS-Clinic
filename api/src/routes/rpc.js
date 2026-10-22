@@ -9,6 +9,7 @@ const { badRequest, notFound } = require('../errors');
 const { requireOrg } = require('../tenant');
 const { RPC_WHITELIST } = require('../rpc-whitelist');
 const { IDENT_RE, isPlainObject } = require('../data-query');
+const { assertModule, rpcModule } = require('../modules');
 
 const router = express.Router();
 
@@ -42,6 +43,8 @@ router.post('/:fn', requireOrg(), async (req, res) => {
   const { db, functions } = req.app.locals;
   const fn = req.params.fn;
   if (!RPC_WHITELIST.has(fn) || !IDENT_RE.test(fn)) throw notFound('rpc_not_allowed', `Function ${fn} is not available`);
+  // A function of a module the clinic has not enabled (AT-07): 403.
+  await assertModule(db, req.ctx.orgId, rpcModule(fn));
 
   const body = req.body === undefined ? {} : req.body;
   if (!isPlainObject(body)) throw badRequest('invalid_request', 'Body must be a JSON object');

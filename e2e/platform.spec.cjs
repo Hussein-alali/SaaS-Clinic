@@ -2,15 +2,10 @@
 //
 //   E2E_DB_PORT=56202 E2E_API_PORT=3202 npx playwright test -c e2e/playwright.config.cjs e2e/platform.spec.cjs
 //
-// MOUNTING: the panel is window.PlatformApp (src/platform.jsx). The boot
-// router (src/screens2.jsx App → TenantPlatformGate in src/tenant.jsx)
-// renders it in the platform context (?platform=1 / admin.<base>), and the
-// tests normally go through it. mountFallback() is a guard for runs where
-// the router does not render the panel: when nothing on the page carries
-// [data-platform-app] shortly after load, it renders PlatformApp itself into
-// a new <div> (hiding #root) and adds a "platform-mount-fallback" annotation
-// to the test. The journeys task (3.9) can delete mountFallback() once the
-// router is final and keep only the page.goto().
+// The panel is window.PlatformApp (src/platform.jsx), rendered by the boot
+// router (src/screens2.jsx App → TenantPlatformGate in src/tenant.jsx) in
+// the platform context (?platform=1 / admin.<base>). The tests go through
+// that router only: every page carries [data-platform-app] from it.
 //
 // The tests share one clinic created through the wizard, so they run in
 // order (serial). Every name is unique per run, so the spec also works
@@ -26,30 +21,13 @@ const OWNER = `owner-${RUN}@e2e.test`;
 const PLAN_CODE = `e2e-${RUN}`;
 let clinicId = null;
 
-async function mountFallback(page) {
-  const routed = await page.locator("[data-platform-app]").first()
-    .waitFor({ state: "attached", timeout: 2500 }).then(() => true, () => false);
-  if (routed) return;
-  test.info().annotations.push({ type: "platform-mount-fallback", description: "PlatformApp mounted by the spec, not by the boot router" });
-  await page.evaluate(() => {
-    if (document.querySelector("[data-platform-app]")) return;
-    const root = document.getElementById("root");
-    if (root) root.style.display = "none";
-    const el = document.createElement("div");
-    el.id = "platform-root";
-    document.body.appendChild(el);
-    window.ReactDOM.createRoot(el).render(window.React.createElement(window.PlatformApp));
-  });
-}
-
 // Opens the panel at /?platform=1[#hash] (always a full page load: going to
 // the current URL, or to another #hash of it, would only be an in-page
 // navigation) and waits for its session check.
 async function openPanel(page, hash = "") {
   if (page.url() !== "about:blank") await page.goto("about:blank");
   await page.goto("/?platform=1" + hash);
-  await page.waitForFunction(() => typeof window.PlatformApp === "function");
-  await mountFallback(page);
+  await expect(page.locator("[data-platform-app]")).toBeAttached();
   await expect(page.locator("[data-platform-app]")).not.toHaveAttribute("data-auth", "checking");
 }
 
@@ -122,8 +100,7 @@ test("the admin.<base> host is the platform context without ?platform=1", async 
   test.skip(base.hostname !== "localhost", "needs a localhost stack (admin.localhost resolves to it)");
   const origin = `${base.protocol}//admin.localhost:${base.port}`;
   await page.goto(origin + "/");
-  await page.waitForFunction(() => typeof window.PlatformApp === "function");
-  await mountFallback(page);
+  await expect(page.locator("[data-platform-app]")).toBeAttached();
   await login(page, "super@clinicsys.test");
   await expect(page.locator("[data-platform-app][data-auth=ready]")).toBeVisible();
   await expect(page.getByRole("heading", { name: "مؤشرات المنصة" })).toBeVisible();

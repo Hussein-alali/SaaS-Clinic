@@ -156,12 +156,9 @@ test("platform context renders the Super Admin panel, never the main site", asyn
   await page.goto("/?platform=1");
   await expect(page.locator("#root-email")).toHaveCount(0);
   await expect(page.locator("#login-email")).toHaveCount(0);
-  const hasPanel = await page.evaluate(() => typeof window.PlatformApp === "function");
-  if (!hasPanel) {
-    await expect(page.getByRole("heading", { name: "لوحة إدارة المنصة غير متاحة حاليًا" })).toBeVisible();
-  } else {
-    await expect(page.locator("#root")).not.toBeEmpty();
-  }
+  // The boot router renders window.PlatformApp (src/platform.jsx) itself.
+  await expect(page.locator("#root [data-platform-app]")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "لوحة إدارة المنصة غير متاحة حاليًا" })).toHaveCount(0);
 });
 
 // ── S06: status pages (task 3.1, AT-13) ─────────────────────────────────
@@ -211,7 +208,11 @@ test("clinic login: branded before sign-in, data on screen right after it withou
   await clinicLogin(page, "admin@demo-physio.test");
   await expect(sidebar(page)).toContainText(PHYSIO);
   await expect(page.getByText("مريض أول — PHY").first()).toBeVisible();
-  await expect(page.locator('[data-route="patients"]')).toContainText("4");
+  // The menu's patient count is the clinic's (other specs may add patients
+  // to the seeded clinic in the same run, so it is read from the server).
+  const patients = await page.evaluate(async () => (await window.SB.from("patients").select("patient_id", { count: "exact", head: true })).count);
+  expect(patients).toBeGreaterThanOrEqual(4);
+  await expect(page.locator('[data-route="patients"]')).toContainText(String(patients));
   // The clinic's own sections (custom_sections) reach the open sidebar too.
   await expect(sidebar(page)).toContainText("البروتوكولات");
   await expect(sidebar(page)).not.toContainText("ملاحظات داخلية"); // visible = false

@@ -277,6 +277,9 @@ function Dashboard({ go }) {
         </div>
       </div>
 
+      {/* «ابدأ الإعداد» for the admin of a new clinic (src/screens2.jsx) */}
+      {window.OnboardingChecklist && <window.OnboardingChecklist go={go}/>}
+
       {/* stat row */}
       <div className="grid-stats" style={{marginBottom:18}}>
         <StatCard label={labels.patients}    value={String(uniquePatients)} accent="#7BBDE8" icon={<I.Users size={15}/>}/>
@@ -3848,9 +3851,14 @@ function BookingFlow({ onDone }) {
     } finally { setBusy(false); }
   }
 
-  function next() {
+  // `patch`: a choice made by the same click that moves on (a specialist
+  // card, a date). It is not in `picks` yet — React applies update() on
+  // the next render — so the step is checked against picks + patch.
+  function next(patch) {
+    const p = patch ? { ...picks, ...patch } : picks;
+    if (patch) update(patch);
     if (step === 1 && !patientStepValid()) return;
-    if (step === 2 && !picks.therapist) {
+    if (step === 2 && !p.therapist) {
       window.showToast && window.showToast("اختر الأخصائي — الموعد مع الأخصائي إلزامي", "error");
       return;
     }
@@ -3884,11 +3892,11 @@ function BookingFlow({ onDone }) {
         {step===2 && (therapists.length ? <PickGrid title="اختر أخصائيًا — الموعد مع الأخصائي إلزامي"
           items={therapists.map(t=>({ id:t.name, l:t.name, sub:`${t.spec} · حمل ${t.load}/${t.max}`, ic:t.name.split(" ").map(x=>x[0]).join(""), color:t.color, count:`${t.max-t.load} فترة متاحة` }))}
           avatar
-          onPick={v=>{ update({therapist:v}); next();}}
+          onPick={v=>next({ therapist: v })}
           selected={picks.therapist}
         /> : <EmptyState icon={<I.Users size={22}/>} title="لا أخصائيين بعد" body="أضف الأخصائيين من الإعدادات."/>)}
         {step===3 && <OptionalDoctorStep picks={picks} update={update} onSkip={()=>{ update({doctorId:null, deptId:null}); setStep(4); }} onPicked={()=>setStep(4)}/>}
-        {step===4 && <DatePick value={picks.date} onPick={v=>{ update({date:v}); next();}} schedule={patientSchedule} patient={selectedPatient} onGenerated={onDone}/>}
+        {step===4 && <DatePick value={picks.date} onPick={v=>next({ date: v })} schedule={patientSchedule} patient={selectedPatient} onGenerated={onDone}/>}
         {step===5 && <SlotPick picks={picks} update={update} schedule={patientSchedule}/>}
       </div>
 
@@ -3898,7 +3906,7 @@ function BookingFlow({ onDone }) {
         </button>
         <div style={{display:"flex",gap:10}}>
           <button className="btn btn-ghost" onClick={onDone}>إلغاء</button>
-          <button className="btn btn-blue" disabled={busy} onClick={next}>
+          <button className="btn btn-blue" disabled={busy} onClick={()=>next()}>
             {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <>{step<LAST ? "متابعة" : "تأكيد الحجز"} <I.ArrowRight size={13}/></>}
           </button>
         </div>
