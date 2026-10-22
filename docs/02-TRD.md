@@ -145,6 +145,8 @@ src/tenant.jsx              (Milestone 3) حل العيادة، صفحات ال�
 src/platform.jsx            (Milestone 3) لوحة Super Admin
 e2e/                        (Milestone 3) اختبارات Playwright للرحلات J1–J4
 scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
+scripts/dev-stack.sh        القاعدة + migrations + البذر + build + الـ API على منفذ واحد (للتطوير واختبارات المتصفح)
+scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Babel، xlsx) من نسخ npm محلية
 ```
 
 **متغيرات البيئة للـ API:** `DATABASE_URL`، `JWT_SECRET`، `APP_BASE_DOMAIN` (`clinicsyseg.com`؛ في التطوير `localhost`)، `COOKIE_DOMAIN`، `COOKIE_SECURE` (`true` في الإنتاج)، `FILES_DIR`، `FILES_SIGNING_SECRET`، `DIST_DIR` (افتراضيًا `../dist`)، `MAIL_TRANSPORT` (`smtp` أو `file`)، `MAIL_OUTBOX_DIR`، `SMTP_HOST`، `SMTP_PORT`، `SMTP_SECURE`، `SMTP_USER`، `SMTP_PASS`، `MAIL_FROM`، `TRUST_PROXY`، `DB_POOL_MAX`، `DB_STATEMENT_TIMEOUT_MS`، `PORT`. في الإنتاج يرفض الخادم البدء دون `DATABASE_URL` وسرّين بطول 32 حرفًا على الأقل ومختلفين. الأسرار تُضبط من شاشة تطبيق Node في cPanel، **ولا تُكتب في Git أبدًا**.
@@ -300,7 +302,7 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | Production | `clinicsyseg.com`, `*.clinicsyseg.com` | PostgreSQL على hosting.com | العملاء |
 
 - **البناء:** `npm install` ثم `npm run build` (`scripts/build.mjs`، esbuild) ينتج `dist/`. `npm start` يخدم `dist/`، و `npm run dev` يخدم المصادر مع Babel للتطوير فقط. على Railway يجب أن يظهر في السجل `serving dist/ (production build)`. على hosting.com يُرفع محتوى `dist/` فقط.
-- **التشغيل محليًا:** `scripts/dev-db.sh start` → `DATABASE_URL=... node db/migrate.js` → `psql $DATABASE_URL -f db/seed/dev.sql` → `npm run build` → `cd api && npm start`.
+- **التشغيل محليًا:** `scripts/dev-stack.sh start [dbport] [apiport]` يعيد ضبط القاعدة ويطبق الـ migrations والبذر ويبني `dist/` ويشغّل الـ API، ويطبع الرابط (`?org=demo-physio` للعيادة، و `?platform=1` للمنصة، وكلمة المرور `Dev@12345`). الخطوات اليدوية المكافئة: `scripts/dev-db.sh start` → `node db/migrate.js` → `psql -f db/seed/dev.sql` → `npm run build` → `cd api && npm start`.
 - **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test 'db/test/*.test.js' 'api/test/*.test.js' 'test/*.test.mjs'` على **قاعدة واحدة** (289 اختبارًا؛ قفل advisory يجعل اختبارات القاعدة مشتركة واختبارات الـ API حصرية). كل ملف اختبار API يمسح القاعدة ويعيد تطبيق الـ migrations والبذر، **ويرفض العمل** على قاعدة فيها حساب لا ينتهي بـ `.test` أو عيادة غير تجريبية. اختبارات القاعدة تطبق `db/seed/dev.sql` تلقائيًا: لا تُوجَّه أبدًا إلى قاعدة حقيقية. تتطلب `npm --prefix db install` و `npm --prefix api install` + Playwright (`e2e/`) لكل PR.
 - **CD:** النشر من `main` بعد نجاح CI؛ migrations تُطبق على staging أولًا ثم production بعد الموافقة.
 - **Rollback:** كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
@@ -336,3 +338,4 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | 21 أكتوبر 2026 | **قرار مالك المنتج: نقل القاعدة وكل خدمات Supabase إلى hosting.com.** أُعيدت كتابة Backend and database و Authentication and roles و Architecture، وأُضيفت Repository layout و API contract، وحُدّثت البيئات و CI والأمان والقرارات. |
 | 22 أكتوبر 2026 | نقطة حفظ بعد ثلاثة وكلاء: `index.html` بلا supabase-js و `src/apiclient.jsx`، و `db/` (0001 + migrate.js)، ونواة `api/`. أُضيفت «ملاحظات التنفيذ» (أشكال الاستجابة، ورموز الأخطاء، وإضافات `/api/data`)، والدوال الـ 23، ومتغيرات البيئة، وقواعد الملفات، والثغرة الموروثة في دوال RPC، وأوامر الاختبار بأنماط. |
 | 22 أكتوبر 2026 | Milestone 2 مكتمل: حالة `db/` و `api/`؛ 23 دالة RPC؛ إعادة كتابة Repository layout؛ ملاحظات تنفيذ الإدارة والدعوات والمنصة ورموز الأخطاء؛ صفوف أمان جديدة (سلامة التدقيق، الحسابات المشتركة، الإعدادات الآمنة، NFR-007، نقاط ضعف معروفة)؛ أمر الاختبار الموحد. |
+| 22 أكتوبر 2026 | أدوات التطوير `scripts/dev-stack.sh` و `scripts/pw-cdn.cjs`؛ ملفا `src/tenant.jsx` و `src/platform.jsx` مسجلان في `index.html` قبل `screens2.jsx` (Milestone 3). |
