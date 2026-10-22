@@ -143,7 +143,9 @@ src/apiclient.jsx           عميل متوافق مع supabase-js → /api + ne
 test/apiclient.test.mjs     90 اختبارًا للعميل (node:test + vm)
 src/tenant.jsx              (Milestone 3) حل العيادة، صفحات الحالة، اختيار العيادة، قبول الدعوة
 src/platform.jsx            (Milestone 3) لوحة Super Admin
-e2e/                        (Milestone 3) اختبارات Playwright للرحلات J1–J4
+e2e/                        Playwright (`npm run test:e2e`): playwright.config.cjs يشغّل dev-stack على
+                            E2E_DB_PORT/E2E_API_PORT؛ fixtures.cjs (مسارات CDN، فشل عند أخطاء الصفحة،
+                            قراءة رسائل البريد من api/.outbox-<port>)؛ رحلات J1–J4 في Milestone 3
 scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 scripts/dev-stack.sh        القاعدة + migrations + البذر + build + الـ API على منفذ واحد (للتطوير واختبارات المتصفح)
 scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Babel، xlsx) من نسخ npm محلية
@@ -339,3 +341,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 22 أكتوبر 2026 | نقطة حفظ بعد ثلاثة وكلاء: `index.html` بلا supabase-js و `src/apiclient.jsx`، و `db/` (0001 + migrate.js)، ونواة `api/`. أُضيفت «ملاحظات التنفيذ» (أشكال الاستجابة، ورموز الأخطاء، وإضافات `/api/data`)، والدوال الـ 23، ومتغيرات البيئة، وقواعد الملفات، والثغرة الموروثة في دوال RPC، وأوامر الاختبار بأنماط. |
 | 22 أكتوبر 2026 | Milestone 2 مكتمل: حالة `db/` و `api/`؛ 23 دالة RPC؛ إعادة كتابة Repository layout؛ ملاحظات تنفيذ الإدارة والدعوات والمنصة ورموز الأخطاء؛ صفوف أمان جديدة (سلامة التدقيق، الحسابات المشتركة، الإعدادات الآمنة، NFR-007، نقاط ضعف معروفة)؛ أمر الاختبار الموحد. |
 | 22 أكتوبر 2026 | أدوات التطوير `scripts/dev-stack.sh` و `scripts/pw-cdn.cjs`؛ ملفا `src/tenant.jsx` و `src/platform.jsx` مسجلان في `index.html` قبل `screens2.jsx` (Milestone 3). |
+| 22 أكتوبر 2026 | إطار اختبارات المتصفح `e2e/` (`@playwright/test` 1.56.1 مثبت على إصدار Chromium المتاح) و `npm run test:e2e`. |

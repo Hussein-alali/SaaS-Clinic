@@ -7,7 +7,8 @@
     "build": "node scripts/build.mjs",
     "start": "node server.js",
     "dev": "node server.js --dev",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "playwright test -c e2e/playwright.config.cjs"
   },
   "engines": {
     "node": ">=18"
@@ -25,6 +26,7 @@
   },
   "homepage": "https://github.com/Hussein-alali/clinksys#readme",
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "esbuild": "^0.24.0"
   }
 }
