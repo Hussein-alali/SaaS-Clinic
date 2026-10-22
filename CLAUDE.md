@@ -1,5 +1,15 @@
 # Project rules
 
+## Read the progress file first
+
+@docs/PROGRESS.md
+
+`docs/PROGRESS.md` is the compact state of the project: decisions, architecture,
+how to run and test, what is done, what is open, and working gotchas. Read it
+before any work. Update it in every commit that changes the project state (task
+done, new test numbers, decision, known issue), keeping it short; details belong
+in the six docs.
+
 ## Keep the six planning docs in sync
 
 Every code, config, schema or deployment change must also update the six

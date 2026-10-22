@@ -13,6 +13,7 @@
 | 6 | [Implementation Plan](06-Implementation-Plan.md) | ترتيب البناء ونقاط التحقق |
 | 7 | [Performance Audit](07-Performance-Audit.md) | سبب بطء التحميل الأول مع القياسات والإصلاح |
 | 8 | [Hosting Migration](08-Hosting-Migration.md) | النقل إلى hosting.com (cPanel): الخيارات والخطوات |
+| — | [PROGRESS](PROGRESS.md) | ملخص مختصر لكل ما أُنجز والمفتوح؛ يُقرأ تلقائيًا في بداية كل جلسة (عبر `CLAUDE.md`) |
 
 ## التغييرات في الإصدار 1.1 من BRD (21 أكتوبر 2026)
 
