@@ -37,8 +37,11 @@ function outboxDir() {
 function readOutbox() {
   const dir = outboxDir();
   if (!fs.existsSync(dir)) return [];
+  // A mail the API is still writing can be truncated JSON; skip it — the
+  // caller polls (expect.poll) until the full file is there.
   return fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort()
-    .map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")));
+    .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); } catch { return null; } })
+    .filter(Boolean);
 }
 
 // First URL in the newest e-mail sent to `to` (e.g. an invitation link).

@@ -261,6 +261,17 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 - **السلوك مع القاعدة:** الفرع الافتراضي = أول فرع **نشط** مسموح. مرجع لعيادة أخرى عبر مفتاح مؤجّل يفشل عند `COMMIT` (`400`، `23503`) دون كتابة شيء. upsert على معرّف عيادة أخرى → `403` (`42501`). `PL422` → `422 {message:'plan_limit:...', code:'PL422'}`.
 - **الملفات في التطوير:** `getPublicUrl` في `src/apiclient.jsx` يضيف `?org=<slug>` عندما تأتي العيادة من `?org=`، فتُفتح الروابط المخزنة بالجلسة وحدها؛ في الإنتاج لا يُضاف شيء.
 
+### ملاحظات التنفيذ (الواجهة — Milestone 3)
+
+- **ترتيب تحديد السياق** (`tenantContext` في `src/tenant.jsx`): `?demo=1` → `?import=1` → `?invite=` → `?reset=` → مضيف `admin.<base>` → `?platform=1` أو العلَم `clinicsys.platform` في `sessionStorage` (يُلغى بـ `?platform=0` أو بـ `?org=` صريح) → مضيف `<slug>.<base>` أو `<slug>.localhost` (يتقدم على `?org=`) أو `?org=` → الجذر.
+- **بوابة العيادة:** `resolve` ← صفحة S06 أو شاشة دخول بهوية العيادة ← التحقق من عضوية العيادة الحالية في حمولة الدخول ← `GET /api/orgs/current` ← تحميل الإعدادات والأقسام والفروع والجداول بالتوازي. **لا تحميل لأي بيانات قبل الدخول.**
+- **التنقل:** روابط داخلية بالـ hash (`#/<route>`)؛ إعادة التحميل تحفظ الصفحة، والرجوع يعمل، والخروج القسري يعيد المستخدم لنفس الصفحة بعد الدخول، والصفحة غير المسموحة للدور تعود لصفحته الرئيسية. لوحة المنصة: `#/`، `#/clinics`، `#/clinics/new`، `#/clinics/<id>/<tab>`، `#/catalog`، `#/plans`، `#/audit`.
+- **`window.ClinicApi`** في `src/apiclient.jsx`: `request(method, path, body)` → `{ok, status, data, error}` ولا يرمي استثناءات، و `query(params)`، و `isPlatformContext()`. في سياق المنصة تُرسل `X-Platform: 1` مع كل طلب.
+- **مفاتيح التخزين في المتصفح:** `clinicsys.org` و `clinicsys.platform` و `clinicsys.flash` (`sessionStorage`)، و `clinicsys.branch_choice` (`localStorage`؛ اختيار الفرع لكل عيادة ومستخدم).
+- **وضع العرض (`?demo=1`):** صفر طلبات إلى `/api`.
+- **الحجم:** `dist/app.*.js` ≈ 206 KB gzip (منها `platform.jsx` ≈ 33 KB، و `tenant.jsx` ≈ 12 KB) + React ≈ 46 KB = ≈ 252 KB (الميزانية 300 KB). لوحة المنصة في الحزمة الرئيسية؛ تحويلها إلى ملف يُحمّل عند الحاجة مهمة لاحقة (3.12).
+- **`npm run dev`** لا يخدم `/api`، فيعمل عليه وضع العرض فقط؛ للتطوير الكامل استخدم `scripts/dev-stack.sh` (المهمة 3.13 لإضافة proxy).
+
 ## Security and privacy
 
 | المتطلب | التطبيق |
@@ -342,3 +353,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 22 أكتوبر 2026 | Milestone 2 مكتمل: حالة `db/` و `api/`؛ 23 دالة RPC؛ إعادة كتابة Repository layout؛ ملاحظات تنفيذ الإدارة والدعوات والمنصة ورموز الأخطاء؛ صفوف أمان جديدة (سلامة التدقيق، الحسابات المشتركة، الإعدادات الآمنة، NFR-007، نقاط ضعف معروفة)؛ أمر الاختبار الموحد. |
 | 22 أكتوبر 2026 | أدوات التطوير `scripts/dev-stack.sh` و `scripts/pw-cdn.cjs`؛ ملفا `src/tenant.jsx` و `src/platform.jsx` مسجلان في `index.html` قبل `screens2.jsx` (Milestone 3). |
 | 22 أكتوبر 2026 | إطار اختبارات المتصفح `e2e/` (`@playwright/test` 1.56.1 مثبت على إصدار Chromium المتاح) و `npm run test:e2e`. |
+| 22 أكتوبر 2026 | ملاحظات تنفيذ الواجهة لـ Milestone 3: ترتيب تحديد السياق، وبوابة العيادة، والتنقل بالـ hash، و `window.ClinicApi` و `X-Platform`، ومفاتيح التخزين، والحجم المقاس (≈ 252 KB)، وحدود `npm run dev`. |

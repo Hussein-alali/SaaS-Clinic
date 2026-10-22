@@ -12,9 +12,10 @@
 const crypto = require('crypto');
 const { HttpError, badRequest } = require('./errors');
 
-/** organization_members.role / invitations.role (docs/05 "organization_members"). */
+/** organization_members.role / invitations.role (docs/05 "organization_members");
+ *  also staff.role since 0006_staff_role (the CHECK of 0001 had no 'staff'). */
 const MEMBER_ROLES = Object.freeze(['admin', 'receptionist', 'doctor', 'therapist', 'staff']);
-/** staff.role CHECK in 0001 (no 'staff'); also the admin-create-user ROLE_SLUGS. */
+/** The admin-create-user ROLE_SLUGS (roles with a staff UI). */
 const STAFF_ROLES = Object.freeze(['admin', 'receptionist', 'doctor', 'therapist']);
 
 const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -142,12 +143,11 @@ async function setMemberBranches(client, { orgId, memberId, branchIds }) {
  * The clinic's staff row for the account ("ملف الموظف", docs/02 "Authentication
  * and roles"): the row linked to userId, else the row with the same e-mail
  * (unique per clinic), is updated and linked; otherwise a row is inserted
- * with a newRecordId('U-') id. staff.role = the membership role; the 'staff'
- * membership role has no staff.role value in 0001's CHECK, so it is NULL.
- * Returns staff_id.
+ * with a newRecordId('U-') id. staff.role = the membership role ('staff'
+ * included since 0006_staff_role). Returns staff_id.
  */
 async function upsertStaffRow(client, { orgId, userId, email, name, role, phone, createdBy = null }) {
-  const staffRole = STAFF_ROLES.includes(role) ? role : null;
+  const staffRole = MEMBER_ROLES.includes(role) ? role : null;
   const displayName = (name && String(name).trim()) || String(email).split('@')[0];
   const { rows } = await client.query(
     `select staff_id from public.staff

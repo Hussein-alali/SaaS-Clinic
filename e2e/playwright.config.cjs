@@ -25,5 +25,6 @@ module.exports = defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  outputDir: "/tmp/clinicsys-e2e-results",
+  // Per API port, so parallel runs on one machine do not delete each other's traces.
+  outputDir: `/tmp/clinicsys-e2e-results-${process.env.E2E_API_PORT || 3200}`,
 });

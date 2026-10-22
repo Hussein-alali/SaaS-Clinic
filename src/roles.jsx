@@ -17,7 +17,7 @@ const ROLE_PROFILES = {
 // ── Navigation routes ──────────────────────────────────────────
 // Which routes each role may reach (also drives sidebar visibility).
 const ROLE_ROUTES = {
-  "مدير":          ["dashboard","patients","appointments","treatments","sessions","payments","packages","campaigns","reports","settings"],
+  "مدير":          ["dashboard","patients","appointments","treatments","sessions","payments","packages","campaigns","reports","branches","settings"],
   "موظف استقبال":  ["dashboard","appointments","patients","payments","reports"],
   "طبيب":          ["dashboard","patients","appointments","treatments","sessions","reports","settings"],
   "الأخصائي":       ["dashboard","appointments","sessions","patients"],
@@ -114,6 +114,7 @@ const ROUTE_MODULES = {
   payments:     "core.billing",
   packages:     "core.billing",
   reports:      "core.reports",
+  branches:     "core.branches",
   settings:     "core.settings",
 };
 // window.ORG_MODULES = enabled codes of the current clinic (from
@@ -124,6 +125,11 @@ function routeModuleEnabled(route){
   if (!Array.isArray(mods)) return true;
   const code = ROUTE_MODULES[route];
   return !code || mods.includes(code);
+}
+// One module by code (e.g. "core.staff" for the staff tab of the settings).
+function orgModuleOn(code){
+  const mods = window.ORG_MODULES;
+  return !Array.isArray(mods) || !code || mods.includes(code);
 }
 
 // Empty-name safe: filter falsy pieces before taking initial characters so
@@ -138,7 +144,7 @@ const initialsOf = (n)=> (n||"")
 
 Object.assign(window, {
   ROLE_PROFILES, ROLE_ROUTES, ROLE_DASH_LABEL, ROLE_DEFAULT,
-  roleScope, roleDefaultRoute, roleAllows, ROUTE_MODULES, routeModuleEnabled,
+  roleScope, roleDefaultRoute, roleAllows, ROUTE_MODULES, routeModuleEnabled, orgModuleOn,
   scopePatients, scopeAppts, scopeTherapists, scopePayments, initialsOf,
 });
 

@@ -281,7 +281,7 @@ test('plan user limit: a pending invitation holds a seat → 422 plan_limit:user
   }
 });
 
-test('accept: suspended clinic → 403, disabled account → 403, role staff → staff row without role, malformed token → 404', async () => {
+test('accept: suspended clinic → 403, disabled account → 403, role staff → staff row with role staff (0006), malformed token → 404', async () => {
   const susp = await rawInvitation({ orgId: ORG.suspended, email: 'x@demo-suspended.test', role: 'admin', branchIds: [] });
   for (const r of [await h.client().get(`/api/invitations/${susp.token}`), await h.client().post(`/api/invitations/${susp.token}/accept`, { password: 'Pass#2026', name: 'X' })]) {
     assert.equal(r.status, 403);
@@ -298,7 +298,7 @@ test('accept: suspended clinic → 403, disabled account → 403, role staff →
   assert.equal(ok.status, 200, ok.text);
   assert.equal((await member(ORG.physio, 'plain.staff@demo-physio.test')).role, 'staff');
   const { rows: [staff] } = await h.asSystem("select role, status from staff where email = 'plain.staff@demo-physio.test'");
-  assert.deepEqual(staff, { role: null, status: 'active' }, "staff.role has no 'staff' value in 0001's CHECK");
+  assert.deepEqual(staff, { role: 'staff', status: 'active' }, "0006_staff_role: staff.role accepts 'staff'");
 
   for (const t of ['short', 'x'.repeat(300), 'bad token with spaces!!!!!!!!!']) {
     assert.equal((await h.client().get(`/api/invitations/${encodeURIComponent(t)}`)).status, 404);

@@ -3051,6 +3051,12 @@ function Reports({ go }) {
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>التقارير</span></div>
           <div className="h1">التقارير</div>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>تحليلات مالية وطبية وتشغيلية — بيانات مباشرة من قاعدة البيانات.</div>
+          {window.SB && (
+            <div className="report-branch" style={{marginTop:8}}>
+              <span className="pill"><I.MapPin size={12}/> الفرع: {activeBranchName()}</span>
+              <span className="muted" style={{fontSize:12,marginInlineStart:8}}>بدّل الفرع من القائمة الجانبية لعرض تقاريره.</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -3388,11 +3394,13 @@ function SettingsPage({ go }) {
     );
   }
 
+  // «المستخدمون والأدوار» is C06 (module core.staff, docs/03).
+  const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
   const items = [
     { id:"clinic",    l:"بيانات العيادة",       ic:<I.MapPin size={14}/> },
     { id:"branding",  l:"الهوية البصرية",       ic:<I.Image size={14}/> },
     { id:"depts",     l:"الأقسام والفريق",       ic:<I.Stethoscope size={14}/> },
-    { id:"users",     l:"المستخدمون والأدوار",    ic:<I.Users size={14}/> },
+    ...(staffOn ? [{ id:"users", l:"المستخدمون والأدوار", ic:<I.Users size={14}/> }] : []),
   ];
 
   return (
@@ -3401,9 +3409,11 @@ function SettingsPage({ go }) {
       <div className="h1" style={{marginBottom:18}}>الإعدادات</div>
 
       <div className="rgrid c-lg" style={{"--gtc":"220px 1fr"}}>
-        <div className="card side-tabs" style={{padding:8,height:"fit-content"}}>
+        <div className="card side-tabs" role="tablist" aria-label="أقسام الإعدادات" style={{padding:8,height:"fit-content"}}>
           {items.map(s=>(
-            <div key={s.id} className={"nav-item" + (tab===s.id?" active":"")} style={{margin:0}} onClick={()=>setTab(s.id)}>
+            <div key={s.id} data-settings-tab={s.id} role="tab" tabIndex={0} aria-selected={tab===s.id ? "true" : "false"}
+              className={"nav-item" + (tab===s.id?" active":"")} style={{margin:0}} onClick={()=>setTab(s.id)}
+              onKeyDown={(e)=>{ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(s.id); } }}>
               {s.ic}{s.l}
             </div>
           ))}
@@ -3412,7 +3422,7 @@ function SettingsPage({ go }) {
         <div className="card card-pad">
           {tab==="clinic" && <ClinicDetailsPanel/>}
           {tab==="depts" && <DeptDoctorsPanel/>}
-          {tab==="users" && <UsersPanel/>}
+          {tab==="users" && staffOn && <UsersPanel/>}
           {tab==="branding" && <BrandingPanel/>}
           {tab!=="clinic" && tab!=="users" && tab!=="branding" && tab!=="depts" && (
             <EmptyState icon={<I.Settings size={22}/>} title="قريبًا" body={`The "${tab}" section is part من the next release. Reach out to support if you need something configured.`}/>
@@ -4138,7 +4148,745 @@ function staffStatusMeta(s) {
     : { active:false, label:"معطّل", cls:"b-grey"  };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Clinic admin: shared bits for C06 (staff) and C07 (branches)
+// ═══════════════════════════════════════════════════════════════
+
+// Plan usage from GET /api/org/usage (window.OrgAdmin, src/supabase.jsx):
+// { plan, users:{active, pending_invitations, used, max}, branches:{active,
+// inactive, total, max}, branch_staff:{<branch id>: n} } — null while
+// loading or without a backend (demo mode).
+function useOrgUsage() {
+  const [usage, setUsage] = React.useState(null);
+  const [failed, setFailed] = React.useState(false);
+  const reload = React.useCallback(async () => {
+    if (!window.OrgAdmin || !window.OrgAdmin.available()) return null;
+    const r = await window.OrgAdmin.usage();
+    if (r.ok) { setUsage(r.data); setFailed(false); return r.data; }
+    setFailed(true);
+    return null;
+  }, []);
+  React.useEffect(() => { reload(); }, [reload]);
+  return { usage, failed, reload };
+}
+
+// Inline page alert (docs/04 «Alert ثابت داخل الصفحة»): tone warn | error | info.
+function CaAlert({ tone = "warn", children, onClose, id }) {
+  const tones = {
+    warn:  { bg: "var(--amber-bg)", fg: "#9B6321" },
+    error: { bg: "var(--red-bg)",   fg: "#A8443A" },
+    info:  { bg: "var(--blue-50)",  fg: "var(--blue-900)" },
+  };
+  const t = tones[tone] || tones.warn;
+  return (
+    <div id={id} role={tone === "error" ? "alert" : "status"} className={"ca-alert ca-alert-" + tone}
+      style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 14px",borderRadius:12,background:t.bg,color:t.fg,fontSize:13,lineHeight:1.65,marginBottom:14}}>
+      <span style={{flex:1}}>{children}</span>
+      {onClose && <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق التنبيه" onClick={onClose} style={{padding:2,color:"inherit"}}><I.X size={13}/></button>}
+    </div>
+  );
+}
+
+// YYYY-MM-DD (ISO) kept left-to-right inside Arabic text.
+function caFmtDate(v) {
+  const s = String(v || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? <bdi dir="ltr" className="mono">{s}</bdi> : "—";
+}
+
+// Branch id → name (the clinic's branches, inactive ones marked).
+function caBranchNames(ids) {
+  const list = window.BRANCHES || [];
+  return (ids || []).map(id => {
+    const b = list.find(x => x.id === id);
+    if (!b) return id;
+    return b.name + ((window.branchIsActive && !window.branchIsActive(b)) ? " (معطّل)" : "");
+  });
+}
+
+// Checkbox list of the clinic's ACTIVE branches (invitations, members and
+// accounts can only be given active branches).
+function CaBranchChecks({ value, onChange, idPrefix, invalid, describedBy }) {
+  const list = (window.BRANCHES || []).filter(b => !window.branchIsActive || window.branchIsActive(b));
+  const toggle = (id, on) => onChange(on ? Array.from(new Set([...(value || []), id])) : (value || []).filter(x => x !== id));
+  if (!list.length) return <div className="muted" style={{fontSize:12.5}}>لا توجد فروع نشطة — أضف فرعًا من صفحة «الفروع» أولًا.</div>;
+  return (
+    <div role="group" aria-describedby={describedBy} aria-invalid={invalid ? "true" : undefined}
+      style={{display:"flex",flexWrap:"wrap",gap:8}}>
+      {list.map(b => {
+        const on = (value || []).includes(b.id);
+        return (
+          <label key={b.id} htmlFor={`${idPrefix}-${b.id}`}
+            style={{display:"inline-flex",alignItems:"center",gap:8,padding:"7px 12px",borderRadius:10,cursor:"pointer",fontSize:13,
+              border:"1px solid " + (on ? "var(--blue-500)" : invalid ? "var(--red)" : "var(--ink-200)"),
+              background: on ? "var(--blue-50)" : "#fff"}}>
+            <input id={`${idPrefix}-${b.id}`} type="checkbox" checked={on} onChange={e=>toggle(b.id, e.target.checked)}/>
+            {b.name}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// C07 — الفروع (docs/03 C07, docs/04 «C07 الفروع»; clinic admin only)
+// ═══════════════════════════════════════════════════════════════
+// Cards: name, status, address, phone, rooms, staff count, working hours;
+// add / edit (BranchFormModal, src/ui.jsx), deactivate / re-activate —
+// never delete (0005_branches_no_delete). Counter «الفروع النشطة: X من Y»
+// when the plan limits branches; the plan's refusal (422
+// plan_limit:branches) is shown in Arabic where it happens.
+
+// Working hours as short lines: "السبت، الأحد: 09:00–21:00".
+function caHoursSummary(wh) {
+  const days = window.BRANCH_DAYS || [];
+  if (!wh || typeof wh !== "object") return null;
+  const groups = [];
+  let closed = 0;
+  for (const d of days) {
+    const v = wh[d.key];
+    if (!Array.isArray(v) || v.length !== 2) { closed++; continue; }
+    const key = v[0] + "–" + v[1];
+    const g = groups.find(x => x.key === key);
+    if (g) g.days.push(d.ar); else groups.push({ key, from: v[0], to: v[1], days: [d.ar] });
+  }
+  if (!groups.length) return null;
+  return { groups, closed };
+}
+
+function BranchCard({ b, current, staffCount, canDeactivate, onEdit, onToggle }) {
+  const on = !window.branchIsActive || window.branchIsActive(b);
+  const hours = caHoursSummary(b.working_hours);
+  const row = { display:"flex", alignItems:"flex-start", gap:8, fontSize:13, color:"var(--ink-700)" };
+  return (
+    <div className="card card-pad branch-card" data-branch-card={b.id} data-status={on ? "active" : "inactive"}
+      style={{display:"flex",flexDirection:"column",gap:10,opacity:on?1:.85}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+        <div style={{width:34,height:34,borderRadius:10,background:on?"var(--blue-100)":"var(--ink-100)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <I.MapPin size={16} style={{color:on?"var(--blue-700)":"var(--ink-500)"}}/>
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="h3 branch-card-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.name}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            <span className={"badge " + (on ? "b-green" : "b-grey")}><span className="dot"></span>{on ? "نشط" : "معطّل"}</span>
+            {current && <span className="badge b-blue">الفرع الحالي</span>}
+          </div>
+        </div>
+      </div>
+      <div style={row}><I.MapPin size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.address || <span className="muted">لا يوجد عنوان</span>}</span></div>
+      <div style={row}><I.Phone size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.phone ? <bdi dir="ltr" className="mono">{b.phone}</bdi> : <span className="muted">لا يوجد هاتف</span>}</span></div>
+      <div style={{...row,gap:16,flexWrap:"wrap"}}>
+        <span className="branch-card-rooms"><I.Layers size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>الغرف: <span className="mono">{Number(b.rooms) || 0}</span></span>
+        <span className="branch-card-staff"><I.Users size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>الموظفون: <span className="mono">{staffCount == null ? "—" : staffCount}</span></span>
+      </div>
+      <div style={row}>
+        <I.Clock size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/>
+        {hours ? (
+          <div className="branch-card-hours" style={{display:"flex",flexDirection:"column",gap:2}}>
+            {hours.groups.map(g => (
+              <span key={g.key}>{g.days.join("، ")}: <bdi dir="ltr" className="mono">{g.from}–{g.to}</bdi></span>
+            ))}
+            {hours.closed > 0 && <span className="muted">باقي الأيام: مغلق</span>}
+          </div>
+        ) : <span className="muted">لم تُحدد ساعات العمل</span>}
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:"auto",paddingTop:6,borderTop:"1px solid var(--ink-100)",flexWrap:"wrap"}}>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onEdit} aria-label={`تعديل ${b.name}`}><I.Edit size={13}/> تعديل</button>
+        {on ? (
+          <button type="button" className="btn btn-secondary" style={{fontSize:12.5,color:canDeactivate?"var(--red)":undefined}}
+            disabled={!canDeactivate} aria-disabled={!canDeactivate ? "true" : undefined}
+            title={canDeactivate ? undefined : "لا يمكن تعطيل آخر فرع نشط"}
+            onClick={onToggle} aria-label={`تعطيل ${b.name}`}>
+            <I.Lock size={13}/> تعطيل
+          </button>
+        ) : (
+          <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onToggle} aria-label={`إعادة تفعيل ${b.name}`}>
+            <I.Check size={13}/> إعادة تفعيل
+          </button>
+        )}
+      </div>
+      {on && !canDeactivate && <div className="muted" style={{fontSize:11.5}}>آخر فرع نشط لا يمكن تعطيله.</div>}
+    </div>
+  );
+}
+
+function BranchesPage({ go }) {
+  const role = (window.ME && window.ME.role) || "";
+  const [branches, setBranches] = React.useState(window.BRANCHES || []);
+  const [activeId, setActiveId] = React.useState(window.ACTIVE_BRANCH_ID || null);
+  const { usage, reload } = useOrgUsage();
+  const [form, setForm] = React.useState(null);      // null | "new" | branch row
+  const [confirm, setConfirm] = React.useState(null); // { branch, target: "active" | "inactive" }
+  const [busy, setBusy] = React.useState(false);
+  const [notice, setNotice] = React.useState(null);   // { tone, text }
+
+  React.useEffect(() => {
+    const onUpd = () => { setBranches(window.BRANCHES || []); setActiveId(window.ACTIVE_BRANCH_ID || null); };
+    window.addEventListener("kinetic:branches-updated", onUpd);
+    return () => window.removeEventListener("kinetic:branches-updated", onUpd);
+  }, []);
+
+  if (role && role !== "مدير") {
+    return (
+      <Page>
+        <div className="card card-pad" style={{textAlign:"center",padding:"60px 20px",maxWidth:520,margin:"40px auto"}}>
+          <I.Lock size={36} style={{color:"var(--ink-400)",marginBottom:12}}/>
+          <div className="h2" style={{marginBottom:8}}>ليست لديك صلاحية لهذه الصفحة</div>
+          <div className="muted" style={{fontSize:13.5,marginBottom:20}}>إدارة الفروع متاحة لمدير العيادة فقط.</div>
+          <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>go && go("dashboard")}><I.ArrowLeft size={13}/> العودة إلى لوحة التحكم</button>
+        </div>
+      </Page>
+    );
+  }
+
+  const isOn = (b) => !window.branchIsActive || window.branchIsActive(b);
+  const activeList = branches.filter(isOn);
+  const inactiveList = branches.filter(b => !isOn(b));
+  const max = usage && usage.branches ? usage.branches.max : null;
+  const atLimit = max != null && activeList.length >= max;
+  const staffOf = (id) => (usage && usage.branch_staff ? (usage.branch_staff[id] || 0) : null);
+
+  async function applyStatus() {
+    if (!confirm) return;
+    const { branch, target } = confirm;
+    setBusy(true);
+    try {
+      await window.setBranchStatus(branch.id, target);
+      setNotice(null);
+      if (window.showToast) window.showToast(target === "inactive" ? `تم تعطيل ${branch.name}` : `تمت إعادة تفعيل ${branch.name}`, "success");
+      reload();
+    } catch (e) {
+      const msg = e && /[؀-ۿ]/.test(String(e.message || "")) ? e.message : "تعذّر تغيير حالة الفرع — أعد المحاولة";
+      setNotice({ tone: "error", text: msg });
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
+  }
+
+  const counter = max != null
+    ? <>الفروع النشطة: <span className="mono">{activeList.length}</span> من <span className="mono">{max}</span></>
+    : <>الفروع النشطة: <span className="mono">{activeList.length}</span>{usage ? " · خطتك بلا حد للفروع" : ""}</>;
+
+  return (
+    <Page>
+      <div className="page-head">
+        <div>
+          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الفروع</span></div>
+          <div className="h1">الفروع</div>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>فروع عيادتك وساعات عملها وغرفها. الفرع المعطّل تبقى سجلاته محفوظة ولا يقبل حجوزات جديدة.</div>
+        </div>
+        <div className="page-actions">
+          <span className={"pill branch-counter" + (atLimit ? " tag-amber" : "")} data-testid="branch-counter"
+            style={atLimit ? {background:"var(--amber-bg)",color:"#9B6321"} : undefined}>{counter}</span>
+          <button type="button" className="btn btn-blue" onClick={()=>setForm("new")} aria-describedby={atLimit ? "branch-limit-note" : undefined}>
+            <I.Plus size={14}/> إضافة فرع
+          </button>
+        </div>
+      </div>
+
+      {atLimit && (
+        <CaAlert tone="warn" id="branch-limit-note">
+          وصلت إلى حد الفروع في خطتك (<span className="mono">{activeList.length}</span> من <span className="mono">{max}</span>). لإضافة فرع آخر عطّل فرعًا قائمًا أو تواصل مع إدارة المنصة لترقية الخطة.
+        </CaAlert>
+      )}
+      {notice && <CaAlert tone={notice.tone} onClose={()=>setNotice(null)}>{notice.text}</CaAlert>}
+
+      {branches.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={<I.MapPin size={22}/>} title="لا فروع بعد" body="أضف أول فرع لبدء الحجز — الحجز معطّل حتى يوجد فرع نشط."
+            action={<button type="button" className="btn btn-blue" onClick={()=>setForm("new")}><I.Plus size={14}/> أضف أول فرع</button>}/>
+        </div>
+      ) : (
+        <div className="rgrid branch-grid" style={{"--gtc":"repeat(auto-fill, minmax(min(100%, 290px), 1fr))"}}>
+          {activeList.map(b => (
+            <BranchCard key={b.id} b={b} current={b.id === activeId} staffCount={staffOf(b.id)}
+              canDeactivate={activeList.length > 1}
+              onEdit={()=>setForm(b)} onToggle={()=>setConfirm({ branch: b, target: "inactive" })}/>
+          ))}
+        </div>
+      )}
+
+      {inactiveList.length > 0 && (
+        <>
+          <div className="h2" style={{margin:"26px 0 12px"}}>الفروع المعطّلة</div>
+          <div className="rgrid branch-grid" style={{"--gtc":"repeat(auto-fill, minmax(min(100%, 290px), 1fr))"}}>
+            {inactiveList.map(b => (
+              <BranchCard key={b.id} b={b} current={b.id === activeId} staffCount={staffOf(b.id)} canDeactivate={false}
+                onEdit={()=>setForm(b)} onToggle={()=>setConfirm({ branch: b, target: "active" })}/>
+            ))}
+          </div>
+        </>
+      )}
+
+      {form && <BranchFormModal editing={form === "new" ? null : form} onSaved={()=>{ setNotice(null); reload(); }} onClose={()=>setForm(null)}/>}
+      {confirm && (
+        <ConfirmModal
+          title={confirm.target === "inactive" ? `تعطيل ${confirm.branch.name}` : `إعادة تفعيل ${confirm.branch.name}`}
+          danger={confirm.target === "inactive"}
+          busy={busy}
+          cancelLabel="رجوع"
+          confirmLabel={confirm.target === "inactive" ? "تعطيل الفرع" : "إعادة التفعيل"}
+          onConfirm={applyStatus}
+          onClose={()=>setConfirm(null)}
+          message={confirm.target === "inactive"
+            ? <>سيختفي <b>{confirm.branch.name}</b> من قائمة الفروع ولن يقبل حجوزات جديدة. تبقى مواعيده وفواتيره وجلساته محفوظة، ويمكنك إعادة تفعيله لاحقًا. لا يُحذف أي فرع.</>
+            : <>سيعود <b>{confirm.branch.name}</b> إلى قائمة الفروع ويقبل الحجوزات من جديد. يُحسب ضمن حد الفروع في خطتك.</>}
+        />
+      )}
+    </Page>
+  );
+}
+
+// Shown above every page while the branch in use is inactive (a member
+// whose only branches were deactivated): its data stays readable, new
+// bookings are refused (src/supabase.jsx upsertRow).
+function InactiveBranchBanner() {
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const on = () => setTick(t => t + 1);
+    window.addEventListener("kinetic:branches-updated", on);
+    return () => window.removeEventListener("kinetic:branches-updated", on);
+  }, []);
+  if (!window.SB || !window.branchIsActive) return null;
+  const b = (window.BRANCHES || []).find(x => x.id === window.ACTIVE_BRANCH_ID);
+  if (!b || window.branchIsActive(b)) return null;
+  return (
+    <div style={{padding:"10px 36px 0"}}>
+      <CaAlert tone="warn">الفرع «{b.name}» معطّل — بياناته للعرض فقط ولا يمكن إضافة حجوزات جديدة فيه. تواصل مع مدير العيادة.</CaAlert>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// C06 — الموظفون والدعوات (docs/03 C06, docs/04 «C06 الموظفون»)
+// ═══════════════════════════════════════════════════════════════
+// With the API: members (GET /api/org/members — role, branches, status),
+// invitations (GET/POST /api/org/invitations, resend, revoke), the users
+// counter «المستخدمون: X من Y» (GET /api/org/usage), role + branches of a
+// member (PATCH /api/org/members/:id), deactivate / re-activate through
+// the admin set-status flow, and the existing «إنشاء مستخدم». Without a
+// backend (demo mode) the local staff roster below is shown instead.
+const CA_ROLE_AR = { admin:"مدير", receptionist:"موظف استقبال", doctor:"طبيب", therapist:"الأخصائي", staff:"موظف" };
+const CA_INVITE_ROLES = ["receptionist", "doctor", "therapist", "admin"];
+const CA_INVITE_STATUS = {
+  pending:  { label:"معلّقة",  cls:"b-amber" },
+  expired:  { label:"منتهية", cls:"b-grey" },
+  accepted: { label:"مقبولة", cls:"b-green" },
+  revoked:  { label:"ملغاة",  cls:"b-red" },
+};
+const CA_MEMBER_STATUS = {
+  active:   { label:"نشط",   cls:"b-green" },
+  disabled: { label:"معطّل", cls:"b-grey" },
+  invited:  { label:"مدعو",  cls:"b-amber" },
+};
+const CA_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Invitations whose e-mail was not sent (email_sent false / null on create
+// or resend): the API keeps no flag, so this tab remembers them until a
+// resend succeeds.
+const CA_UNSENT_KEY = "clinicsys.unsent_invites";
+function caUnsentRead() {
+  try { const v = JSON.parse(sessionStorage.getItem(CA_UNSENT_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+  catch (_) { return []; }
+}
+function caUnsentWrite(list) {
+  try { sessionStorage.setItem(CA_UNSENT_KEY, JSON.stringify(list)); } catch (_) {}
+}
+
 function UsersPanel() {
+  const api = !!(window.OrgAdmin && window.OrgAdmin.available());
+  return api ? <StaffInvitesPanel/> : <StaffRosterPanel/>;
+}
+
+function StaffInvitesPanel() {
+  const me = window.ME || {};
+  const [members, setMembers] = React.useState(null);
+  const [invites, setInvites] = React.useState(null);
+  const [loadError, setLoadError] = React.useState("");
+  const { usage, reload: reloadUsage } = useOrgUsage();
+  const [unsent, setUnsent] = React.useState(caUnsentRead);
+  const [filter, setFilter] = React.useState("open");
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [editMember, setEditMember] = React.useState(null);
+  const [nameRow, setNameRow] = React.useState(null);
+  const [resetRow, setResetRow] = React.useState(null);
+  const [statusRow, setStatusRow] = React.useState(null);
+  const [statusBusy, setStatusBusy] = React.useState(false);
+  const [revokeRow, setRevokeRow] = React.useState(null);
+  const [revokeBusy, setRevokeBusy] = React.useState(false);
+  const [resendId, setResendId] = React.useState(null);
+  const [pwOpen, setPwOpen] = React.useState(false);
+  const [profileOpen, setProfileOpen] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    const [m, i] = await Promise.all([window.OrgAdmin.members(), window.OrgAdmin.invitations()]);
+    if (m.ok) setMembers(Array.isArray(m.data) ? m.data : []);
+    if (i.ok) setInvites(Array.isArray(i.data) ? i.data : []);
+    setLoadError(!m.ok ? m.error : (!i.ok ? i.error : ""));
+    reloadUsage();
+  }, [reloadUsage]);
+  React.useEffect(() => { load(); }, [load]);
+
+  function markUnsent(id, sent) {
+    setUnsent(prev => {
+      const next = sent ? prev.filter(x => x !== id) : Array.from(new Set([...prev, id]));
+      caUnsentWrite(next);
+      return next;
+    });
+  }
+  const toast = (msg, kind) => window.showToast && window.showToast(msg, kind || "success");
+
+  function afterInvite(data) {
+    const inv = data && data.invitation;
+    if (!inv) return;
+    const sent = data.email_sent === true;
+    markUnsent(inv.id, sent);
+    toast(sent ? `تم إرسال الدعوة إلى ${inv.email}` : `أُنشئت الدعوة لكن لم يُرسل البريد إلى ${inv.email} بعد — أعد الإرسال من القائمة`, sent ? "success" : "error");
+    setFilter("open");
+    load();
+  }
+
+  async function resend(inv) {
+    setResendId(inv.id);
+    const r = await window.OrgAdmin.resendInvitation(inv.id);
+    setResendId(null);
+    if (!r.ok) { toast(r.error, "error"); return; }
+    const sent = !!(r.data && r.data.email_sent === true);
+    markUnsent(inv.id, sent);
+    toast(sent ? `أُعيد إرسال الدعوة إلى ${inv.email}` : `تعذّر إرسال البريد إلى ${inv.email} — أعد المحاولة لاحقًا`, sent ? "success" : "error");
+    load();
+  }
+
+  async function revoke() {
+    if (!revokeRow) return;
+    setRevokeBusy(true);
+    const r = await window.OrgAdmin.revokeInvitation(revokeRow.id);
+    setRevokeBusy(false);
+    if (r.ok) { markUnsent(revokeRow.id, true); toast(`تم إلغاء دعوة ${revokeRow.email}`); load(); }
+    else toast(r.error, "error");
+    setRevokeRow(null);
+  }
+
+  async function applyStatus() {
+    if (!statusRow) return;
+    const { row, active } = statusRow;
+    setStatusBusy(true);
+    const res = await window.adminSetStaffStatus({ staff_id: row.staff_id, active });
+    setStatusBusy(false);
+    if (res.ok) toast(active ? `تم تفعيل حساب ${row.name}` : `تم تعطيل حساب ${row.name}`);
+    else toast(res.error || "تعذّر تنفيذ العملية", "error");
+    setStatusRow(null);
+    load();
+  }
+
+  const usersMax = usage && usage.users ? usage.users.max : null;
+  const atLimit = usersMax != null && usage.users.used >= usersMax;
+  const allInvites = invites || [];
+  const openInvites = allInvites.filter(i => i.status === "pending" || i.status === "expired");
+  const shownInvites = filter === "open" ? openInvites : allInvites;
+  const initials = (n) => (n || "?").split(" ").map(x => x[0] || "").join("").slice(0, 2);
+
+  return (
+    <div className="staff-panel">
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,gap:12,flexWrap:"wrap"}}>
+        <div>
+          <div className="h2">المستخدمون والأدوار</div>
+          <div className="muted" style={{fontSize:12.5,marginTop:2}}>ادعُ فريقك بالبريد وحدد الدور والفروع، وفعّل أو عطّل الحسابات. لا يُحذف أي حساب.</div>
+          {usage && usage.users && (
+            <div className="users-counter" data-testid="users-counter" style={{marginTop:8,fontSize:12.5,color:atLimit?"#9B6321":"var(--ink-700)"}}>
+              {usersMax != null
+                ? <>المستخدمون: <span className="mono">{usage.users.used}</span> من <span className="mono">{usersMax}</span></>
+                : <>المستخدمون: <span className="mono">{usage.users.used}</span> · خطتك بلا حد للمستخدمين</>}
+              {usage.users.pending_invitations > 0 && <span className="muted"> (منها دعوات معلّقة: <span className="mono">{usage.users.pending_invitations}</span>)</span>}
+            </div>
+          )}
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button type="button" className="btn btn-secondary" onClick={()=>setCreateOpen(true)}><I.User size={14}/> إنشاء مستخدم</button>
+          <button type="button" className="btn btn-blue" onClick={()=>setInviteOpen(true)}><I.Mail size={14}/> دعوة موظف</button>
+        </div>
+      </div>
+
+      {atLimit && (
+        <CaAlert tone="warn">
+          وصلت إلى حد المستخدمين في خطتك (<span className="mono">{usage.users.used}</span> من <span className="mono">{usersMax}</span>) — الدعوات المعلّقة تُحسب أيضًا. ألغِ دعوة أو عطّل حسابًا، أو تواصل مع إدارة المنصة لترقية الخطة.
+        </CaAlert>
+      )}
+      {loadError && (
+        <CaAlert tone="error">{loadError} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={load}>إعادة المحاولة</button></CaAlert>
+      )}
+
+      {/* My account */}
+      <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
+        <div className="av md" style={{background:"var(--blue-500)",color:"#fff"}}>{initials(me.name)}</div>
+        <div style={{flex:1,minWidth:160}}>
+          <div style={{fontWeight:600,fontSize:13.5}}>{me.name || "حسابي"} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{me.role || "مدير"}</span></div>
+          <div className="mono muted" style={{fontSize:12}}><bdi dir="ltr">{me.email || "—"}</bdi></div>
+        </div>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> تعديل اسمي</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> تغيير كلمة المرور</button>
+      </div>
+
+      {/* Members */}
+      <div className="h3" style={{marginBottom:8}}>أعضاء العيادة</div>
+      <div className="tbl-scroll" style={{marginBottom:22}}>
+        <table className="tbl members-table">
+          <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>إجراءات</span></th></tr></thead>
+          <tbody>
+            {members === null && !loadError && (
+              <tr><td colSpan={6} style={{padding:0}}><SkeletonRow count={3}/></td></tr>
+            )}
+            {members && members.length === 0 && (
+              <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title="لا أعضاء بعد" body="ادعُ أول موظف بالبريد من زر «دعوة موظف»."/></td></tr>
+            )}
+            {(members || []).map(m => {
+              const st = CA_MEMBER_STATUS[m.status] || CA_MEMBER_STATUS.active;
+              const branches = m.role === "admin" ? ["كل الفروع"] : caBranchNames(m.branch_ids);
+              const active = m.status === "active";
+              const items = [];
+              if (m.is_self) {
+                items.push({ label:"تعديل اسمي", icon:<I.Edit size={13}/>, onClick:()=>setProfileOpen(true) });
+                items.push({ label:"تغيير كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setPwOpen(true) });
+              } else {
+                items.push({ label:"تعديل الدور والفروع", icon:<I.Settings size={13}/>, onClick:()=>setEditMember(m) });
+                if (m.staff_id) items.push({ label:"تعديل الاسم", icon:<I.Edit size={13}/>, onClick:()=>setNameRow({ staff_id:m.staff_id, name:m.name, email:m.email, role:m.role }) });
+                if (m.staff_id) items.push({ label:"إعادة تعيين كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setResetRow({ staff_id:m.staff_id, auth_uid:m.user_id, name:m.name, email:m.email }) });
+                if (m.staff_id) items.push(active
+                  ? { label:"تعطيل الحساب", icon:<I.Lock size={13}/>, danger:true, onClick:()=>setStatusRow({ row:m, active:false }) }
+                  : { label:"إعادة تفعيل الحساب", icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:m, active:true }) });
+              }
+              items.push({ label:"نسخ البريد", icon:<I.Mail size={13}/>, onClick:()=>{ try { navigator.clipboard.writeText(m.email || ""); toast("تم نسخ البريد"); } catch (_) {} } });
+              return (
+                <tr key={m.id} data-member={m.email} data-status={m.status} style={active ? undefined : {opacity:.8}}>
+                  <td><div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div className="av sm">{initials(m.name)}</div>
+                    <span style={{fontWeight:500}}>{m.name}</span>{m.is_self && <span className="muted" style={{fontSize:11}}>(أنا)</span>}
+                  </div></td>
+                  <td className="mono" style={{fontSize:12}}><bdi dir="ltr">{m.email}</bdi></td>
+                  <td><span className={"badge " + roleBadgeClass(m.role)}><span className="dot"></span>{CA_ROLE_AR[m.role] || m.role}</span></td>
+                  <td style={{fontSize:12.5}}>{branches.length ? branches.join("، ") : <span className="muted">—</span>}</td>
+                  <td><span className={"badge " + st.cls}><span className="dot"></span>{st.label}</span></td>
+                  <td><RowMenu size={13} items={items}/></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Invitations */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:8}}>
+        <div className="h3">الدعوات</div>
+        <div className="seg" role="group" aria-label="تصفية الدعوات">
+          <button type="button" className={filter === "open" ? "on" : ""} aria-pressed={filter === "open"} onClick={()=>setFilter("open")}>بانتظار القبول (<span className="mono">{openInvites.length}</span>)</button>
+          <button type="button" className={filter === "all" ? "on" : ""} aria-pressed={filter === "all"} onClick={()=>setFilter("all")}>كل الدعوات (<span className="mono">{allInvites.length}</span>)</button>
+        </div>
+      </div>
+      <div className="tbl-scroll">
+        <table className="tbl invitations-table">
+          <thead><tr><th>البريد الإلكتروني</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>تنتهي في</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            {invites === null && !loadError && (
+              <tr><td colSpan={6} style={{padding:0}}><SkeletonRow count={2}/></td></tr>
+            )}
+            {invites && shownInvites.length === 0 && (
+              <tr><td colSpan={6}><div className="tbl-empty"><I.Mail size={20}/><div>{filter === "open" ? "لا توجد دعوات بانتظار القبول." : "لم تُرسل أي دعوة بعد."}</div></div></td></tr>
+            )}
+            {shownInvites.map(inv => {
+              const st = CA_INVITE_STATUS[inv.status] || { label: inv.status, cls: "b-grey" };
+              const actionable = inv.status === "pending" || inv.status === "expired";
+              const notSent = actionable && unsent.includes(inv.id);
+              return (
+                <tr key={inv.id} data-invite={inv.email} data-status={inv.status}>
+                  <td className="mono" style={{fontSize:12}}><bdi dir="ltr">{inv.email}</bdi></td>
+                  <td><span className={"badge " + roleBadgeClass(inv.role)}><span className="dot"></span>{CA_ROLE_AR[inv.role] || inv.role}</span></td>
+                  <td style={{fontSize:12.5}}>{inv.role === "admin" ? "كل الفروع" : (caBranchNames(inv.branch_ids).join("، ") || "—")}</td>
+                  <td>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <span className={"badge " + st.cls}><span className="dot"></span>{st.label}</span>
+                      {notSent && <span className="badge b-red invite-unsent"><I.Mail size={11}/>لم يُرسل البريد</span>}
+                    </div>
+                  </td>
+                  <td style={{fontSize:12.5}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>
+                  <td>
+                    {actionable ? (
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <button type="button" className={"btn " + (notSent || inv.status === "expired" ? "btn-blue" : "btn-secondary")} style={{fontSize:12,padding:"5px 10px"}}
+                          disabled={resendId === inv.id} aria-label={`إعادة إرسال دعوة ${inv.email}`} onClick={()=>resend(inv)}>
+                          {resendId === inv.id
+                            ? <span className="spin" aria-hidden="true" style={{width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%"}}/>
+                            : <I.Send size={12}/>} إعادة الإرسال
+                        </button>
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"var(--red)"}}
+                          aria-label={`إلغاء دعوة ${inv.email}`} onClick={()=>setRevokeRow(inv)}>
+                          <I.X size={12}/> إلغاء
+                        </button>
+                      </div>
+                    ) : <span className="muted" style={{fontSize:12}}>—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {inviteOpen && <InviteStaffModal onClose={()=>setInviteOpen(false)} onDone={afterInvite}/>}
+      {createOpen && <CreateUserModal onClose={()=>setCreateOpen(false)} onDone={()=>load()}/>}
+      {editMember && <EditMemberModal member={editMember} onClose={()=>setEditMember(null)} onDone={()=>{ toast("تم حفظ التغييرات"); load(); }}/>}
+      {nameRow && <EditUserModal row={nameRow} nameOnly onClose={()=>{ setNameRow(null); load(); }}/>}
+      {pwOpen && <ChangePasswordModal onClose={()=>setPwOpen(false)}/>}
+      {profileOpen && <EditProfileModal onClose={()=>{ setProfileOpen(false); load(); }}/>}
+      {resetRow && <AdminResetPasswordModal row={resetRow} onClose={()=>setResetRow(null)}/>}
+      {revokeRow && (
+        <ConfirmModal
+          title="إلغاء الدعوة"
+          danger
+          busy={revokeBusy}
+          cancelLabel="رجوع"
+          confirmLabel="إلغاء الدعوة"
+          onConfirm={revoke}
+          onClose={()=>setRevokeRow(null)}
+          message={<>لن يعمل رابط الدعوة المرسل إلى <b><bdi dir="ltr">{revokeRow.email}</bdi></b> بعد الآن، ويتحرر مقعده في الخطة. يمكنك إرسال دعوة جديدة لاحقًا.</>}
+        />
+      )}
+      {statusRow && (
+        <ConfirmModal
+          title={statusRow.active ? "إعادة تفعيل الحساب" : "تعطيل الحساب"}
+          danger={!statusRow.active}
+          busy={statusBusy}
+          cancelLabel="رجوع"
+          confirmLabel={statusRow.active ? "تفعيل" : "تعطيل"}
+          onConfirm={applyStatus}
+          onClose={()=>setStatusRow(null)}
+          message={statusRow.active
+            ? <>سيتمكّن <b>{statusRow.row.name}</b> (<bdi dir="ltr">{statusRow.row.email || "—"}</bdi>) من تسجيل الدخول إلى العيادة مجددًا بنفس البريد وكلمة المرور. يُحسب ضمن حد المستخدمين في خطتك.</>
+            : <>سيُمنع <b>{statusRow.row.name}</b> (<bdi dir="ltr">{statusRow.row.email || "—"}</bdi>) من دخول العيادة وتُنهى جلساته الحالية فورًا. تبقى جميع بياناته ومواعيده وسجل التدقيق كما هي، ويمكن إعادة التفعيل لاحقًا.</>}
+        />
+      )}
+    </div>
+  );
+}
+
+// «دعوة موظف»: e-mail + role + branches (docs/03 «دعوة موظف»). Non-admin
+// roles need at least one active branch; the clinic admin works in every
+// branch. The server's refusals (already a member, a pending invitation,
+// the plan's user limit) show in the form, in Arabic.
+function InviteStaffModal({ onClose, onDone }) {
+  const activeIds = (window.BRANCHES || []).filter(b => !window.branchIsActive || window.branchIsActive(b)).map(b => b.id);
+  const [email, setEmail] = React.useState("");
+  const [role, setRole] = React.useState("receptionist");
+  const [branchIds, setBranchIds] = React.useState(() =>
+    activeIds.includes(window.ACTIVE_BRANCH_ID) ? [window.ACTIVE_BRANCH_ID] : activeIds.slice(0, 1));
+  const [errors, setErrors] = React.useState({});
+  const [serverError, setServerError] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function submit() {
+    const e = {};
+    const addr = email.trim().toLowerCase();
+    if (!addr) e.email = "أدخل البريد الإلكتروني";
+    else if (!CA_EMAIL_RE.test(addr) || addr.length > 254) e.email = "بريد إلكتروني غير صحيح";
+    if (!CA_INVITE_ROLES.includes(role)) e.role = "اختر الدور";
+    if (role !== "admin" && !branchIds.length) e.branches = "اختر فرعًا واحدًا على الأقل";
+    setErrors(e);
+    if (Object.keys(e).length) return;
+    setBusy(true);
+    setServerError("");
+    const r = await window.OrgAdmin.invite({ email: addr, role, branch_ids: role === "admin" ? [] : branchIds });
+    setBusy(false);
+    if (!r.ok) { setServerError(r.error); return; }
+    onClose();
+    if (onDone) onDone(r.data);
+  }
+
+  const errStyle = { fontSize:11.5, color:"#A8443A", marginTop:4 };
+  return (
+    <Modal title="دعوة موظف" onClose={busy ? undefined : onClose} width={560} footer={<>
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
+      <button type="button" className="btn btn-blue" disabled={busy} onClick={submit} aria-busy={busy ? "true" : undefined}>
+        {busy ? <span className="spin" aria-hidden="true" style={{width:13,height:13,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <I.Send size={13}/>}
+        إرسال الدعوة
+      </button>
+    </>}>
+      <form onSubmit={(e)=>{ e.preventDefault(); submit(); }} noValidate>
+        {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
+        <label className="label" htmlFor="staff-invite-email">البريد الإلكتروني <span style={{color:"var(--red)"}}>*</span></label>
+        <input id="staff-invite-email" className="input" type="email" dir="ltr" autoFocus placeholder="name@clinic.eg" value={email}
+          style={{textAlign:"right", ...(errors.email ? {borderColor:"var(--red)"} : {})}}
+          aria-invalid={errors.email ? "true" : undefined} aria-describedby={errors.email ? "staff-invite-email-err" : undefined}
+          onChange={e=>{ setEmail(e.target.value); setErrors(x=>({...x,email:undefined})); setServerError(""); }}/>
+        {errors.email && <div id="staff-invite-email-err" style={errStyle}>{errors.email}</div>}
+        <div style={{height:12}}/>
+        <label className="label" htmlFor="staff-invite-role">الدور <span style={{color:"var(--red)"}}>*</span></label>
+        <select id="staff-invite-role" className="input" value={role} onChange={e=>{ setRole(e.target.value); setServerError(""); }}>
+          {CA_INVITE_ROLES.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
+        </select>
+        <div style={{height:14}}/>
+        <div className="label" id="staff-invite-branches-label">الفروع {role !== "admin" && <span style={{color:"var(--red)"}}>*</span>}</div>
+        {role === "admin"
+          ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+          : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setErrors(x=>({...x,branches:undefined})); }} idPrefix="staff-invite-branch"
+              invalid={!!errors.branches} describedBy={errors.branches ? "staff-invite-branches-err" : "staff-invite-branches-label"}/>}
+        {errors.branches && <div id="staff-invite-branches-err" style={errStyle}>{errors.branches}</div>}
+        <div className="muted" style={{fontSize:11.5,marginTop:14,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
+          <I.Mail size={11} style={{marginInlineEnd:4}}/> يصل للموظف رابط صالح لمدة 7 أيام ليعيّن كلمة مروره بنفسه. الدعوة المعلّقة تحجز مقعدًا في خطتك حتى تُقبل أو تُلغى.
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// Role and branches of a member (PATCH /api/org/members/:id). A role
+// change ends the member's open sessions so the new navigation applies.
+function EditMemberModal({ member, onClose, onDone }) {
+  const roles = member.role === "staff" ? [...CA_INVITE_ROLES, "staff"] : CA_INVITE_ROLES;
+  const [role, setRole] = React.useState(member.role);
+  const [branchIds, setBranchIds] = React.useState(() => (member.branch_ids || []).filter(id =>
+    (window.BRANCHES || []).some(b => b.id === id && (!window.branchIsActive || window.branchIsActive(b)))));
+  const [error, setError] = React.useState("");
+  const [serverError, setServerError] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  async function submit() {
+    if (role !== "admin" && !branchIds.length) { setError("اختر فرعًا واحدًا على الأقل"); return; }
+    setBusy(true);
+    setServerError("");
+    const r = await window.OrgAdmin.updateMember(member.id, { role, branch_ids: role === "admin" ? [] : branchIds });
+    setBusy(false);
+    if (!r.ok) { setServerError(r.error); return; }
+    onClose();
+    if (onDone) onDone(r.data);
+  }
+  return (
+    <Modal title={`تعديل ${member.name}`} onClose={busy ? undefined : onClose} footer={<>
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
+      <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+    </>}>
+      {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
+      <div className="muted mono" style={{fontSize:12,marginBottom:12}}><bdi dir="ltr">{member.email}</bdi></div>
+      <label className="label" htmlFor="member-role">الدور</label>
+      <select id="member-role" className="input" value={role} onChange={e=>{ setRole(e.target.value); setError(""); }}>
+        {roles.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
+      </select>
+      <div style={{height:14}}/>
+      <div className="label">الفروع</div>
+      {role === "admin"
+        ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+        : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setError(""); }} idPrefix="member-branch" invalid={!!error}/>}
+      {error && <div style={{fontSize:11.5,color:"#A8443A",marginTop:4}}>{error}</div>}
+      {role !== member.role && (
+        <div className="muted" style={{fontSize:11.5,marginTop:12,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
+          تغيير الدور يُنهي جلسات الموظف المفتوحة، فيسجّل الدخول من جديد بصلاحيات الدور الجديد.
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// Without a backend (demo mode): the local staff roster, as before.
+function StaffRosterPanel() {
   const me = window.ME || {};
   const staff = DATA.staff || [];
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -4152,7 +4900,7 @@ function UsersPanel() {
   const isMe = (s) => me.email && (s.email || "").toLowerCase() === (me.email || "").toLowerCase();
 
   async function removeMember(s) {
-    if (!window.confirm(`إزالة ${s.name}؟ (يزيل صف الموظف؛ حساب الدخول يُحذف من Supabase)`)) return;
+    if (!window.confirm(`إزالة ${s.name} من القائمة؟`)) return;
     try {
       await window.KineticData.remove("staff", s.staff_id || s.id);
       window.showToast && window.showToast(`تم إزالة ${s.name}`, "success");
@@ -4297,7 +5045,7 @@ function AdminResetPasswordModal({ row, onClose }) {
         <button className="btn btn-blue" onClick={proceed}><I.Lock size={13}/> متابعة</button>
       </>}>
       <div className="muted" style={{fontSize:12,marginBottom:14,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8,lineHeight:1.6}}>
-        <I.Lock size={11} style={{marginInlineEnd:4}}/> بصفتك مديرًا، يمكنك تعيين كلمة مرور جديدة لهذا الموظف دون معرفة كلمته الحالية. تُنفَّذ العملية عبر Supabase Auth الآمن.
+        <I.Lock size={11} style={{marginInlineEnd:4}}/> بصفتك مديرًا، يمكنك تعيين كلمة مرور جديدة لهذا الموظف دون معرفة كلمته الحالية. تُنهى جلساته المفتوحة، ويستخدم الكلمة الجديدة في دخوله القادم.
       </div>
       <Field label="كلمة المرور الجديدة" required hint="6 أحرف على الأقل">
         <div style={{position:"relative"}}>
@@ -4313,88 +5061,117 @@ function AdminResetPasswordModal({ row, onClose }) {
   );
 }
 
-function CreateUserModal({ onClose }) {
+// «إنشاء مستخدم» (POST /api/admin/create-user): an account with a password
+// set by the admin, for staff who cannot receive e-mail. Invitations are
+// the preferred path (the member sets their own password).
+function CreateUserModal({ onClose, onDone }) {
+  const api = !!(window.OrgAdmin && window.OrgAdmin.available());
+  const activeIds = (window.BRANCHES || []).filter(b => !window.branchIsActive || window.branchIsActive(b)).map(b => b.id);
   const [form, setForm] = React.useState({ name:"", email:"", password:"", role:"receptionist" });
+  const [branchIds, setBranchIds] = React.useState(() =>
+    activeIds.includes(window.ACTIVE_BRANCH_ID) ? [window.ACTIVE_BRANCH_ID] : activeIds.slice(0, 1));
   const [busy, setBusy] = React.useState(false);
   const [showPw, setShowPw] = React.useState(false);
-  const set = (k,v)=>setForm(f=>({...f,[k]:v}));
+  const [serverError, setServerError] = React.useState("");
+  const set = (k,v)=>{ setForm(f=>({...f,[k]:v})); setServerError(""); };
   async function submit() {
+    if (!form.name.trim()) { setServerError("أدخل الاسم الكامل"); return; }
+    if (api && form.role !== "admin" && !branchIds.length) { setServerError("اختر فرعًا واحدًا على الأقل"); return; }
     setBusy(true);
-    const res = await window.adminCreateUser(form);
+    const res = await window.adminCreateUser(api ? { ...form, branch_ids: form.role === "admin" ? [] : branchIds } : form);
     setBusy(false);
-    if (!res.ok) { window.showToast && window.showToast(res.error || "تعذّر إنشاء المستخدم", "error"); return; }
+    if (!res.ok) { setServerError(res.error || "تعذّر إنشاء المستخدم"); return; }
     if (res.needsConfirm) window.showToast && window.showToast("تم الإنشاء — على المستخدم تأكيد بريده قبل الدخول", "success");
     else window.showToast && window.showToast(res.demo ? "تم الإنشاء (وضع تجريبي)" : "تم إنشاء المستخدم", "success");
     onClose();
+    if (onDone) onDone(res);
   }
   return (
-    <Modal title="إنشاء مستخدم جديد" onClose={onClose}
+    <Modal title="إنشاء مستخدم جديد" onClose={busy ? undefined : onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={submit}>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
+        <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}>
           {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> إنشاء الحساب</>}
         </button>
       </>}>
+      {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
       <Field label="الاسم الكامل" required>
-        <input className="input" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="مثال: دينا فؤاد"/>
+        <input className="input" aria-label="الاسم الكامل" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="مثال: دينا فؤاد"/>
       </Field>
       <div style={{height:12}}/>
       <Field label="البريد الإلكتروني" required>
-        <input className="input" type="email" value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
+        <input className="input" aria-label="البريد الإلكتروني" type="email" dir="ltr" style={{textAlign:"right"}} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
       </Field>
       <div style={{height:12}}/>
       <Field label="كلمة المرور" required hint="6 أحرف على الأقل">
         <div style={{position:"relative"}}>
-          <input className="input" type={showPw?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} style={{paddingRight:38}}/>
-          <button type="button" onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
+          <input className="input" aria-label="كلمة المرور" type={showPw?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} style={{paddingRight:38}}/>
+          <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
       <Field label="الدور" required>
-        <select className="input" value={form.role} onChange={e=>set("role",e.target.value)}>
+        <select className="input" aria-label="الدور" value={form.role} onChange={e=>set("role",e.target.value)}>
           {ROLE_OPTIONS.map(r=><option key={r.slug} value={r.slug}>{r.label}</option>)}
         </select>
       </Field>
+      {api && (
+        <>
+          <div style={{height:12}}/>
+          <div className="label">الفروع {form.role !== "admin" && <span style={{color:"var(--red)"}}>*</span>}</div>
+          {form.role === "admin"
+            ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+            : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setServerError(""); }} idPrefix="create-user-branch"/>}
+        </>
+      )}
       <div className="muted" style={{fontSize:11.5,marginTop:14,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-        <I.Lock size={11} style={{marginInlineEnd:4}}/> لدخول فوري، عطّل «تأكيد البريد» في Supabase (Authentication → Providers → Email). وإلا يستلم المستخدم رابط تأكيد على بريده.
+        <I.Lock size={11} style={{marginInlineEnd:4}}/> يستطيع الموظف الدخول فورًا بهذا البريد وكلمة المرور. الأفضل إرسال «دعوة موظف» ليعيّن كلمة مروره بنفسه؛ والحساب الموجود في عيادة أخرى ينضم بدعوة فقط.
       </div>
     </Modal>
   );
 }
 
-function EditUserModal({ row, onClose }) {
+// Name (and, in demo mode, the roster role) of a staff row. With the API
+// the role and branches are the membership's (EditMemberModal), so
+// `nameOnly` hides the role.
+function EditUserModal({ row, onClose, nameOnly }) {
   const [name, setName] = React.useState(row.name || "");
   const [role, setRole] = React.useState(row.role || "receptionist");
   const [busy, setBusy] = React.useState(false);
   async function submit() {
+    if (!name.trim()) { window.showToast && window.showToast("أدخل الاسم", "error"); return; }
     setBusy(true);
-    const res = await window.updateStaffMember(row.staff_id || row.id, { name: name.trim(), role });
+    const res = await window.updateStaffMember(row.staff_id || row.id, nameOnly ? { name: name.trim() } : { name: name.trim(), role });
     setBusy(false);
     if (res.ok) window.showToast && window.showToast("تم حفظ التغييرات", "success");
     else window.showToast && window.showToast(res.error || "تعذّر الحفظ", "error");
     onClose();
   }
-  const roleChanged = role !== (row.role || "receptionist");
+  const roleChanged = !nameOnly && role !== (row.role || "receptionist");
   return (
     <Modal title={`تعديل ${row.name || "المستخدم"}`} onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
       </>}>
-      <Field label="الاسم"><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field>
+      <Field label="الاسم"><input className="input" aria-label="الاسم" value={name} onChange={e=>setName(e.target.value)}/></Field>
       <div style={{height:12}}/>
       <Field label="البريد الإلكتروني" hint="لا يمكن تغييره من هنا">
-        <input className="input" value={row.email || "—"} disabled style={{opacity:.7}}/>
+        <input className="input" dir="ltr" style={{opacity:.7,textAlign:"right"}} value={row.email || "—"} disabled/>
       </Field>
-      <div style={{height:12}}/>
-      <Field label="الدور">
-        <select className="input" value={role} onChange={e=>setRole(e.target.value)}>
-          {ROLE_OPTIONS.map(r=><option key={r.slug} value={r.slug}>{r.label}</option>)}
-        </select>
-      </Field>
+      {!nameOnly && (
+        <>
+          <div style={{height:12}}/>
+          <Field label="الدور">
+            <select className="input" value={role} onChange={e=>setRole(e.target.value)}>
+              {ROLE_OPTIONS.map(r=><option key={r.slug} value={r.slug}>{r.label}</option>)}
+            </select>
+          </Field>
+        </>
+      )}
       {roleChanged && (
         <div className="muted" style={{fontSize:11.5,marginTop:12,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-          صلاحيات الدخول الفعلية تُقرأ من حساب Supabase الخاص بالمستخدم. لتفعيل الدور الجديد بالكامل يعيد المستخدم تسجيل الدخول، وقد يتطلب تحديث بيانات الحساب من لوحة Supabase.
+          يتغير الدور في قائمة الموظفين المحلية فقط (وضع العرض).
         </div>
       )}
     </Modal>
@@ -4905,9 +5682,15 @@ function ClinicApp({ ctx }) {
     return () => window.removeEventListener("kinetic:clinic-updated", applyTitle);
   }, []);
 
+  // The page: a link to it (#/<route>, src/tenant.jsx) first, else the last
+  // page of this browser.
   const [rawRoute, setRoute] = React.useState(() => {
-    return localStorage.getItem("kinetic.route") || "dashboard";
+    const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
+    return linked || localStorage.getItem("kinetic.route") || "dashboard";
   });
+  // How the next route change reaches the address bar: "push" for the
+  // user's own navigation (Back returns), "replace" otherwise.
+  const navMode = React.useRef("replace");
   // Demo mode keeps its mock identity across reloads; with a backend the
   // session cookie is the only source (restored by the clinic gate).
   const [user, setUser] = React.useState(() => {
@@ -4957,6 +5740,29 @@ function ClinicApp({ ctx }) {
     localStorage.setItem("kinetic.route", rawRoute);
   },[rawRoute]);
 
+  // The page in the address bar (#/<route>) while someone is signed in; a
+  // route this role may not open is replaced by the role's home page.
+  React.useEffect(() => {
+    if (!user || importMode || user.role === "مريض" || !window.tenantWriteRouteHash) return;
+    if (window.roleAllows && !window.roleAllows(user.role, rawRoute)) {
+      navMode.current = "replace";
+      setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(user.role) : "dashboard");
+      return;
+    }
+    window.tenantWriteRouteHash(rawRoute, navMode.current === "push");
+    navMode.current = "replace";
+  }, [rawRoute, user]);
+  // Back / Forward (or an edited #/<route>) moves between pages.
+  React.useEffect(() => {
+    if (importMode || !window.tenantRouteFromHash) return;
+    const onPop = () => {
+      const r = window.tenantRouteFromHash();
+      if (r) { navMode.current = "replace"; setRoute(r); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   React.useEffect(()=>{
     window.showToast = (msg, kind="success") => {
       setToast({msg, kind});
@@ -4973,9 +5779,12 @@ function ClinicApp({ ctx }) {
   React.useEffect(() => { if (!demo) { try { localStorage.removeItem("kinetic.user"); } catch {} } }, []);
 
   // ── Sign out (button, expired session, refused membership) ──
-  async function doLogout(notice) {
+  // A forced sign-out keeps the page in the address, so signing in again
+  // returns to it (docs/03 «انتهاء الجلسة»); the button starts afresh.
+  async function doLogout(notice, { keepPage = !!notice } = {}) {
     try { if (window.signOut) await window.signOut(); } catch {}
     window.ME = null;
+    if (!keepPage && window.tenantClearRouteHash) window.tenantClearRouteHash();
     setUser(null);
     setRoute("dashboard");
     if (gated) setGate({ phase: "open", notice: notice || null });
@@ -4987,7 +5796,10 @@ function ClinicApp({ ctx }) {
     window.ME = u;
     setUser(u);
     setGate({ phase: "open" });
-    if (!restored) setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard");
+    if (!restored) {
+      const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
+      setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
+    }
     if (!window.tenantLoadClinicData) return;
     window.tenantLoadClinicData().then((res) => {
       if (res.ok) return;
@@ -5069,10 +5881,14 @@ function ClinicApp({ ctx }) {
 
   function go(r) {
     if (r === "logout") {
-      if (demo) { setUser(null); setRoute("dashboard"); return; }
+      if (demo) {
+        if (window.tenantClearRouteHash) window.tenantClearRouteHash();
+        setUser(null); setRoute("dashboard"); return;
+      }
       doLogout();
       return;
     }
+    navMode.current = "push";
     setRoute(r);
     window.scrollTo({top:0, behavior:"smooth"});
   }
@@ -5085,7 +5901,8 @@ function ClinicApp({ ctx }) {
     else {
       window.ME = u;
       setUser(u);
-      setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard");
+      const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
+      setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
     }
     setToast({ msg: `أهلاً بعودتك, ${u.name.split(" ")[0]}`, kind:"success" });
     setTimeout(()=>setToast(null), 2400);
@@ -5158,6 +5975,7 @@ function ClinicApp({ ctx }) {
     packages:     { title:"الباقات",             crumb:["الرئيسية","Finance","Packages"] },
     campaigns:    { title:"حملات واتساب",   crumb:["الرئيسية","Growth","الحملات"] },
     reports:      { title:"التقارير",              crumb:["الرئيسية","Reports"] },
+    branches:     { title:"الفروع",                crumb:["الرئيسية","الفروع"] },
     settings:     { title:"الإعدادات",             crumb:["الرئيسية","Settings"] },
   };
 
@@ -5229,6 +6047,7 @@ function ClinicApp({ ctx }) {
         </div>
 
         <main style={{flex:1}}>
+          {!demo && <InactiveBranchBanner/>}
           {moduleOff && <TenantModuleDisabled go={go}/>}
           {!moduleOff && <>
           {route==="dashboard" && <RoleHome role={acct.role} go={go} user={acct}/>}
@@ -5240,6 +6059,7 @@ function ClinicApp({ ctx }) {
           {route==="packages" && <Packages go={go}/>}
           {route==="campaigns" && <Campaigns go={go}/>}
           {route==="reports" && <Reports go={go}/>}
+          {route==="branches" && <BranchesPage go={go}/>}
           {route==="settings" && <SettingsPage go={go}/>}
           {typeof route === "string" && route.startsWith("custom:") && <CustomSectionPage id={route.slice(7)}/>}
           {!titles[route] && !(typeof route === "string" && route.startsWith("custom:")) && <NotFound go={go}/>}

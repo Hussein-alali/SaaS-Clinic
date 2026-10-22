@@ -85,10 +85,12 @@ window.newRecordId = newRecordId;
 
   // Super Admin (platform) context: the host admin.<APP_BASE_DOMAIN> in
   // production; in development (no wildcard DNS) ?platform=1, remembered for
-  // the tab in sessionStorage so later URLs can drop it. ?platform=0 or an
-  // explicit ?org=<slug> (a clinic) leaves it. Outside production the API
-  // takes the platform context from the X-Platform: 1 header
-  // (/api/platform/* answers 403 platform_required without it).
+  // the tab in sessionStorage so later URLs can drop it. An explicit
+  // ?org=<slug> (a clinic — it wins over ?platform=1, as in the boot router,
+  // src/tenant.jsx tenantContext) or ?platform=0 leaves it. Outside
+  // production the API takes the platform context from the X-Platform: 1
+  // header (/api/platform/* answers 403 platform_required without it);
+  // every other route ignores the header.
   function isPlatformContext() {
     var host = "";
     try { host = String((window.location && window.location.hostname) || "").toLowerCase(); } catch (_) { host = ""; }
@@ -96,13 +98,13 @@ window.newRecordId = newRecordId;
     var params = null;
     try { params = new URLSearchParams((window.location && window.location.search) || ""); } catch (_) { params = null; }
     var flag = params ? params.get("platform") : null;
-    if (flag === "1") {
-      try { window.sessionStorage.setItem(PLATFORM_STORAGE_KEY, "1"); } catch (_) {}
-      return true;
-    }
     if (flag === "0" || (params && normSlug(params.get("org")))) {
       try { window.sessionStorage.removeItem(PLATFORM_STORAGE_KEY); } catch (_) {}
       return false;
+    }
+    if (flag === "1") {
+      try { window.sessionStorage.setItem(PLATFORM_STORAGE_KEY, "1"); } catch (_) {}
+      return true;
     }
     try { return window.sessionStorage.getItem(PLATFORM_STORAGE_KEY) === "1"; }
     catch (_) { return false; }

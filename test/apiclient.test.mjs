@@ -1040,11 +1040,14 @@ describe("platform context: X-Platform: 1 (plan task 3.6)", () => {
       assert.equal("X-Platform" in env.requests[0].headers, false, search);
       assert.equal(env.win.sessionStorage.getItem("clinicsys.platform"), null, search);
     }
-    // ?platform=1 wins over ?org= in the same URL; the clinic slug is still sent (ignored by /api/platform).
+    // A clinic link wins over ?platform=1 in the same URL (as in the boot
+    // router, src/tenant.jsx), and nothing is remembered.
     const both = boot({ search: "?org=demo-physio&platform=1" });
     await both.client().from("patients").select("*");
-    assert.equal(both.requests[0].headers["X-Platform"], "1");
+    assert.equal("X-Platform" in both.requests[0].headers, false);
     assert.equal(both.requests[0].headers["X-Org-Slug"], "demo-physio");
+    assert.equal(both.win.sessionStorage.getItem("clinicsys.platform"), null);
+    assert.equal(both.win.ClinicApi.isPlatformContext(), false);
     // An invalid ?org= does not end the context.
     const bad = boot({ search: "?org=-bad", session: { "clinicsys.platform": "1" } });
     await bad.client().from("patients").select("*");
@@ -1281,10 +1284,17 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.equal(env.requests[1].body.columns, "staff_id,name,role,email,status");
   });
 
-  test("signInEmail with a wrong password reports the API message", async () => {
+  // src/supabase.jsx shows Arabic text for the API's error codes (docs/04
+  // "رسائل الأخطاء"), never the raw server message; the exact wording is
+  // the clinic screens' (task 3.2), so only the contract is checked here.
+  const ARABIC = /[؀-ۿ]/;
+  test("signInEmail with a wrong password → ok:false, code invalid_credentials, one Arabic message (not the server text)", async () => {
     const env = await bootApp({ "/api/auth/login": () => json(401, { error: { message: "Invalid login credentials", code: "invalid_credentials" } }) });
     const res = await env.win.signInEmail("a@b.co", "bad");
-    assert.deepEqual(plain(res), { ok: false, error: "Invalid login credentials" });
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "invalid_credentials");
+    assert.match(res.error, ARABIC);
+    assert.doesNotMatch(res.error, /Invalid login credentials/);
   });
 
   test("getAuthStaff without a session → no-session", async () => {
@@ -1306,7 +1316,9 @@ describe("src/supabase.jsx on top of the client", () => {
     answer = () => json(403, { ok: false, error: "forbidden" });
     const denied = await env.win.adminCreateUser(form);
     assert.equal(denied.ok, false);
-    assert.equal(denied.error, "لا تملك صلاحية إنشاء المستخدمين — تحتاج دور «مدير»");
+    assert.match(denied.error, ARABIC);
+    assert.match(denied.error, /صلاحية/);
+    assert.match(denied.error, /«مدير»/);
 
     answer = () => { throw new TypeError("Failed to fetch"); };
     const before = env.requests.length;

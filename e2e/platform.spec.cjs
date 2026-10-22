@@ -3,12 +3,14 @@
 //   E2E_DB_PORT=56202 E2E_API_PORT=3202 npx playwright test -c e2e/playwright.config.cjs e2e/platform.spec.cjs
 //
 // MOUNTING: the panel is window.PlatformApp (src/platform.jsx). The boot
-// router in src/screens2.jsx is meant to render it in the platform context
-// (?platform=1 / admin.<base>). Until it does, openPanel() renders it itself
-// into a new <div> (and hides #root) when nothing on the page carries
-// [data-platform-app] shortly after load. Once the router renders the panel
-// the fallback is skipped automatically; the journeys task (3.9) can then
-// delete mountFallback() and keep only the page.goto().
+// router (src/screens2.jsx App → TenantPlatformGate in src/tenant.jsx)
+// renders it in the platform context (?platform=1 / admin.<base>), and the
+// tests normally go through it. mountFallback() is a guard for runs where
+// the router does not render the panel: when nothing on the page carries
+// [data-platform-app] shortly after load, it renders PlatformApp itself into
+// a new <div> (hiding #root) and adds a "platform-mount-fallback" annotation
+// to the test. The journeys task (3.9) can delete mountFallback() once the
+// router is final and keep only the page.goto().
 //
 // The tests share one clinic created through the wizard, so they run in
 // order (serial). Every name is unique per run, so the spec also works
@@ -28,6 +30,7 @@ async function mountFallback(page) {
   const routed = await page.locator("[data-platform-app]").first()
     .waitFor({ state: "attached", timeout: 2500 }).then(() => true, () => false);
   if (routed) return;
+  test.info().annotations.push({ type: "platform-mount-fallback", description: "PlatformApp mounted by the spec, not by the boot router" });
   await page.evaluate(() => {
     if (document.querySelector("[data-platform-app]")) return;
     const root = document.getElementById("root");
@@ -39,8 +42,11 @@ async function mountFallback(page) {
   });
 }
 
-// Opens the panel at /?platform=1[#hash] and waits for its session check.
+// Opens the panel at /?platform=1[#hash] (always a full page load: going to
+// the current URL, or to another #hash of it, would only be an in-page
+// navigation) and waits for its session check.
 async function openPanel(page, hash = "") {
+  if (page.url() !== "about:blank") await page.goto("about:blank");
   await page.goto("/?platform=1" + hash);
   await page.waitForFunction(() => typeof window.PlatformApp === "function");
   await mountFallback(page);
@@ -111,6 +117,46 @@ test("Super Admin signs in: A01 stats and recent audit rows", async ({ page }) =
   await expect(page.locator("[data-platform-app]")).toHaveAttribute("data-auth", "ready");
 });
 
+test("the admin.<base> host is the platform context without ?platform=1", async ({ page, baseURL }) => {
+  const base = new URL(baseURL);
+  test.skip(base.hostname !== "localhost", "needs a localhost stack (admin.localhost resolves to it)");
+  const origin = `${base.protocol}//admin.localhost:${base.port}`;
+  await page.goto(origin + "/");
+  await page.waitForFunction(() => typeof window.PlatformApp === "function");
+  await mountFallback(page);
+  await login(page, "super@clinicsys.test");
+  await expect(page.locator("[data-platform-app][data-auth=ready]")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "مؤشرات المنصة" })).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem("clinicsys.platform"))).toBeNull();
+  // The server answers platform routes from the Host alone (no X-Platform needed).
+  const direct = await page.evaluate(() => fetch("/api/platform/stats", { credentials: "include" }).then((r) => r.status));
+  expect(direct).toBe(200);
+  // Clinic addresses use this host's base domain: <slug>.localhost.
+  await page.goto(origin + "/#/clinics/new");
+  await expect(page.locator(".pa-slug-suffix")).toHaveText(".localhost");
+  const physio = await page.evaluate(() => window.ClinicApi.request("GET", "/platform/organizations?q=demo-physio"));
+  await page.goto(origin + `/#/clinics/${physio.data.data[0].id}`);
+  await expect(page.getByRole("tabpanel")).toContainText(`${base.protocol}//demo-physio.localhost:${base.port}/`);
+});
+
+test("phones: the menu is a drawer and tables become cards (no horizontal page scroll)", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginSuper(page, "#/clinics");
+  const row = page.locator("tr[data-slug=demo-physio]");
+  await expect(row).toBeVisible();
+  await expect(row.locator("td[data-label='الحالة']")).toContainText("نشطة");
+  await expect(page.locator("table.pa-tbl thead").first()).toHaveCSS("position", "absolute");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const nav = page.getByRole("navigation", { name: "أقسام المنصة" });
+  await expect(nav).not.toBeInViewport();
+  await page.getByRole("button", { name: "القائمة" }).click();
+  await expect(nav).toBeInViewport();
+  await nav.getByRole("link", { name: "الخطط" }).click();
+  await expect(page.getByRole("heading", { name: "الخطط", level: 1 })).toBeVisible();
+  await expect(nav).not.toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
 test("A02 list: search, status filter, paging info, open a clinic and go back", async ({ page }) => {
   await loginSuper(page, "#/clinics");
   await expect(page.getByRole("heading", { name: "العيادات", exact: true })).toBeVisible();
@@ -120,9 +166,24 @@ test("A02 list: search, status filter, paging info, open a clinic and go back", 
   await expect(page.locator("tr[data-slug=demo-physio]")).toHaveCount(0);
   await expect(page).toHaveURL(/#\/clinics\?q=dental/);
   await page.getByLabel("بحث بالاسم أو الرابط").fill("");
-  await page.getByLabel("الحالة", { exact: true }).selectOption("suspended");
+  await expect(page).not.toHaveURL(/q=dental/);
+  await page.getByLabel("التخصص", { exact: true }).selectOption("dental");
+  await expect(page).toHaveURL(/#\/clinics\?specialty=dental/);
+  await expect(page.locator("tr[data-slug=demo-dental]")).toBeVisible();
+  await expect(page.locator("tr[data-slug=demo-physio]")).toHaveCount(0);
+  await page.getByLabel("التخصص", { exact: true }).selectOption("");
+  // Status filter: every row has the chosen status.
+  await page.getByLabel("الحالة", { exact: true }).selectOption("active");
+  await expect(page).toHaveURL(/#\/clinics\?status=active/);
+  await expect(page.locator("tr[data-slug=demo-physio]")).toBeVisible();
+  const statuses = await page.locator("tbody tr[data-slug] td:nth-child(3) .badge").allTextContents();
+  expect(statuses.length).toBeGreaterThan(0);
+  for (const t of statuses) expect(t).toBe("نشطة");
+  // Nothing matches → empty state with a way out.
+  await page.getByLabel("بحث بالاسم أو الرابط").fill(`no-such-clinic-${RUN}`);
   await expect(page.getByText("لا نتائج مطابقة")).toBeVisible();
   await page.getByRole("button", { name: "مسح التصفية" }).first().click();
+  await expect(page).toHaveURL(/#\/clinics$/);
   await expect(page.locator("tr[data-slug=demo-physio]")).toBeVisible();
   await expect(page.locator(".pa-pager")).toContainText("من");
   await page.locator("tr[data-slug=demo-physio] a").click();
@@ -318,7 +379,7 @@ test("A04 details: modules toggle with dependency errors, general edit, subscrip
   await page.getByRole("button", { name: "حفظ الاشتراك" }).click();
   await expect(toast(page, "تم حفظ الاشتراك")).toBeVisible();
   await expect(page.locator("[data-sub-status]")).toHaveText("تجريبي");
-  await expect(page.getByRole("tabpanel")).toContainText("2026-10-01 → 2026-12-31");
+  await expect(page.locator("[data-sub-period]")).toHaveText("من 2026-10-01 إلى 2026-12-31");
 });
 
 test("A04 invitations: list, resend, invite (branch required), revoke", async ({ page }) => {
@@ -385,6 +446,10 @@ test("A04 status: activate, suspend with a required reason (retention shown), re
   const untilText = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}`;
   await expect(page.locator("[data-retention]")).toContainText(`البيانات محفوظة حتى ${untilText}`);
   await expect(page.getByRole("alert").filter({ hasText: "السبب: تأخر السداد — اختبار" })).toBeVisible();
+  // A02 shows the retention date under the status of a suspended clinic.
+  await openPanel(page, "#/clinics?status=suspended");
+  await expect(page.locator(`tr[data-slug="${SLUG}"] [data-retention-until]`)).toHaveText(`محفوظة حتى ${untilText}`);
+  await openPanel(page, `#/clinics/${clinicId}`);
   // Invitations cannot be sent for a suspended clinic.
   await page.getByRole("tab", { name: "الأعضاء والدعوات" }).click();
   await expect(page.getByRole("button", { name: "دعوة مستخدم" })).toBeDisabled();
@@ -447,6 +512,28 @@ test("A07 audit: filters by clinic, action, actor and date range show the panel'
   await loginSuper(page, "#/audit");
   const actions = () => page.locator("table[data-audit] tbody tr[data-action]").evaluateAll((rows) => rows.map((r) => r.dataset.action));
   await expect(page.locator("table[data-audit] tbody tr[data-action]").first()).toBeVisible();
+
+  // Paging (25 rows a page): make sure there is a second page, then walk it.
+  const total = await page.evaluate(async (code) => {
+    const api = window.ClinicApi;
+    const plan = (await api.request("GET", "/platform/plans")).data.find((p) => p.code === code);
+    let count = (await api.request("GET", "/platform/audit?limit=1")).data.count;
+    for (let i = 0; count <= 25; i++, count++) await api.request("PATCH", `/platform/plans/${plan.id}`, { max_users: 100 + i });
+    return count;
+  }, PLAN_CODE);
+  const pages = Math.ceil(total / 25);
+  await openPanel(page, "#/audit");
+  const pager = page.getByRole("navigation", { name: "الصفحات" });
+  await expect(pager).toContainText(`1 / ${pages}`);
+  await expect(page.locator("table[data-audit] tbody tr[data-action]")).toHaveCount(25);
+  const firstRow = await page.locator("table[data-audit] tbody tr[data-action]").first().innerText();
+  await pager.getByRole("button", { name: "التالي" }).click();
+  await expect(page).toHaveURL(/#\/audit\?page=2/);
+  await expect(pager).toContainText(`2 / ${pages}`);
+  await expect(pager).toContainText(`عرض 26–${Math.min(50, total)} من ${total}`);
+  await expect(page.locator("table[data-audit] tbody tr[data-action]").first()).not.toHaveText(firstRow);
+  await page.goBack();
+  await expect(pager).toContainText(`1 / ${pages}`);
 
   await page.getByLabel("العيادة").selectOption(clinicId);
   await page.getByRole("button", { name: "تطبيق" }).click();

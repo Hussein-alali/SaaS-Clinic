@@ -70,6 +70,8 @@
   const PLAN_STATUS = { active: ["نشطة", "b-green"], archived: ["مؤرشفة", "b-grey"] };
   const CATALOG_STATUS = { active: ["متاح", "b-green"], planned: ["قريبًا", "b-amber"], inactive: ["غير متاح", "b-grey"] };
   const SUB_STATUS = { trial: "تجريبي", active: "نشط", past_due: "متأخر السداد", cancelled: "ملغى" };
+  // Notes the API itself writes on subscriptions (POST /organizations).
+  const SYSTEM_NOTES = { "created with the organization": "سُجّل تلقائيًا عند إنشاء العيادة" };
   const ROLE_LABEL = {
     admin: "مدير العيادة", receptionist: "موظف استقبال", doctor: "طبيب", therapist: "أخصائي", staff: "موظف",
     super_admin: "مدير المنصة",
@@ -119,14 +121,18 @@
   function todayIso() { return fmtDate(new Date()); }
   function plusMonths(months) { const d = new Date(); d.setMonth(d.getMonth() + months); return fmtDate(d); }
   const fmtLimit = (v, unit) => (v === null || v === undefined ? "غير محدود" : unit ? v + " " + unit : String(v));
-  // "3 من 10 مستخدمين" / "3 مستخدمين · بلا حد في الخطة"
-  const usageText = (n, max, noun) => (max === null || max === undefined
-    ? n + (noun ? " " + noun : "") + " · بلا حد في الخطة"
-    : n + " من " + max + (noun ? " " + noun : ""));
+  // "المقاعد: 3 من 10" / "المقاعد: 3 · بلا حد في الخطة" (a label first,
+  // so no Arabic number agreement is needed).
+  const usageText = (n, max, label) => (label ? label + ": " : "") + (max === null || max === undefined
+    ? n + " · بلا حد في الخطة"
+    : n + " من " + max);
   const quote = (code, names) => "«" + ((names && names[code]) || code) + "»";
   const codesIn = (text) => String(text || "").match(MODULE_CODE_RE) || [];
   const namesOf = (modules) => { const m = {}; (modules || []).forEach((x) => { m[x.code] = x.name_ar; }); return m; };
   const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
+  // "3 وحدات افتراضية" / "11 وحدة افتراضية" (Arabic number agreement).
+  const modulesCount = (n) => (n === 0 ? "بلا وحدات افتراضية" : n === 1 ? "وحدة افتراضية واحدة" : n === 2 ? "وحدتان افتراضيتان"
+    : n >= 3 && n <= 10 ? n + " وحدات افتراضية" : n + " وحدة افتراضية");
 
   // The clinic's address. Production: admin.<base> → <slug>.<base>. In
   // development (?platform=1 on localhost) the product domain is shown, and
@@ -503,6 +509,31 @@
   }
 
   const Ltr = ({ children, className }) => <bdi dir="ltr" className={className}>{children}</bdi>;
+  // Dates are isolated left-to-right: after Arabic text the bidi algorithm
+  // would otherwise show 2027-04-22 as 22-04-2027. In plain strings
+  // (toasts) ltrText() adds the Unicode isolates instead.
+  const DateText = ({ value, time }) => <Ltr className="mono pa-nowrap">{time ? fmtDateTime(value) : fmtDate(value)}</Ltr>;
+  const ltrText = (text) => "\u2066" + text + "\u2069";
+
+  // A .tbl that becomes one card per row on phones (docs/04 "Layout rules":
+  // < 640px tables turn into cards). After every render each cell gets its
+  // column title as data-label, which the phone CSS shows before the value.
+  function CardTable({ children, ...rest }) {
+    const ref = useRef(null);
+    React.useLayoutEffect(() => {
+      const table = ref.current;
+      if (!table) return;
+      const heads = Array.from(table.querySelectorAll("thead th")).map((th) => (th.querySelector(".pa-sr") ? "" : th.textContent.trim()));
+      table.querySelectorAll("tbody tr").forEach((tr) => {
+        Array.from(tr.children).forEach((td, i) => {
+          const label = td.colSpan > 1 ? "" : heads[i] || "";
+          if (label) { if (td.getAttribute("data-label") !== label) td.setAttribute("data-label", label); }
+          else if (td.hasAttribute("data-label")) td.removeAttribute("data-label");
+        });
+      });
+    });
+    return <table ref={ref} className="tbl pa-tbl" {...rest}>{children}</table>;
+  }
 
   // ── Module dependencies (docs/05 "Data validation") ──────────
   // Enabling needs every depends_on (transitively); disabling is refused
@@ -729,7 +760,7 @@
 
           {list.error ? <div style={{ padding: 16 }}><ErrorBox error={list.error} onRetry={list.reload}/></div> : (
             <div className="tbl-scroll" aria-busy={list.loading ? "true" : undefined}>
-              <table className="tbl pa-tbl">
+              <CardTable>
                 <thead>
                   <tr><th>العيادة</th><th>التخصص</th><th>الحالة</th><th>الخطة</th><th>الأعضاء</th><th>دعوات معلقة</th><th>أُنشئت</th></tr>
                 </thead>
@@ -753,15 +784,22 @@
                         <div><Ltr className="mono pa-code">{o.slug}</Ltr></div>
                       </td>
                       <td><span className="badge b-violet">{specName[o.specialty_code] || o.specialty_code}</span></td>
-                      <td><Badge map={ORG_STATUS} value={o.status}/></td>
+                      <td>
+                        <Badge map={ORG_STATUS} value={o.status}/>
+                        {o.status === "suspended" && o.retention_until && (
+                          <div className={new Date(o.retention_until).getTime() < Date.now() ? "pa-bad" : "muted"} style={{ fontSize: 11.5, marginTop: 3 }} data-retention-until="">
+                            محفوظة حتى <DateText value={o.retention_until}/>
+                          </div>
+                        )}
+                      </td>
                       <td>{o.plan_name || <span className="muted">—</span>}</td>
                       <td className="mono">{o.active_members}</td>
                       <td className="mono">{o.pending_invitations}</td>
-                      <td className="mono">{fmtDate(o.created_at)}</td>
+                      <td><DateText value={o.created_at}/></td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CardTable>
             </div>
           )}
           {list.data && <Pager offset={offset} limit={CLINICS_PAGE} count={list.data.count} loading={list.loading} onPage={(p) => setQuery({ page: p })}/>}
@@ -805,7 +843,7 @@
     return st;
   }
 
-  function SlugField({ value, onChange, check, error }) {
+  function SlugField({ value, onChange, check, error, onRetry }) {
     const id = React.useId();
     const current = check.slug === value ? check.state : value ? "checking" : "idle";
     const msg = SLUG_MESSAGES[current];
@@ -824,6 +862,7 @@
           {current === "checking" && <><Spinner size={12}/> {msg[1]}</>}
           {current === "available" && !showError && <span className="pa-ok"><I.Check size={13}/> {msg[1]}</span>}
           {msg && msg[0] === "bad" && <span className="pa-bad"><I.X size={13}/> {msg[1]}</span>}
+          {current === "error" && onRetry && <button type="button" className="pa-link" onClick={onRetry}>إعادة المحاولة</button>}
           {showError && <span className="pa-bad">{error}</span>}
         </div>
         <div id={id + "-help"} className="pa-help">أحرف لاتينية صغيرة وأرقام وشرطة؛ يصبح عنوان العيادة ولا يتغير لاحقًا بسهولة.</div>
@@ -880,10 +919,21 @@
       return new Set(((s && s.default_modules) || []).filter((c) => active.has(c)));
     }, [catalog]);
 
-    // First active specialty and the 'default' plan, once the catalogs arrive.
+    // Preselected once the catalogs arrive: the 'default' plan, and the
+    // active specialty with the most launched default modules (today
+    // physio; dental / general modules are still 'planned').
+    const firstSpecialty = useCallback(() => {
+      let best = null, bestSize = -1;
+      (specs.data || []).forEach((s) => {
+        if (s.status !== "active") return;
+        const size = defaultsFor(s).size;
+        if (size > bestSize) { best = s; bestSize = size; }
+      });
+      return best;
+    }, [specs.data, defaultsFor]);
     useEffect(() => {
       if (!specs.data || !mods.data || f.specialty) return;
-      const first = specs.data.find((s) => s.status === "active");
+      const first = firstSpecialty();
       if (first) setF((x) => ({ ...x, specialty: first.code, modules: defaultsFor(first) }));
     }, [specs.data, mods.data]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => {
@@ -989,7 +1039,7 @@
 
     function reset() {
       setDone(null); setStep(1); setErrors({}); setModErrors({}); setSpecNote("");
-      const first = (specs.data || []).find((s) => s.status === "active");
+      const first = firstSpecialty();
       setF({ name: "", slug: "", slugEdited: false, specialty: first ? first.code : "", modules: first ? defaultsFor(first) : new Set(), planId: f.planId, email: "" });
     }
 
@@ -1013,7 +1063,7 @@
               ["الفرع", (done.branches && done.branches[0] && done.branches[0].name) || "الفرع الرئيسي"],
               ["الدعوة", done.email_sent === false
                 ? <span className="pa-bad">أُنشئت الدعوة إلى <Ltr>{inv.email}</Ltr> لكن تعذّر إرسال البريد — أعد الإرسال من صفحة العيادة.</span>
-                : <span data-invite-sent="">{done.email_sent === null ? "البريد قيد الإرسال إلى " : "أُرسلت دعوة إلى "}<Ltr className="mono">{inv.email}</Ltr> بدور «مدير العيادة»، صالحة حتى <span className="mono">{fmtDate(inv.expires_at)}</span>.</span>],
+                : <span data-invite-sent="">{done.email_sent === null ? "البريد قيد الإرسال إلى " : "أُرسلت دعوة إلى "}<Ltr className="mono">{inv.email}</Ltr> بدور «مدير العيادة»، صالحة حتى <DateText value={inv.expires_at}/>.</span>],
             ]}/>
             <div className="pa-help" style={{ marginTop: 4 }}>تصبح العيادة نشطة عندما يقبل المدير الدعوة ويعيّن كلمة المرور.</div>
             <div className="row gap-2" style={{ marginTop: 18, flexWrap: "wrap", justifyContent: "center" }}>
@@ -1053,7 +1103,7 @@
                   <Field id={nameId} label="اسم العيادة" required error={errors.name} help="كما يظهر للموظفين في شاشة الدخول.">
                     <input {...describe(nameId, errors.name, "x")} value={f.name} maxLength={120} onChange={(e) => onName(e.target.value)} placeholder="عيادة د. أحمد للعلاج الطبيعي"/>
                   </Field>
-                  <SlugField value={f.slug} onChange={onSlug} check={slugCheck} error={errors.slug}/>
+                  <SlugField value={f.slug} onChange={onSlug} check={slugCheck} error={errors.slug} onRetry={() => setSlugNonce((n) => n + 1)}/>
                 </div>
               )}
 
@@ -1070,7 +1120,7 @@
                           <span className="row gap-2" style={{ justifyContent: "space-between", width: "100%" }}>
                             <b>{s.name_ar}</b>{dis && <Badge map={CATALOG_STATUS} value={s.status}/>}
                           </span>
-                          <span className="muted" style={{ fontSize: 12 }}><Ltr>{s.name_en || s.code}</Ltr> · {count} وحدة افتراضية</span>
+                          <span className="muted" style={{ fontSize: 12 }}><Ltr>{s.name_en || s.code}</Ltr> · {modulesCount(count)}</span>
                         </button>
                       );
                     })}
@@ -1140,10 +1190,11 @@
         </div>
 
         <div className="pa-wizard-foot">
+          {/* LTR icon names: index.html mirrors ArrowLeft/ArrowRight inside .btn in RTL. */}
           <Btn kind="ghost" onClick={cancel} disabled={busy}>إلغاء</Btn>
           <div className="row gap-2">
-            {step > 1 && <Btn kind="secondary" onClick={back} disabled={busy}><I.ArrowRight size={14}/> السابق</Btn>}
-            {step < 4 && <Btn kind="primary" onClick={next} disabled={loading || !!loadError}>التالي <I.ArrowLeft size={14}/></Btn>}
+            {step > 1 && <Btn kind="secondary" onClick={back} disabled={busy}><I.ArrowLeft size={14}/> السابق</Btn>}
+            {step < 4 && <Btn kind="primary" onClick={next} disabled={loading || !!loadError}>التالي <I.ArrowRight size={14}/></Btn>}
             {step === 4 && <Btn kind="primary" busy={busy} onClick={create}>إنشاء العيادة</Btn>}
           </div>
         </div>
@@ -1164,7 +1215,7 @@
       <span className="pa-limits">
         <span>المستخدمون: <b>{fmtLimit(plan.max_users)}</b></span>
         <span>الفروع: <b>{fmtLimit(plan.max_branches)}</b></span>
-        <span>التخزين: <b>{fmtLimit(plan.max_storage_mb, "MB")}</b></span>
+        <span>التخزين: <b><Ltr>{fmtLimit(plan.max_storage_mb, "MB")}</Ltr></b></span>
         <span>الوحدات: <b>{specialtyCount === null ? "كل الوحدات" : "النواة + " + specialtyCount + " تخصصية"}</b></span>
       </span>
     );
@@ -1252,7 +1303,7 @@
         {o.status === "suspended" && (
           <div style={{ marginBottom: 16 }}>
             <Alert kind="red" icon={<PI.Pause size={16}/>}>
-              <div data-retention="">هذه العيادة موقوفة منذ <span className="mono">{fmtDate(o.suspended_at)}</span> — البيانات محفوظة حتى <b className="mono">{fmtDate(o.retention_until)}</b>.</div>
+              <div data-retention="">هذه العيادة موقوفة منذ <DateText value={o.suspended_at}/> — البيانات محفوظة حتى <b><DateText value={o.retention_until}/></b>.</div>
               {o.status_reason && <div>السبب: {o.status_reason}</div>}
               {overdue && <div><b>تجاوزت العيادة مدة الاحتفاظ.</b> لا حذف آليًا حتى قرار المالك.</div>}
             </Alert>
@@ -1262,7 +1313,7 @@
           <div style={{ marginBottom: 16 }}>
             <Alert kind="grey" icon={<I.Lock size={16}/>}>
               هذه العيادة مغلقة{o.status_reason ? " — السبب: " + o.status_reason : ""}.
-              {o.retention_until && <> البيانات محفوظة حتى <span className="mono">{fmtDate(o.retention_until)}</span>.</>}
+              {o.retention_until && <> البيانات محفوظة حتى <DateText value={o.retention_until}/>.</>}
             </Alert>
           </div>
         )}
@@ -1296,7 +1347,7 @@
             det.setData(detail);
             setStatusTo(null);
             const r = detail.organization.retention_until;
-            toast(to === "suspended" ? "أُوقفت العيادة — البيانات محفوظة حتى " + fmtDate(r)
+            toast(to === "suspended" ? "أُوقفت العيادة — البيانات محفوظة حتى " + ltrText(fmtDate(r))
               : to === "closed" ? "أُغلقت العيادة" : to === "active" ? "العيادة نشطة الآن" : "تم تغيير الحالة");
           }}/>}
       </>
@@ -1312,8 +1363,8 @@
     const reasonId = React.useId();
     const a = statusAction(org.status, to);
     const copy = {
-      suspended: ["إيقاف «" + org.name + "»؟", "يُمنع كل موظفي العيادة من الدخول فورًا، وتُحفظ بياناتها 6 أشهر (حتى " + plusMonths(6) + ")، ويمكن إعادة تفعيلها في أي وقت خلالها."],
-      closed: ["إغلاق «" + org.name + "» نهائيًا؟", "لا يمكن إعادة فتح عيادة مغلقة. تبقى البيانات محفوظة حتى " + fmtDate(org.retention_until) + "."],
+      suspended: ["إيقاف «" + org.name + "»؟", <>يُمنع كل موظفي العيادة من الدخول فورًا، وتُحفظ بياناتها 6 أشهر (حتى <DateText value={plusMonths(6)}/>)، ويمكن إعادة تفعيلها في أي وقت خلالها.</>],
+      closed: ["إغلاق «" + org.name + "» نهائيًا؟", <>لا يمكن إعادة فتح عيادة مغلقة. تبقى البيانات محفوظة حتى <DateText value={org.retention_until}/>.</>],
       active: org.status === "suspended"
         ? ["إعادة تفعيل «" + org.name + "»؟", "يعود موظفو العيادة إلى الدخول فورًا ويُلغى تاريخ الاحتفاظ."]
         : ["تفعيل «" + org.name + "» يدويًا؟", "عادةً تُفعَّل العيادة تلقائيًا عند قبول أول مدير دعوته."],
@@ -1426,8 +1477,8 @@
           <Kv rows={[
             ["المعرّف", <Ltr className="mono pa-code">{o.id}</Ltr>],
             ["الرابط", <Ltr className="mono">{clinicUrl(o.slug)}</Ltr>],
-            ["أُنشئت", <span className="mono">{fmtDateTime(o.created_at)}</span>],
-            ["آخر تحديث", <span className="mono">{fmtDateTime(o.updated_at)}</span>],
+            ["أُنشئت", <DateText value={o.created_at} time/>],
+            ["آخر تحديث", <DateText value={o.updated_at} time/>],
             ["الأعضاء النشطون", <span className="tnum">{usageText(u.active_members, plan.max_users)}</span>],
             ["دعوات معلقة", <span className="mono">{u.pending_invitations}</span>],
             ["الفروع النشطة", <span className="tnum">{usageText(u.active_branches, plan.max_branches)}</span>],
@@ -1526,10 +1577,10 @@
             <h2 className="h3">الفروع</h2>
             <div className="pa-help">يديرها مدير العيادة من شاشة الفروع. العرض هنا للقراءة فقط.</div>
           </div>
-          <span className="badge b-grey tnum">{usageText(detail.usage.active_branches, plan.max_branches, "فروع نشطة")}</span>
+          <span className="badge b-grey tnum">{usageText(detail.usage.active_branches, plan.max_branches, "الفروع النشطة")}</span>
         </div>
         <div className="tbl-scroll">
-          <table className="tbl pa-tbl">
+          <CardTable>
             <thead><tr><th>الفرع</th><th>الحالة</th><th>العنوان</th><th>الهاتف</th><th>أُضيف</th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={5} className="tbl-empty">لا توجد فروع لهذه العيادة.</td></tr>}
@@ -1539,11 +1590,11 @@
                   <td><Badge map={BRANCH_STATUS} value={b.status}/></td>
                   <td>{b.address || <span className="muted">—</span>}</td>
                   <td>{b.phone ? <Ltr className="mono">{b.phone}</Ltr> : <span className="muted">—</span>}</td>
-                  <td className="mono">{fmtDate(b.created_at)}</td>
+                  <td><DateText value={b.created_at}/></td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </CardTable>
         </div>
       </div>
     );
@@ -1575,10 +1626,10 @@
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="pa-card-head">
             <h2 className="h3">الأعضاء <span className="mono muted">({detail.members.length})</span></h2>
-            <span className="badge b-grey tnum" data-seats="" title="الأعضاء النشطون + الدعوات المعلقة">{usageText(seats, plan.max_users, "مستخدمين")}</span>
+            <span className="badge b-grey tnum" data-seats="" title="الأعضاء النشطون + الدعوات المعلقة">{usageText(seats, plan.max_users, "المقاعد")}</span>
           </div>
           <div className="tbl-scroll">
-            <table className="tbl pa-tbl">
+            <CardTable>
               <thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>انضم</th></tr></thead>
               <tbody>
                 {detail.members.length === 0 && <tr><td colSpan={6} className="tbl-empty">لا يوجد أعضاء بعد — ينضم أول مدير عند قبول دعوته.</td></tr>}
@@ -1589,11 +1640,11 @@
                     <td><span className="badge b-grey">{ROLE_LABEL[m.role] || m.role}</span></td>
                     <td>{m.role === "admin" ? "كل الفروع" : branchList(m.branch_ids)}</td>
                     <td><Badge map={MEMBER_STATUS} value={m.status}/></td>
-                    <td className="mono">{fmtDate(m.joined_at || m.created_at)}</td>
+                    <td><DateText value={m.joined_at || m.created_at}/></td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </CardTable>
           </div>
         </div>
 
@@ -1605,7 +1656,7 @@
           </div>
           {!canInvite && <div style={{ padding: "0 16px 12px" }}><Alert kind="grey">العيادة {ORG_STATUS[o.status][0]} — لا يمكن إرسال دعوات أو إعادة إرسالها.</Alert></div>}
           <div className="tbl-scroll">
-            <table className="tbl pa-tbl">
+            <CardTable>
               <thead><tr><th>البريد</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>تنتهي</th><th><span className="pa-sr">إجراءات</span></th></tr></thead>
               <tbody>
                 {detail.invitations.length === 0 && <tr><td colSpan={6} className="tbl-empty">لا توجد دعوات.</td></tr>}
@@ -1617,7 +1668,7 @@
                       <td><span className="badge b-grey">{ROLE_LABEL[inv.role] || inv.role}</span></td>
                       <td>{inv.role === "admin" ? "كل الفروع" : branchList(inv.branch_ids)}</td>
                       <td><Badge map={INVITE_STATUS} value={inv.status}/></td>
-                      <td className="mono">{fmtDate(inv.expires_at)}</td>
+                      <td><DateText value={inv.expires_at}/></td>
                       <td>
                         {open && canInvite && (
                           <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
@@ -1630,7 +1681,7 @@
                   );
                 })}
               </tbody>
-            </table>
+            </CardTable>
           </div>
         </div>
 
@@ -1765,9 +1816,9 @@
             <Kv rows={[
               ["الخطة", subPlan ? subPlan.name : <Ltr className="mono">{shortId(sub.plan_id)}</Ltr>],
               ["الحالة", <span className="badge b-blue" data-sub-status="">{SUB_STATUS[sub.status] || sub.status}</span>],
-              ["الفترة", <span className="mono">{fmtDate(sub.period_start)} → {sub.period_end ? fmtDate(sub.period_end) : "مفتوحة"}</span>],
-              ["ملاحظات", sub.notes || <span className="muted">—</span>],
-              ["سُجّل في", <span className="mono">{fmtDateTime(sub.created_at)}</span>],
+              ["الفترة", <span data-sub-period="">{sub.period_start ? <>من <DateText value={sub.period_start}/> </> : null}{sub.period_end ? <>إلى <DateText value={sub.period_end}/></> : "(فترة مفتوحة)"}</span>],
+              ["ملاحظات", (sub.notes && (SYSTEM_NOTES[sub.notes] || sub.notes)) || <span className="muted">—</span>],
+              ["سُجّل في", <DateText value={sub.created_at} time/>],
             ]}/>
           ) : <div className="muted">لا يوجد اشتراك مسجّل بعد.</div>}
           {chosen && (
@@ -1836,7 +1887,7 @@
           <div className="pa-card-head"><h2 className="h3">التخصصات</h2></div>
           {specs.error ? <div style={{ padding: 16 }}><ErrorBox error={specs.error} onRetry={specs.reload}/></div> : (
             <div className="tbl-scroll">
-              <table className="tbl pa-tbl">
+              <CardTable>
                 <thead><tr><th>التخصص</th><th>الرمز</th><th>الحالة</th><th>الوحدات الافتراضية</th></tr></thead>
                 <tbody>
                   {!specs.data && <tr><td colSpan={4} style={{ padding: 0 }}><SkeletonRows count={3}/></td></tr>}
@@ -1852,7 +1903,7 @@
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CardTable>
             </div>
           )}
         </div>
@@ -1860,7 +1911,7 @@
           <div className="pa-card-head"><h2 className="h3">الوحدات</h2></div>
           {mods.error ? <div style={{ padding: 16 }}><ErrorBox error={mods.error} onRetry={mods.reload}/></div> : (
             <div className="tbl-scroll">
-              <table className="tbl pa-tbl">
+              <CardTable>
                 <thead><tr><th>الوحدة</th><th>الرمز</th><th>الفئة</th><th>يعتمد على</th><th>الحالة</th></tr></thead>
                 <tbody>
                   {!mods.data && <tr><td colSpan={5} style={{ padding: 0 }}><SkeletonRows count={6}/></td></tr>}
@@ -1874,7 +1925,7 @@
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CardTable>
             </div>
           )}
         </div>
@@ -1905,7 +1956,7 @@
         <div className="card">
           {plans.error ? <div style={{ padding: 16 }}><ErrorBox error={plans.error} onRetry={plans.reload}/></div> : (
             <div className="tbl-scroll">
-              <table className="tbl pa-tbl">
+              <CardTable>
                 <thead><tr><th>الخطة</th><th>المستخدمون</th><th>الفروع</th><th>التخزين</th><th>الوحدات</th><th>الحالة</th><th>العيادات</th><th><span className="pa-sr">إجراءات</span></th></tr></thead>
                 <tbody>
                   {!rows && <tr><td colSpan={8} style={{ padding: 0 }}><SkeletonRows count={3}/></td></tr>}
@@ -1917,7 +1968,7 @@
                       <td><b>{p.name}</b><div><Ltr className="mono pa-code">{p.code}</Ltr></div></td>
                       <td className="tnum" data-col="max_users">{fmtLimit(p.max_users)}</td>
                       <td className="tnum" data-col="max_branches">{fmtLimit(p.max_branches)}</td>
-                      <td className="tnum" data-col="max_storage_mb">{fmtLimit(p.max_storage_mb, "MB")}</td>
+                      <td className="tnum" data-col="max_storage_mb"><Ltr>{fmtLimit(p.max_storage_mb, "MB")}</Ltr></td>
                       <td>{Array.isArray(p.included_modules)
                         ? <span className="pa-chips">{p.included_modules.length ? p.included_modules.map((c) => <span key={c} className="badge b-blue">{names[c] || c}</span>) : <span className="muted">النواة فقط</span>}</span>
                         : "كل الوحدات"}</td>
@@ -1927,7 +1978,7 @@
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </CardTable>
             </div>
           )}
         </div>
@@ -2060,7 +2111,7 @@
     return (
       <>
         <div className="tbl-scroll">
-          <table className="tbl pa-tbl" data-audit="">
+          <CardTable data-audit="">
             <thead>
               <tr>
                 <th>الوقت</th>
@@ -2076,7 +2127,7 @@
               {!loading && rows && rows.length === 0 && <tr><td colSpan={cols} className="tbl-empty">{onEmpty || "لا توجد عمليات مسجلة."}</td></tr>}
               {!loading && rows && rows.map((a) => (
                 <tr key={a.id} data-action={a.action}>
-                  <td className="mono" style={{ whiteSpace: "nowrap" }}><Ltr>{fmtDateTime(a.created_at)}</Ltr></td>
+                  <td style={{ whiteSpace: "nowrap" }}><DateText value={a.created_at} time/></td>
                   {showOrg && <td>{a.organization_id
                     ? <a className="pa-link" href={"#/clinics/" + a.organization_id}><Ltr className="mono">{a.organization_slug || shortId(a.organization_id)}</Ltr></a>
                     : <span className="muted">المنصة</span>}</td>}
@@ -2094,12 +2145,12 @@
                 </tr>
               ))}
             </tbody>
-          </table>
+          </CardTable>
         </div>
         {payload && (
           <PModal title={ACTION_LABEL[payload.action] || payload.action} width={620} onClose={() => setPayload(null)}>
             <Kv rows={[
-              ["الوقت", <Ltr className="mono">{fmtDateTime(payload.created_at)}</Ltr>],
+              ["الوقت", <DateText value={payload.created_at} time/>],
               ["المستخدم", <Ltr className="mono">{payload.actor_email || "—"}</Ltr>],
               ["الجدول", <Ltr className="mono">{payload.table_name || "—"}</Ltr>],
             ]}/>
@@ -2198,7 +2249,7 @@
         <div className="page-head">
           <div>
             <h1 className="h1">سجل التدقيق</h1>
-            <div className="muted" style={{ marginTop: 4 }}>كل عمليات المنصة والعيادات، الأحدث أولًا. «organization.*» يطابق كل العمليات التي تبدأ بـ organization.</div>
+            <div className="muted" style={{ marginTop: 4 }}>كل عمليات المنصة والعيادات، الأحدث أولًا. في «نوع العملية» يطابق <Ltr className="mono">organization.*</Ltr> كل العمليات التي تبدأ بـ <Ltr className="mono">organization.</Ltr></div>
           </div>
         </div>
         <AuditView query={query} setQuery={setQuery}/>
@@ -2555,7 +2606,9 @@
       content = (
         <CenterCard icon={<PI.Alert size={24}/>} title="تعذّر التحقق من الجلسة"
           actions={<Btn kind="primary" onClick={check}><PI.Refresh size={14}/> إعادة المحاولة</Btn>}>
-          {errorText(auth.error)}
+          {auth.error && (auth.error.status === 0 || auth.error.status === 429)
+            ? errorText(auth.error)
+            : "تعذّر الوصول إلى خادم المنصة — حاول مرة أخرى بعد قليل."}
         </CenterCard>
       );
     } else {
@@ -2590,6 +2643,7 @@
 .pa-skip:focus{inset-inline-start:8px}
 .pa-who{font-size:12.5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pa-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pa-nowrap{white-space:nowrap}
 .pa-app .btn:disabled{opacity:.5;cursor:not-allowed}
 .pa-btn-primary{background:var(--blue-700);color:#fff}
 .pa-btn-primary:hover:not(:disabled){background:var(--blue-900)}
@@ -2699,6 +2753,21 @@
   .pa-kv{grid-template-columns:1fr;gap:2px}
   .pa-kv dd{margin-bottom:8px}
   .pa-toasts{left:10px;right:10px;top:64px;max-width:none}
+}
+@media (max-width:640px){
+  .pa-app .tbl-scroll{max-height:none;overflow:visible}
+  .tbl-scroll > .pa-tbl,.pa-tbl{min-width:0;display:block}
+  .pa-tbl thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .pa-tbl tbody{display:block}
+  .pa-tbl tbody tr{display:block;height:auto;padding:8px 0;border-bottom:1px solid var(--ink-100)}
+  .pa-tbl tbody tr:last-child{border-bottom:none}
+  .pa-tbl tbody td{display:grid;grid-template-columns:max-content minmax(0,1fr);justify-items:end;align-items:center;column-gap:12px;row-gap:0;padding:5px 14px;border-bottom:none;background:transparent !important;text-align:end;min-height:32px}
+  .pa-tbl tbody td > *{grid-column:2;max-width:100%}
+  .pa-tbl tbody td[data-label]::before{content:attr(data-label);grid-column:1;grid-row:1 / span 4;justify-self:start;color:var(--ink-500);font-size:11.5px;font-weight:500;text-align:start}
+  .pa-tbl tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
+  .pa-tbl tbody td:not([data-label]) > *{grid-column:1}
+  .pa-tbl tbody td[colspan]{display:block;text-align:center}
+  .pa-pager{justify-content:center}
 }
 `;
 

@@ -2,9 +2,15 @@
 // J2/J3; docs/06 tasks 3.1-3.5): the main site's login and clinic picker,
 // clinic status pages, the clinic login and its membership check, data
 // right after sign-in, the branch picker, invitations, password reset,
-// module gating and demo mode. Runs against the API-served dist/ with the
-// dev seed (see fixtures.cjs). Every test restores what it changes.
-const { test, expect, PASSWORD, readOutbox } = require("./fixtures.cjs");
+// module gating, page links, the ?import=1 page and demo mode. Runs against
+// the API-served dist/ with the dev seed (see fixtures.cjs). Tests restore
+// the clinic state they change (status, modules, plan, deactivations) and
+// change passwords only on accounts they create; the accounts, memberships
+// and files they add are kept. The API's login limiter (10 failures per IP
+// in 15 minutes, in memory) allows about three runs per API process.
+const fs = require("fs");
+const path = require("path");
+const { test, expect, PASSWORD } = require("./fixtures.cjs");
 
 const PHYSIO = "عيادة العلاج الطبيعي التجريبية";
 const DENTAL = "عيادة الأسنان التجريبية";
@@ -29,11 +35,22 @@ async function orgIdOf(superAdmin, slug) {
   return org.id;
 }
 
+// Like fixtures.cjs readOutbox(), but a file the API is still writing
+// reads as null instead of failing the test (one entry per file, so the
+// counts taken as `after` stay valid).
+function readOutbox() {
+  const dir = path.resolve(__dirname, "..", "api", `.outbox-${process.env.E2E_API_PORT || 3200}`);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().map((f) => {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); } catch (_) { return null; }
+  });
+}
+
 // The first link of the newest e-mail to `to` sent after `after` e-mails
 // (the API sends some mails after answering, so this polls).
 async function waitForLink(to, re = /./, after = 0) {
   for (let i = 0; i < 75; i++) {
-    const mails = readOutbox().slice(after).filter((m) => JSON.stringify(m.to || "").includes(to));
+    const mails = readOutbox().slice(after).filter((m) => m && JSON.stringify(m.to || "").includes(to));
     for (const mail of mails.reverse()) {
       const m = String(mail.text || mail.html || "").match(/https?:\/\/[^\s"'<>]+/);
       if (m && re.test(m[0])) return m[0];
@@ -57,6 +74,21 @@ async function ensureMemberOf(playwright, baseURL, email, slug, role, branchIds)
   const anon = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { "X-Requested-With": "clinicsys" } });
   const acc = await anon.post(`/api/invitations/${encodeURIComponent(token)}/accept`, { data: { password: PASSWORD } });
   expect(acc.status(), await acc.text()).toBe(200);
+}
+
+// A new account that is a member of `slug` only (clinic admin invitation,
+// accepted through the API), so a test may change it freely and run again.
+async function newMember(playwright, baseURL, slug, role, branchId, prefix) {
+  const email = `${prefix}-${uniq()}@e2e.test`;
+  const admin = await apiAs(playwright, baseURL, `admin@${slug}.test`, { org: slug });
+  const mark = readOutbox().length;
+  const inv = await admin.post("/api/org/invitations", { data: { email, role, branch_ids: [branchId] } });
+  expect(inv.status(), await inv.text()).toBe(201);
+  const token = new URL(await waitForLink(email, /\?invite=/, mark)).searchParams.get("invite");
+  const anon = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { "X-Requested-With": "clinicsys" } });
+  const acc = await anon.post(`/api/invitations/${encodeURIComponent(token)}/accept`, { data: { name: `حساب ${prefix}`, password: PASSWORD } });
+  expect(acc.status(), await acc.text()).toBe(200);
+  return email;
 }
 
 async function clinicLogin(page, email, password = PASSWORD) {
@@ -83,7 +115,7 @@ test("main site: a member of one clinic is taken straight to it (J3, AT-04)", as
   await rootLogin(page, "admin@demo-physio.test");
   // «أبقني مسجلاً» is ticked by default and reaches the API as remember.
   expect((await login).postDataJSON()).toMatchObject({ email: "admin@demo-physio.test", remember: true });
-  await page.waitForURL(/\/\?org=demo-physio$/);
+  await page.waitForURL(/\/\?org=demo-physio(#\/[a-z]+)?$/);
   await expect(sidebar(page)).toContainText(PHYSIO);
   await expect(page.getByRole("button", { name: "تبديل العيادة" })).toHaveCount(0);
 });
@@ -102,7 +134,7 @@ test("main site: a member of several clinics picks one (S04, AT-04)", async ({ p
   await expect(dental).toContainText("?org=demo-dental");
   await expect(cards.filter({ hasText: PHYSIO })).toContainText("علاج طبيعي");
   await dental.click();
-  await page.waitForURL(/\/\?org=demo-dental$/);
+  await page.waitForURL(/\/\?org=demo-dental(#\/[a-z]+)?$/);
   await expect(sidebar(page)).toContainText(DENTAL);
   // «تبديل العيادة» goes back to the picker.
   await page.getByRole("button", { name: "تبديل العيادة" }).click();
@@ -180,6 +212,9 @@ test("clinic login: branded before sign-in, data on screen right after it withou
   await expect(sidebar(page)).toContainText(PHYSIO);
   await expect(page.getByText("مريض أول — PHY").first()).toBeVisible();
   await expect(page.locator('[data-route="patients"]')).toContainText("4");
+  // The clinic's own sections (custom_sections) reach the open sidebar too.
+  await expect(sidebar(page)).toContainText("البروتوكولات");
+  await expect(sidebar(page)).not.toContainText("ملاحظات داخلية"); // visible = false
   expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
   expect(await page.evaluate(() => window.ACTIVE_BRANCH_ID)).toBe("br-demo-physio-1");
 
@@ -201,6 +236,60 @@ test("clinic login: wrong password shows one generic Arabic message", async ({ p
   await page.goto("/?org=demo-physio");
   await clinicLogin(page, "admin@demo-physio.test", "not-the-password");
   await expect(page.locator(".tenant-notice")).toHaveText("البريد الإلكتروني أو كلمة المرور غير صحيحة");
+});
+
+test("clinic login: «أبقني مسجلاً» decides the session length (remember → 30 days, else 12 hours)", async ({ page }) => {
+  const cookieDays = async () => {
+    const c = (await page.context().cookies()).find((x) => x.name === "cs_session");
+    expect(c, "session cookie").toBeTruthy();
+    return (c.expires * 1000 - Date.now()) / 86400000;
+  };
+  await page.goto("/?org=demo-physio");
+  await page.locator("#login-email").fill("doctor@demo-physio.test");
+  await page.locator("#login-password").fill(PASSWORD);
+  await page.getByLabel("أبقني مسجلاً لمدة 30 يوم").uncheck();
+  const short = page.waitForRequest((r) => r.url().endsWith("/api/auth/login"));
+  await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+  expect((await short).postDataJSON().remember).toBeUndefined();
+  await expect(sidebar(page)).toBeVisible();
+  const shortDays = await cookieDays();
+  expect(shortDays).toBeGreaterThan(0.4);
+  expect(shortDays).toBeLessThan(0.6);
+
+  await page.getByRole("button", { name: "تسجيل الخروج" }).click();
+  await expect(page.getByLabel("أبقني مسجلاً لمدة 30 يوم")).toBeChecked();
+  const long = page.waitForRequest((r) => r.url().endsWith("/api/auth/login"));
+  await clinicLogin(page, "doctor@demo-physio.test");
+  expect((await long).postDataJSON().remember).toBe(true);
+  await expect(sidebar(page)).toBeVisible();
+  expect(await cookieDays()).toBeGreaterThan(29);
+});
+
+test("clinic login: no guest booking and no sales link outside demo mode", async ({ page }) => {
+  await page.goto("/?org=demo-physio");
+  await expect(page.locator("#login-email")).toBeVisible();
+  await expect(page.getByText("هل أنت مريض؟")).toHaveCount(0);
+  await expect(page.getByText("تواصل مع المبيعات")).toHaveCount(0);
+  await expect(page.getByText("يُنشأ الحساب بدعوة من مدير العيادة")).toBeVisible();
+});
+
+test("a session that ends while signed in (membership disabled) returns to the login with a reason (AT-06)", async ({ page, playwright, baseURL }) => {
+  await page.goto("/?org=demo-physio");
+  await clinicLogin(page, "therapist@demo-physio.test");
+  await expect(sidebar(page)).toBeVisible();
+  const admin = await apiAs(playwright, baseURL, "admin@demo-physio.test", { org: "demo-physio" });
+  const off = await admin.post("/api/admin/set-status", { data: { staff_id: "ST-PHY-THERAPIST", active: false } });
+  expect(off.status(), await off.text()).toBe(200);
+  try {
+    // The app re-checks the session whenever the tab regains focus.
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(page.locator("#login-email")).toBeVisible();
+    await expect(page.locator(".tenant-notice")).toContainText("سجّل الدخول من جديد");
+    await expect(sidebar(page)).toHaveCount(0);
+  } finally {
+    const on = await admin.post("/api/admin/set-status", { data: { staff_id: "ST-PHY-THERAPIST", active: true } });
+    expect(on.status()).toBe(200);
+  }
 });
 
 test("clinic login: a deactivated member is refused (AT-06)", async ({ page, playwright, baseURL }) => {
@@ -257,6 +346,34 @@ test("branch picker: only the member's branches; switching changes X-Branch-Id a
   await picker.click();
   await expect(page.getByRole("option")).toHaveCount(1);
   expect(await page.evaluate(() => window.ACTIVE_BRANCH_ID)).toBe("br-demo-physio-1");
+});
+
+test("adding a branch beyond the plan's limit is refused with the reason (plan_limit:branches)", async ({ page, playwright, baseURL }) => {
+  const sa = await apiAs(playwright, baseURL, "super@clinicsys.test", { platform: true });
+  const id = await orgIdOf(sa, "demo-dental");
+  const before = (await (await sa.get(`/api/platform/organizations/${id}`)).json()).organization.plan_id;
+  const plan = await sa.post("/api/platform/plans", { data: { code: `e2e-two-branches-${uniq()}`, name: "خطة فرعين", max_branches: 2 } });
+  expect(plan.status(), await plan.text()).toBe(201);
+  const set = await sa.put(`/api/platform/organizations/${id}/subscription`, { data: { plan_id: (await plan.json()).id } });
+  expect(set.status(), await set.text()).toBe(200);
+  try {
+    await page.goto("/?org=demo-dental");
+    await clinicLogin(page, "admin@demo-dental.test");
+    const picker = page.locator("button.branch-switcher");
+    await expect(picker).toContainText("الفرع الرئيسي");
+    await picker.click();
+    await expect(page.getByRole("option")).toHaveCount(2);
+    await page.getByRole("button", { name: "إضافة فرع جديد" }).click();
+    await page.getByPlaceholder("فرع المعادي").fill("فرع ثالث");
+    await page.getByRole("button", { name: "إضافة الفرع" }).click();
+    await expect(page.getByText("تجاوزت حد الفروع في خطتك")).toBeVisible();
+    await page.getByRole("button", { name: "إلغاء" }).click();
+    await picker.click();
+    await expect(page.getByRole("option")).toHaveCount(2);
+  } finally {
+    const reset = await sa.put(`/api/platform/organizations/${id}/subscription`, { data: { plan_id: before } });
+    expect(reset.status(), await reset.text()).toBe(200);
+  }
 });
 
 // ── S03: invitations (task 3.3) ─────────────────────────────────────────
@@ -325,8 +442,9 @@ test("invitation, new account: an employee invited by the clinic admin (AT-15)",
 });
 
 test("invitation, existing account: joins with its own password (S03)", async ({ page, playwright, baseURL }) => {
+  // An account of the dental clinic (made here, so the test can run again).
+  const email = await newMember(playwright, baseURL, "demo-dental", "doctor", "br-demo-dental-1", "doctor");
   const admin = await apiAs(playwright, baseURL, "admin@demo-physio.test", { org: "demo-physio" });
-  const email = "doctor@demo-dental.test";
   const before = readOutbox().length;
   const inv = await admin.post("/api/org/invitations", { data: { email, role: "doctor", branch_ids: ["br-demo-physio-1"] } });
   expect(inv.status(), await inv.text()).toBe(201);
@@ -363,9 +481,42 @@ test("invitation: unknown token and a revoked invitation", async ({ page, playwr
   await expect(page.getByRole("heading", { name: "أُلغيت هذه الدعوة" })).toBeVisible();
 });
 
+test("invitation: a clinic that is not active refuses it (403 org_inactive)", async ({ page, playwright, baseURL }) => {
+  const admin = await apiAs(playwright, baseURL, "admin@demo-dental.test", { org: "demo-dental" });
+  const email = `paused-${uniq()}@e2e.test`;
+  const before = readOutbox().length;
+  const inv = await admin.post("/api/org/invitations", { data: { email, role: "receptionist", branch_ids: ["br-demo-dental-1"] } });
+  expect(inv.status(), await inv.text()).toBe(201);
+  const link = await waitForLink(email, /\?invite=/, before);
+  const sa = await apiAs(playwright, baseURL, "super@clinicsys.test", { platform: true });
+  const id = await orgIdOf(sa, "demo-dental");
+  expect((await sa.post(`/api/platform/organizations/${id}/status`, { data: { status: "suspended", reason: "e2e" } })).status()).toBe(200);
+  try {
+    await page.goto(link);
+    await expect(page.getByRole("heading", { name: "العيادة غير نشطة حاليًا" })).toBeVisible();
+    await expect(page.locator("#invite-password")).toHaveCount(0);
+  } finally {
+    expect((await sa.post(`/api/platform/organizations/${id}/status`, { data: { status: "active" } })).status()).toBe(200);
+  }
+  // Active again: the same link works.
+  await page.goto(link);
+  await expect(page.getByRole("heading", { name: "قبول الدعوة" })).toBeVisible();
+});
+
+test("clinic link while the server cannot be reached: an error page with «إعادة المحاولة»", async ({ page }) => {
+  await page.route("**/api/orgs/resolve*", (route) => route.abort("failed"));
+  await page.goto("/?org=demo-physio");
+  await expect(page.locator(".tenant-status")).toHaveAttribute("data-status", "error");
+  await page.unroute("**/api/orgs/resolve*");
+  await page.getByRole("button", { name: "إعادة المحاولة" }).click();
+  await expect(page.locator("#login-email")).toBeVisible();
+});
+
 // ── S05: password reset ─────────────────────────────────────────────────
-test("forgot password: e-mailed link, new password, sign in with it", async ({ page }) => {
-  const email = "therapist@demo-dental.test";
+test("forgot password: e-mailed link, new password, sign in with it", async ({ page, playwright, baseURL }) => {
+  // Its own account: the API sends at most 3 reset e-mails per account in
+  // 15 minutes, and the seed accounts keep their password.
+  const email = await newMember(playwright, baseURL, "demo-dental", "therapist", "br-demo-dental-1", "reset");
   const before = readOutbox().length;
   await page.goto("/?org=demo-dental");
   await page.getByRole("button", { name: "نسيت؟" }).click();
@@ -389,7 +540,7 @@ test("forgot password: e-mailed link, new password, sign in with it", async ({ p
   await rootLogin(page, email, PASSWORD);
   await expect(page.locator(".tenant-notice")).toHaveText("البريد الإلكتروني أو كلمة المرور غير صحيحة");
   await rootLogin(page, email, "NewPass123");
-  await page.waitForURL(/\/\?org=demo-dental$/);
+  await page.waitForURL(/\/\?org=demo-dental(#\/[a-z]+)?$/);
   await expect(sidebar(page)).toContainText(DENTAL);
 
   // A reset link works once.
@@ -398,42 +549,122 @@ test("forgot password: e-mailed link, new password, sign in with it", async ({ p
   await page.locator("#reset-confirm").fill("Another123");
   await page.getByRole("button", { name: "حفظ كلمة المرور" }).click();
   await expect(page.locator(".tenant-notice")).toContainText("رابط إعادة التعيين غير صالح");
+
 });
 
 // ── Modules (task 3.5, AT-07 in the UI) ─────────────────────────────────
-test("modules: a disabled module leaves the menu and its link explains why", async ({ page, playwright, baseURL }) => {
+// Menu item → module (src/roles.jsx ROUTE_MODULES): patients core.patients,
+// appointments core.appointments, payments + packages core.billing,
+// reports core.reports, settings core.settings, sessions physio.sessions,
+// treatments physio.treatment_plans; dashboard and campaigns: none.
+test("modules: disabled modules leave the menu, and a link to one explains why (AT-07)", async ({ page, playwright, baseURL }) => {
   const sa = await apiAs(playwright, baseURL, "super@clinicsys.test", { platform: true });
   const id = await orgIdOf(sa, "demo-physio");
   const detail = await (await sa.get(`/api/platform/organizations/${id}`)).json();
   const enabled = detail.modules.filter((m) => m.enabled).map((m) => m.code);
-  expect(enabled).toContain("physio.sessions");
+  expect(enabled).toEqual(expect.arrayContaining(["physio.sessions", "core.billing"]));
   const put = await sa.put(`/api/platform/organizations/${id}/modules`, {
-    data: { codes: enabled.filter((c) => !c.startsWith("physio.")) },
+    data: { codes: enabled.filter((c) => !c.startsWith("physio.") && c !== "core.billing") },
   });
   expect(put.status(), await put.text()).toBe(200);
   try {
-    await page.goto("/?org=demo-physio");
+    // A link to a page of a disabled module, opened before signing in.
+    await page.goto("/?org=demo-physio#/payments");
     await clinicLogin(page, "admin@demo-physio.test");
-    await expect(page.locator('[data-route="patients"]')).toBeVisible();
-    await expect(page.locator('[data-route="payments"]')).toBeVisible();
-    await expect(page.locator('[data-route="sessions"]')).toHaveCount(0);
-    await expect(page.locator('[data-route="treatments"]')).toHaveCount(0);
-    // A stored or linked route of the disabled module.
-    await page.evaluate(() => localStorage.setItem("kinetic.route", "sessions"));
-    await page.reload();
     await expect(page.getByRole("heading", { name: "هذه الميزة غير مفعلة لعيادتك" })).toBeVisible();
+    await expect(page).toHaveURL(/#\/payments$/);
+    const nav = sidebar(page);
+    await expect(nav.locator('[data-route="patients"]')).toBeVisible();
+    await expect(nav.locator('[data-route="appointments"]')).toBeVisible();
+    await expect(nav.locator('[data-route="reports"]')).toBeVisible();
+    for (const route of ["payments", "packages", "sessions", "treatments"]) {
+      await expect(nav.locator(`[data-route="${route}"]`), route).toHaveCount(0);
+    }
     await page.getByRole("button", { name: "العودة إلى لوحة التحكم" }).click();
     await expect(page.getByRole("heading", { name: "هذه الميزة غير مفعلة لعيادتك" })).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/dashboard$/);
+
+    // The same for a page link inside the workspace and a stored page.
+    await page.goto("/?org=demo-physio#/sessions");
+    await expect(page.getByRole("heading", { name: "هذه الميزة غير مفعلة لعيادتك" })).toBeVisible();
+    // The command palette does not offer them either.
+    await page.keyboard.press("Control+k");
+    const palette = page.locator(".modal").filter({ has: page.getByPlaceholder(/ابحث عن مريض/) });
+    await expect(palette.getByText("المرضى", { exact: true })).toBeVisible();
+    await expect(palette.getByText("المدفوعات", { exact: true })).toHaveCount(0);
+    await expect(palette.getByText("جلسات العلاج")).toHaveCount(0);
+    await page.keyboard.press("Escape");
   } finally {
     const back = await sa.put(`/api/platform/organizations/${id}/modules`, { data: { codes: enabled } });
     expect(back.status()).toBe(200);
   }
+  // Enabled again: the pages are back after the next sign-in.
+  await page.getByRole("button", { name: "تسجيل الخروج" }).click();
+  await clinicLogin(page, "admin@demo-physio.test");
+  await expect(sidebar(page).locator('[data-route="payments"]')).toBeVisible();
+  await expect(sidebar(page).locator('[data-route="sessions"]')).toBeVisible();
+
   // The dental clinic never had the physio modules (specialty defaults).
   await page.getByRole("button", { name: "تسجيل الخروج" }).click();
   await page.goto("/?org=demo-dental");
   await clinicLogin(page, "admin@demo-dental.test");
   await expect(page.locator('[data-route="patients"]')).toBeVisible();
+  await expect(page.locator('[data-route="payments"]')).toBeVisible();
   await expect(page.locator('[data-route="sessions"]')).toHaveCount(0);
+});
+
+// ── Page links (#/<route>) ──────────────────────────────────────────────
+test("workspace pages have links: reload keeps the page, Back returns, sign-out starts afresh", async ({ page }) => {
+  await page.goto("/?org=demo-physio");
+  await clinicLogin(page, "receptionist@demo-physio.test");
+  await expect(page).toHaveURL(/\?org=demo-physio#\/dashboard$/);
+  const nav = sidebar(page);
+  await nav.locator('[data-route="patients"]').click();
+  await expect(page).toHaveURL(/#\/patients$/);
+  await nav.locator('[data-route="appointments"]').click();
+  await expect(page).toHaveURL(/#\/appointments$/);
+  await expect(nav.locator('[data-route="appointments"]')).toHaveAttribute("aria-current", "page");
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/patients$/);
+  await expect(nav.locator('[data-route="patients"]')).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(nav.locator('[data-route="patients"]')).toHaveAttribute("aria-current", "page");
+  // A page this role may not open (receptionist → settings) falls back home.
+  await page.goto("/?org=demo-physio#/settings");
+  await expect(page).toHaveURL(/#\/dashboard$/);
+  await expect(nav.locator('[data-route="dashboard"]')).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "تسجيل الخروج" }).click();
+  await expect(page.locator("#login-email")).toBeVisible();
+  await expect(page).toHaveURL(/\?org=demo-physio$/);
+});
+
+// ── ?import=1 and file names (task 2.11) ────────────────────────────────
+test("?import=1 still opens the paper-record page after its own sign-in", async ({ page }) => {
+  await page.goto("/?import=1&org=demo-physio");
+  await expect(page.locator("#login-email")).toBeVisible();
+  await clinicLogin(page, "receptionist@demo-physio.test");
+  await expect(page.getByText("إدخال المرضى التاريخي")).toBeVisible();
+  await expect(sidebar(page)).toHaveCount(0);
+});
+
+test("a file named «تقرير..نهائي.pdf» uploads (repeated dots collapse, task 2.11)", async ({ page }) => {
+  await page.goto("/?org=demo-physio");
+  await clinicLogin(page, "receptionist@demo-physio.test");
+  await expect(sidebar(page)).toBeVisible();
+  const res = await page.evaluate(async () => {
+    const file = new File(["%PDF-1.4 e2e"], "تقرير..نهائي.pdf", { type: "application/pdf" });
+    const r = await window.uploadPatientFile("P-PHY-01", file);
+    return { ok: r.ok, error: r.error || null, path: r.file ? r.file.storage_path : (r.row ? r.row.storage_path : null),
+             clean: window.sanitizeFileName("..a...b..pdf") };
+  });
+  expect(res.error).toBeNull();
+  expect(res.ok).toBe(true);
+  expect(res.clean).toBe("a.b.pdf");
+  const files = await page.evaluate(async () => {
+    const { data } = await window.SB.from("patient_files").select("storage_path").eq("patient_id", "P-PHY-01");
+    return (data || []).map((f) => f.storage_path);
+  });
+  expect(files.some((p) => /-تقرير\.نهائي\.pdf$/.test(p))).toBe(true);
 });
 
 // ── Demo mode (task 3.4) ────────────────────────────────────────────────

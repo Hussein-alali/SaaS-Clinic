@@ -270,7 +270,7 @@ describe('clinic admin (admin@demo-physio.test, ?org=demo-physio)', () => {
     assert.ok(!after.out.some((s) => s.id === add.out.id));
   });
 
-  test('branches: load (order created_at), add, update, remove', async () => {
+  test('branches: load (order created_at), add, update; removeBranch deactivates and never deletes (task 2.15)', async () => {
     const l = await b.call('loadBranches', (w) => w.loadBranches());
     allOk(l);
     assert.deepEqual(plain(l.out.map((x) => x.id)), [BRANCH.physio1, BRANCH.physio2]);
@@ -279,9 +279,19 @@ describe('clinic admin (admin@demo-physio.test, ?org=demo-physio)', () => {
     allOk(await b.call('updateBranch', (w) => w.updateBranch(add.out.id, { phone: '0225550000' })));
     const { rows } = await h.asSystem('select organization_id, phone, rooms from branches where id = $1', [add.out.id]);
     assert.deepEqual(rows, [{ organization_id: ORG.physio, phone: '0225550000', rooms: 3 }]);
-    // The UI deletes a branch nothing references (0001 policy "admin write
-    // branches"); docs/05 prefers status = 'inactive' (open decision).
-    allOk(await b.call('removeBranch', (w) => w.removeBranch(add.out.id)));
+    // Branches are deactivated, never deleted (0005_branches_no_delete):
+    // removeBranch() = setBranchStatus(id, 'inactive'), the row stays.
+    const rm = await b.call('removeBranch (deactivates)', (w) => w.removeBranch(add.out.id));
+    allOk(rm);
+    assert.deepEqual(rm.reqs.map(describeReq), ['POST /api/data[update:branches] 200']);
+    assert.equal(rm.out.status, 'inactive');
+    const { rows: after } = await h.asSystem('select status from branches where id = $1', [add.out.id]);
+    assert.deepEqual(after, [{ status: 'inactive' }]);
+    // A delete through the client removes nothing.
+    const del = await b.call('delete branches (refused by RLS)', (w) => w.SB.from('branches').delete({ count: 'exact' }).eq('id', add.out.id));
+    allOk(del);
+    assert.equal(del.out.count, 0);
+    assert.equal((await h.asSystem('select 1 from branches where id = $1', [add.out.id])).rowCount, 1);
   });
 
   test('hydrate: every DATA_TABLES table through selectAllRows (count exact), only this clinic', async () => {
@@ -457,10 +467,13 @@ describe('clinic admin (admin@demo-physio.test, ?org=demo-physio)', () => {
     assert.equal((await fetch(b.base + signed.out)).status, 404, 'the file is gone');
   });
 
-  test('known limitation (task 2.11): a file name with ".." is refused by the API (400 invalid_path)', async () => {
+  test('task 2.11: a file name with ".." uploads (sanitizeFileName collapses repeated dots)', async () => {
     const up = await b.call('uploadPatientFile (name with ..)', (w) => w.uploadPatientFile(S.pid, fileBlob('x', 'application/pdf', 'تقرير..نهائي.pdf')));
-    assert.deepEqual(up.reqs.map(describeReq), ['POST /api/files/upload 400 invalid_path']);
-    assert.equal(up.out.ok, false);
+    assert.deepEqual(up.reqs.map(describeReq), ['POST /api/files/upload 200', 'POST /api/data[insert:patient_files] 200']);
+    assert.equal(up.out.ok, true);
+    const { rows: [f] } = await h.asSystem(
+      `select storage_path from patient_files where patient_id = $1 and storage_path like '%نهائي.pdf' limit 1`, [S.pid]);
+    assert.match(f.storage_path, /-تقرير\.نهائي\.pdf$/, 'stored without ".."');
   });
 
   test('TxMethods: list, create/update (upsert_treatment_method), archive/restore, remove; global rows are read-only', async () => {

@@ -181,8 +181,13 @@ async function loadSections() {
     if (!error && Array.isArray(data)) {
       window.CUSTOM_SECTIONS = data;
       writeLS(LS_SECTIONS, data);
+      // The sidebar is already on screen when this runs after sign-in.
+      window.dispatchEvent(new CustomEvent("kinetic:sections-updated", { detail: data }));
       return data;
     }
+    if (error) console.warn("loadSections failed", error.message || error);
+    // With a backend the cached copy may be another clinic's: keep what is known.
+    return window.CUSTOM_SECTIONS || [];
   }
   const cached = readLS(LS_SECTIONS, DEFAULT_SECTIONS);
   window.CUSTOM_SECTIONS = cached;
@@ -262,19 +267,75 @@ function __accessibleBranchIds() {
   return Array.isArray(ids) ? new Set(ids) : null;
 }
 
+// Branches are deactivated (status 'inactive'), never deleted (docs/03
+// C07, 0005_branches_no_delete). An inactive branch keeps its history but
+// takes no new bookings and is not offered in the picker.
+function branchIsActive(b) {
+  return !!b && String(b.status || "active") !== "inactive";
+}
+
 // Keeps window.ACTIVE_BRANCH_ID on a real branch of `list` (never the
-// "br_main" placeholder): the current choice if it is still listed, else
-// the first (active branches sort first).
+// "br_main" placeholder): the current choice if it is still listed and
+// active, else the first active one (active branches sort first). An
+// inactive branch stays selected only when the member has no active one.
+// When the choice changes while signed in, the branch-scoped tables are
+// read again for the new branch (a hydrate for the old one may be running).
 function __ensureActiveBranch(list) {
   if (!Array.isArray(list) || !list.length) {
     if (sb) window.ACTIVE_BRANCH_ID = null;
     return window.ACTIVE_BRANCH_ID;
   }
-  if (!list.some(b => b.id === window.ACTIVE_BRANCH_ID)) {
-    window.ACTIVE_BRANCH_ID = list[0].id;
-    writeLS(LS_ACTIVE_BRANCH, list[0].id);
+  const prev = window.ACTIVE_BRANCH_ID;
+  const current = list.find(b => b.id === prev);
+  const firstActive = list.find(branchIsActive);
+  let next = current ? current.id : list[0].id;
+  if ((!current || !branchIsActive(current)) && firstActive) next = firstActive.id;
+  if (next !== prev) {
+    window.ACTIVE_BRANCH_ID = next;
+    writeLS(LS_ACTIVE_BRANCH, next);
+    if (prev && sb && window.ME) {
+      hydrateDomainTables().catch(e => console.warn("hydrate after branch change failed", e));
+      window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: { activeId: next } }));
+    }
   }
   return window.ACTIVE_BRANCH_ID;
+}
+
+const INACTIVE_BRANCH_BOOKING = "هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.";
+
+// Arabic reason for a refused branch write (docs/03 «إضافة فرع»).
+function __branchSaveError(error) {
+  const code = (error && error.code) || "";
+  if (code === "23505") return "يوجد فرع بهذا الاسم في عيادتك بالفعل — اختر اسمًا آخر";
+  if (code === "42501") return "لا تملك صلاحية تعديل الفروع — يتطلب دور «مدير»";
+  return __friendlyAuthError(code === "PL422" ? null : code, (error && error.message) || "") || "تعذّر حفظ الفرع";
+}
+
+// Same name as another branch of the clinic (names are unique per clinic,
+// branches_org_name_key), ignoring case and surrounding spaces.
+function __branchNameTaken(name, exceptId) {
+  const n = String(name || "").trim().toLowerCase();
+  return !!n && (window.BRANCHES || []).some(b => b.id !== exceptId && String(b.name || "").trim().toLowerCase() === n);
+}
+
+// working_hours as the schema stores it (docs/05 "branches"):
+// { "sat": ["09:00","21:00"], … } — a missing day is closed.
+const BRANCH_DAYS = [
+  { key: "sat", ar: "السبت" }, { key: "sun", ar: "الأحد" }, { key: "mon", ar: "الاثنين" },
+  { key: "tue", ar: "الثلاثاء" }, { key: "wed", ar: "الأربعاء" }, { key: "thu", ar: "الخميس" },
+  { key: "fri", ar: "الجمعة" },
+];
+function __cleanWorkingHours(wh) {
+  if (wh === undefined) return undefined;
+  if (!wh || typeof wh !== "object") return null;
+  const out = {};
+  for (const d of BRANCH_DAYS) {
+    const v = wh[d.key];
+    if (Array.isArray(v) && v.length === 2 && /^\d{2}:\d{2}$/.test(v[0]) && /^\d{2}:\d{2}$/.test(v[1]) && v[0] < v[1]) {
+      out[d.key] = [v[0], v[1]];
+    }
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function loadBranches() {
@@ -300,50 +361,101 @@ async function loadBranches() {
   return cached;
 }
 
+// Adds a branch (C07 / the sidebar picker). Saved first: a refused branch
+// (a taken name → 23505, the plan's branch limit → 422 "plan_limit:branches",
+// no permission → 42501) must not appear in the picker. Every refusal
+// throws an Error whose message is the Arabic reason for the caller.
 async function addBranch(branch) {
   const list = window.BRANCHES || [];
+  const name = String((branch && branch.name) || "").trim();
+  if (!name) throw new Error("اسم الفرع مطلوب");
+  if (__branchNameTaken(name)) throw new Error(__branchSaveError({ code: "23505" }));
   const item = {
     id: branch.id || nextBranchId(),
-    name: (branch.name || "فرع جديد").trim(),
-    therapists: Number(branch.therapists) || 0,
-    rooms: Number(branch.rooms) || 0,
-    address: branch.address || "",
-    phone: branch.phone || "",
+    name,
+    rooms: Math.max(0, parseInt(branch.rooms, 10) || 0),
+    address: String(branch.address || "").trim(),
+    phone: String(branch.phone || "").trim(),
+    status: "active",
     created_at: new Date().toISOString(),
   };
-  const next = [...list, item];
-  window.BRANCHES = next;
-  writeLS(LS_BRANCHES, next);
+  const wh = __cleanWorkingHours(branch.working_hours);
+  if (wh !== undefined) item.working_hours = wh;
   if (sb) {
     const { error } = await sb.from("branches").insert(item);
-    if (error) console.warn("addBranch insert failed", error.message || error);
+    if (error) {
+      console.warn("addBranch insert failed", error.message || error);
+      throw new Error(__branchSaveError(error));
+    }
+    // A clinic admin may use every branch, including the new one.
+    if (Array.isArray(window.ACCESSIBLE_BRANCH_IDS) && window.TENANT_ROLE === "admin") {
+      window.ACCESSIBLE_BRANCH_IDS = window.ACCESSIBLE_BRANCH_IDS.concat(item.id);
+    }
   }
+  const next = [...(window.BRANCHES || list), item];
+  window.BRANCHES = next;
+  writeLS(LS_BRANCHES, next);
   window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: next }));
   return item;
 }
 
+// Edits a branch: saved first, then the in-memory copy; a refusal throws
+// the Arabic reason (same rules as addBranch).
 async function updateBranch(id, patch) {
   const list = window.BRANCHES || [];
   const cleanPatch = { ...patch, updated_at: new Date().toISOString() };
+  delete cleanPatch.id;
+  delete cleanPatch.organization_id;
   if (cleanPatch.therapists !== undefined) cleanPatch.therapists = Number(cleanPatch.therapists) || 0;
-  if (cleanPatch.rooms !== undefined) cleanPatch.rooms = Number(cleanPatch.rooms) || 0;
-  if (typeof cleanPatch.name === "string") cleanPatch.name = cleanPatch.name.trim();
-  const next = list.map(b => b.id === id ? { ...b, ...cleanPatch } : b);
+  if (cleanPatch.rooms !== undefined) cleanPatch.rooms = Math.max(0, parseInt(cleanPatch.rooms, 10) || 0);
+  if (cleanPatch.working_hours !== undefined) cleanPatch.working_hours = __cleanWorkingHours(cleanPatch.working_hours);
+  if (typeof cleanPatch.name === "string") {
+    cleanPatch.name = cleanPatch.name.trim();
+    if (!cleanPatch.name) throw new Error("اسم الفرع مطلوب");
+    if (__branchNameTaken(cleanPatch.name, id)) throw new Error(__branchSaveError({ code: "23505" }));
+  }
+  if (sb) {
+    const { data, error } = await sb.from("branches").update(cleanPatch).eq("id", id).select("id");
+    if (error) {
+      console.warn("updateBranch failed", error.message || error);
+      throw new Error(__branchSaveError(error));
+    }
+    if (Array.isArray(data) && !data.length) throw new Error(__branchSaveError({ code: "42501" }));
+  }
+  const next = (window.BRANCHES || list).map(b => b.id === id ? { ...b, ...cleanPatch } : b);
   window.BRANCHES = next;
   writeLS(LS_BRANCHES, next);
-  if (sb) {
-    const { error } = await sb.from("branches").update(cleanPatch).eq("id", id);
-    if (error) console.warn("updateBranch failed", error.message || error);
-  }
   window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: next }));
   return next.find(b => b.id === id);
+}
+
+// Deactivates ('inactive') or re-activates ('active') a branch — branches
+// are never deleted (docs/03 C07, plan task 2.15). The last active branch
+// cannot be deactivated (nothing could be booked). Re-activating counts
+// against the plan's branch limit (422 → Arabic reason). When the branch
+// in use is deactivated, the picker moves to an active one and the data
+// is read again for it.
+async function setBranchStatus(id, status) {
+  const target = status === "inactive" ? "inactive" : "active";
+  const list = window.BRANCHES || [];
+  const branch = list.find(b => b.id === id);
+  if (!branch) throw new Error("الفرع غير موجود");
+  if (target === "inactive" && !list.some(b => b.id !== id && branchIsActive(b))) {
+    throw new Error("لا يمكن تعطيل آخر فرع نشط — أضف فرعًا آخر أولًا");
+  }
+  await updateBranch(id, { status: target });
+  if (target === "inactive" && window.ACTIVE_BRANCH_ID === id) __ensureActiveBranch(window.BRANCHES || []);
+  return (window.BRANCHES || []).find(b => b.id === id);
 }
 
 // Selecting a branch changes X-Branch-Id (src/apiclient.jsx reads
 // window.ACTIVE_BRANCH_ID) and reloads the branch-scoped tables for it.
 function setActiveBranch(id) {
   const list = window.BRANCHES || [];
-  if (!list.some(b => b.id === id)) return;
+  const branch = list.find(b => b.id === id);
+  if (!branch) return;
+  // An inactive branch is not offered for new work while an active one exists.
+  if (!branchIsActive(branch) && list.some(branchIsActive)) return;
   const changed = window.ACTIVE_BRANCH_ID !== id;
   window.ACTIVE_BRANCH_ID = id;
   writeLS(LS_ACTIVE_BRANCH, id);
@@ -353,21 +465,11 @@ function setActiveBranch(id) {
   }
 }
 
+// Kept for older callers: "removing" a branch deactivates it. Nothing is
+// deleted — the database refuses a branch DELETE (0005_branches_no_delete)
+// and the branch's bookings, invoices and sessions keep pointing at it.
 async function removeBranch(id) {
-  const list = window.BRANCHES || [];
-  if (list.length <= 1) return; // never allow removing the last branch
-  const next = list.filter(b => b.id !== id);
-  window.BRANCHES = next;
-  writeLS(LS_BRANCHES, next);
-  if (window.ACTIVE_BRANCH_ID === id) {
-    window.ACTIVE_BRANCH_ID = next[0].id;
-    writeLS(LS_ACTIVE_BRANCH, next[0].id);
-  }
-  if (sb) {
-    const { error } = await sb.from("branches").delete().eq("id", id);
-    if (error) console.warn("removeBranch failed", error.message || error);
-  }
-  window.dispatchEvent(new CustomEvent("kinetic:branches-updated", { detail: next }));
+  return setBranchStatus(id, "inactive");
 }
 
 // ── Initial state ─────────────────────────────────────────────
@@ -463,6 +565,10 @@ async function signOut() {
     window.ACTIVE_BRANCH_ID = null;
     window.ACCESSIBLE_BRANCH_IDS = null;
     window.CUSTOM_SECTIONS = [];
+    // src/apiclient.jsx falls back to this copy for X-Branch-Id: the next
+    // account must not start on this one's branch (each account's own
+    // choice is kept per clinic and user by src/tenant.jsx).
+    try { localStorage.removeItem(LS_ACTIVE_BRANCH); } catch (_) {}
   }
   window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "*" } }));
 }
@@ -482,8 +588,10 @@ async function getSession() {
 // Returns:
 //   { ok:true,  session, user, role, staff }
 //   { ok:false, reason:'no-database'|'no-session'|'invalid-session'
-//              |'staff-lookup-failed'|'no-staff-role'|'role-not-staff',
-//     error, role? }
+//              |'staff-lookup-failed'|'no-staff-role'|'role-not-staff'
+//              |'account-inactive'
+//              |'network-error'|'server-error' (nothing known: keep the user),
+//     error (Arabic), role?, code? }
 const STAFF_ROLES = ["admin", "receptionist", "doctor", "therapist"];
 async function getAuthStaff() {
   if (!sb) return { ok: false, reason: "no-database", error: "لم يتم تكوين قاعدة البيانات" };
@@ -494,7 +602,12 @@ async function getAuthStaff() {
     if (error) throw error;
     session = data && data.session;
   } catch (e) {
-    return { ok: false, reason: "no-session", error: e.message || String(e) };
+    // Offline or a server fault says nothing about the session.
+    if (e && (e.status === 0 || e.status >= 500)) {
+      return { ok: false, reason: e.status === 0 ? "network-error" : "server-error",
+               error: e.status === 0 ? __AUTH_ERRORS.network_error : __AUTH_ERRORS.internal_error };
+    }
+    return { ok: false, reason: "no-session", error: __AUTH_ERRORS.invalid_session };
   }
   if (!session || !session.user) {
     return { ok: false, reason: "no-session", error: "لا توجد جلسة مسجّلة" };
@@ -505,12 +618,19 @@ async function getAuthStaff() {
   let user = null;
   try {
     const { data, error } = await sb.auth.getUser();
+    if (error && (error.status === 0 || error.status >= 500)) {
+      // Offline or a server fault: says nothing about the session (the
+      // caller keeps the user signed in).
+      return { ok: false, reason: error.status === 0 ? "network-error" : "server-error", session,
+               error: error.status === 0 ? __AUTH_ERRORS.network_error : __AUTH_ERRORS.internal_error };
+    }
     if (error || !data || !data.user) {
-      return { ok: false, reason: "invalid-session", error: (error && error.message) || "الجلسة غير صالحة" };
+      return { ok: false, reason: "invalid-session", code: (error && error.code) || "",
+               error: __AUTH_ERRORS.invalid_session };
     }
     user = data.user;
   } catch (e) {
-    return { ok: false, reason: "invalid-session", error: e.message || String(e) };
+    return { ok: false, reason: "invalid-session", error: __AUTH_ERRORS.invalid_session };
   }
 
   // getUser() re-read the session: its memberships are now current.
@@ -603,14 +723,30 @@ const __AUTH_ERRORS = {
   unauthorized:        "انتهت الجلسة — سجّل الدخول من جديد",
   token_expired:       "انتهت الجلسة — سجّل الدخول من جديد",
   already_member:      "هذا البريد عضو بالفعل في العيادة",
-  invitation_exists:   "توجد دعوة معلّقة لهذا البريد بالفعل",
+  invitation_exists:   "توجد دعوة معلّقة لهذا البريد بالفعل — أعد إرسالها من قائمة الدعوات",
   invitation_not_found:"رابط الدعوة غير صحيح",
   invitation_used:     "هذه الدعوة استُخدمت من قبل",
   invitation_expired:  "انتهت صلاحية هذه الدعوة",
   invitation_revoked:  "أُلغيت هذه الدعوة",
+  invitation_not_pending: "هذه الدعوة لم تعد معلّقة",
+  org_not_found:       "لا توجد عيادة بهذا الرابط",
+  not_super_admin:     "هذه الصفحة لإدارة المنصة فقط",
+  platform_required:   "افتح لوحة إدارة المنصة من رابطها",
+  slug_taken:          "هذا الرابط مستخدم لعيادة أخرى",
+  module_dependency:   "لا يمكن تعطيل ميزة تعتمد عليها ميزة أخرى مفعّلة",
+  invalid_transition:  "لا يمكن نقل العيادة إلى هذه الحالة من حالتها الحالية",
+  csrf_header_required:"طلب غير صالح — أعد تحميل الصفحة ثم أعد المحاولة",
+  already_exists:      "يوجد ملف بالاسم نفسه بالفعل",
+  file_too_large:      "الملف أكبر من الحد المسموح (20 ميجابايت)",
+  payload_too_large:   "البيانات المرسلة أكبر من الحد المسموح",
+  invalid_path:        "اسم الملف غير صالح",
   branch_required:     "اختر فرعًا واحدًا على الأقل",
+  invalid_branch:      "الفرع المختار غير متاح لك",
   invalid_branch_ids:  "أحد الفروع المختارة غير موجود",
   cannot_deactivate_self: "لا يمكنك تعطيل حسابك الخاص",
+  cannot_change_own_role: "لا يمكنك تغيير دورك بنفسك — يغيّره مدير آخر",
+  member_not_found:    "هذا العضو غير موجود في عيادتك",
+  invalid_request:     "طلب غير صالح — راجع البيانات وأعد المحاولة",
   signup_disabled:     "لا يوجد تسجيل ذاتي — يُنشأ الحساب بدعوة من مدير العيادة",
   rate_limited:        "طلبات كثيرة متتالية — انتظر قليلًا ثم أعد المحاولة",
   network_error:       "تعذّر الاتصال بالخادم — تحقق من الاتصال وأعد المحاولة",
@@ -636,7 +772,7 @@ function __friendlyAuthError(code, fallback) {
   return fallback === "" ? "" : "تعذّر تنفيذ العملية";
 }
 
-async function adminCreateUser({ email, password, name, role, phone }) {
+async function adminCreateUser({ email, password, name, role, phone, branch_ids }) {
   email = (email || "").trim().toLowerCase();
   const roleSlug = ROLE_SLUGS.includes(role) ? role : "receptionist";
   const displayName = (name || "").trim() || email.split("@")[0];
@@ -659,9 +795,10 @@ async function adminCreateUser({ email, password, name, role, phone }) {
   // and creates the account already email-confirmed. If the function
   // isn't deployed we fall through to the legacy signUp below.
   try {
-    const { data, error } = await sb.functions.invoke("admin-create-user", {
-      body: { email, password, name: displayName, role: roleSlug, phone: phone || null },
-    });
+    const body = { email, password, name: displayName, role: roleSlug, phone: phone || null };
+    // The member's branches (the API defaults to the caller's current branch).
+    if (Array.isArray(branch_ids)) body.branch_ids = branch_ids;
+    const { data, error } = await sb.functions.invoke("admin-create-user", { body });
     if (!error && data && data.ok) {
       window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "staff" } }));
       return { ok: true, uid: data.uid };
@@ -900,6 +1037,41 @@ async function adminSetStaffStatus({ staff_id, active }) {
   }
 }
 
+// ── Clinic admin API (docs/03 C06 staff + invitations, C07 counters) ──
+// /api/org/* through window.ClinicApi (src/apiclient.jsx). Every call
+// resolves (never throws) to { ok, data, status, code, error (Arabic) }.
+// Without a backend (demo mode) nothing is requested: { ok:false,
+// code:"no_backend" } — the screens fall back to the local staff roster.
+function __orgFailure(r, fallback) {
+  const code = (r && r.error && r.error.code) || "";
+  const message = (r && r.error && r.error.message) || "";
+  let text;
+  if (r && r.status === 0) text = __AUTH_ERRORS.network_error;
+  else if (code === "PL422") text = __friendlyAuthError(null, message);
+  else text = __friendlyAuthError(code, "");
+  return { ok: false, status: r ? r.status : 0, code: code === "PL422" ? message : code, data: r ? r.data : null,
+           error: text || fallback || "تعذّر تنفيذ العملية" };
+}
+async function __orgRequest(method, path, body, fallback) {
+  if (!sb || !window.ClinicApi || typeof window.ClinicApi.request !== "function") {
+    return { ok: false, status: 0, code: "no_backend", data: null, error: "هذه الميزة تحتاج الاتصال بالخادم" };
+  }
+  const r = await window.ClinicApi.request(method, path, body);
+  if (!r.ok) return __orgFailure(r, fallback);
+  return { ok: true, status: r.status, code: "", data: r.data, error: null };
+}
+const OrgAdmin = {
+  available: () => !!(sb && window.ClinicApi),
+  members: () => __orgRequest("GET", "/org/members", undefined, "تعذّر تحميل قائمة الموظفين"),
+  updateMember: (id, patch) => __orgRequest("PATCH", "/org/members/" + encodeURIComponent(id), patch, "تعذّر حفظ التغييرات"),
+  usage: () => __orgRequest("GET", "/org/usage", undefined, "تعذّر تحميل حدود الخطة"),
+  invitations: () => __orgRequest("GET", "/org/invitations", undefined, "تعذّر تحميل الدعوات"),
+  // { email, role, branch_ids } → data = { invitation, email_sent }
+  invite: (input) => __orgRequest("POST", "/org/invitations", input, "تعذّر إرسال الدعوة"),
+  resendInvitation: (id) => __orgRequest("POST", "/org/invitations/" + encodeURIComponent(id) + "/resend", {}, "تعذّر إعادة إرسال الدعوة"),
+  revokeInvitation: (id) => __orgRequest("DELETE", "/org/invitations/" + encodeURIComponent(id), undefined, "تعذّر إلغاء الدعوة"),
+};
+
 function onAuthChange(cb) {
   if (!sb) return () => {};
   const sub = sb.auth.onAuthStateChange((_evt, session) => {
@@ -1123,6 +1295,17 @@ async function upsertRow(name, row) {
   if (pk != null) { normalized[cfg.pk] = pk; normalized.id = pk; }
 
   const idx = list.findIndex(r => pkOf(cfg, r) === pk);
+  // A new booking goes to the branch in use (bookings.branch_id DEFAULT
+  // app_branch_id() = X-Branch-Id): never to an inactive branch (docs/03 C07).
+  if (idx === -1 && name === "appts" && sb) {
+    const active = (window.BRANCHES || []).find(b => b.id === window.ACTIVE_BRANCH_ID);
+    if (active && !branchIsActive(active)) {
+      // The booking screens show their own generic error toast; this one
+      // replaces it right after with the reason.
+      setTimeout(() => { if (window.showToast) window.showToast(INACTIVE_BRANCH_BOOKING, "error"); }, 0);
+      throw new Error(INACTIVE_BRANCH_BOOKING);
+    }
+  }
   const next = idx === -1
     ? [...list, normalized]
     : list.map((r, i) => i === idx ? { ...r, ...normalized } : r);
@@ -2328,7 +2511,9 @@ async function uploadPatientFile(patientId, file, onProgress) {
   const { error: upErr } = await sb.storage.from(PATIENT_FILES_BUCKET)
     .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
   if (upErr) {
-    const msg = upErr.message || "تعذّر رفع الملف إلى التخزين";
+    // Known API codes (file_too_large, plan_limit_storage, invalid_path, …)
+    // in Arabic; anything else as before.
+    const msg = (upErr.code && __AUTH_ERRORS[upErr.code]) || upErr.message || "تعذّر رفع الملف إلى التخزين";
     console.warn("uploadPatientFile storage failed", msg);
     return { ok: false, error: msg };
   }
@@ -2975,11 +3160,11 @@ async function listAvailableAuthUsers(roleSlug, linkedRows) {
 Object.assign(window, {
   loadClinic, saveClinic,
   loadSections, addSection, updateSection, removeSection,
-  loadBranches, addBranch, updateBranch, setActiveBranch, removeBranch,
+  loadBranches, addBranch, updateBranch, setActiveBranch, removeBranch, setBranchStatus, branchIsActive, BRANCH_DAYS,
   signInEmail, signOut, getSession, getAuthStaff, STAFF_ROLES, onAuthChange, loadClinicData,
   friendlyAuthError: __friendlyAuthError, sanitizeFileName,
   adminCreateUser, sendPasswordReset, updateOwnPassword, updateOwnProfile, updateStaffMember,
-  adminResetPassword, adminSetStaffStatus,
+  adminResetPassword, adminSetStaffStatus, OrgAdmin,
   listAvailableAuthUsers,
   startDictation, printHTML, escHtml,
   KineticData, QuickPay, TxMethods, InvoicesAPI, PaymentReceipts, Templates, TplCategories, TreatmentsAPI,

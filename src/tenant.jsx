@@ -14,6 +14,9 @@
 //   TenantPlatformGate     window.PlatformApp (src/platform.jsx) on admin.<base> / ?platform=1
 //   tenantResolveOrg, tenantRestoreSession, tenantLoginVerdict,
 //   tenantLoadClinicData   the clinic gate ClinicApp (src/screens2.jsx) runs
+//   tenantRouteFromHash, tenantWriteRouteHash
+//                          the workspace page in the address (#/<route>)
+//   TenantModuleDisabled   a page of a module the clinic has not enabled
 //
 // Production: <slug>.clinicsyseg.com is a clinic, admin.clinicsyseg.com the
 // platform, clinicsyseg.com the main site. Development (no wildcard DNS):
@@ -339,12 +342,40 @@ async function tenantRestoreSession(slug) {
     return { state: "member", user, session: fresh };
   }
   if (res.reason === "no-session" || res.reason === "invalid-session") return { state: "none" };
-  if (res.reason === "account-inactive") {
-    await window.signOut();
-    return { state: "none", notice: { kind: "error", text: res.error } };
+  // The session lists this clinic but the API refuses its data (membership
+  // disabled or clinic stopped meanwhile): sign out, say why.
+  if (res.reason === "account-inactive" || res.reason === "staff-lookup-failed") {
+    try { await window.signOut(); } catch (_) {}
+    const text = res.reason === "account-inactive" ? res.error
+      : (res.code === "org_inactive" ? tenantFriendly("org_inactive")
+        : "ليست لديك عضوية نشطة في هذه العيادة. إن كانت عضويتك معطّلة فتواصل مع مدير العيادة.");
+    return { state: "none", notice: { kind: "error", text } };
   }
-  if (res.reason === "staff-lookup-failed") return { state: "not-member", session: fresh };
   return { state: "error" };
+}
+
+// ── Page links inside the clinic (#/<route>) ──────────────────
+// The workspace keeps its page in the address (e.g. /?org=x#/sessions), so
+// a page can be linked to, reloaded, and reached with Back / Forward.
+// → "sessions" | "custom:<id>" | null
+function tenantRouteFromHash(hash) {
+  const h = String(hash != null ? hash : (window.location && window.location.hash) || "");
+  const m = h.match(/^#\/?([a-z][a-z0-9_-]{0,40}|custom:[A-Za-z0-9_-]{1,80})\/?$/);
+  return m ? m[1] : null;
+}
+// Writes #/<route> (pushState = a new history entry for Back).
+function tenantWriteRouteHash(route, push) {
+  if (!route || tenantRouteFromHash() === route) return;
+  try {
+    const url = window.location.pathname + window.location.search + "#/" + route;
+    if (push) window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
+  } catch (_) {}
+}
+// Signing out on purpose: the next account starts from its own home page.
+function tenantClearRouteHash() {
+  if (!tenantRouteFromHash()) return;
+  try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (_) {}
 }
 
 // Last branch this user picked in this clinic.
@@ -384,7 +415,11 @@ async function tenantLoadClinicData() {
   const branches = (Array.isArray(d.branches) ? d.branches : []).filter(b => b && b.id);
   const ids = branches.map(b => b.id);
   window.ACCESSIBLE_BRANCH_IDS = ids;
-  const pick = [tenantRememberedBranch(), d.current_branch_id].find(id => id && ids.includes(id)) || ids[0] || null;
+  // Active branches only (an inactive branch takes no new work), unless the
+  // member has no active one.
+  const activeIds = branches.filter(b => String(b.status || "active") !== "inactive").map(b => b.id);
+  const usable = activeIds.length ? activeIds : ids;
+  const pick = [tenantRememberedBranch(), d.current_branch_id].find(id => id && usable.includes(id)) || usable[0] || null;
   window.ACTIVE_BRANCH_ID = pick;
   if (pick) tenantStoreSet("local", TENANT_KEYS.activeBranch, JSON.stringify(pick));
   // Rows the member cannot read come back as {id} only: show them by id
@@ -1012,7 +1047,7 @@ Object.assign(window, {
   tenantContext, tenantHostInfo, tenantClinicUrl, tenantRootUrl, tenantPlatformUrl, tenantGoRoot,
   tenantRequest, tenantResolveOrg, tenantApplyOrg, tenantMembershipFor, tenantBuildUser,
   tenantLoginVerdict, tenantRestoreSession, tenantLoadClinicData, tenantSetFlash, tenantTakeFlash,
-  tenantSetSession,
+  tenantSetSession, tenantRouteFromHash, tenantWriteRouteHash, tenantClearRouteHash,
   TenantRootPortal, TenantStatusScreen, TenantInviteScreen, TenantResetScreen, TenantForgotForm,
   TenantPlatformGate, TenantModuleDisabled, TenantLoading, TenantNotice,
 });
