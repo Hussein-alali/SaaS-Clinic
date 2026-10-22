@@ -12,8 +12,8 @@
 | العنصر | الحالة |
 |---|---|
 | `index.html` | غلاف التطبيق للتطوير (`npm run dev`)؛ يحمّل React و Babel Standalone من CDN، ثم `src/apiclient.jsx` **أولًا**، ثم بقية `src/*.jsx`. **لم يعد يحمّل `supabase-js`** |
-| `db/` | `0001_baseline.sql` (نقل `Supabase_All_In_One.sql`، مُتحقق منه على PostgreSQL 13.23 و 16.15 بمالك بدون superuser) + `migrate.js` + اختبارات. `0002`/`0003` قيد البناء |
-| `api/` | نواة الـ API (المصادقة، والعيادة الحالية، و `/api/data`، و `/api/rpc`، و `/api/files`، والبريد، والملفات الثابتة)، و 75 اختبارًا على fixture مطابق للعقد. مسارات الإدارة والدعوات والمنصة فارغة حتى المهمة 2.7 |
+| `db/` | ✅ `0001_baseline` (نقل المخطط) + `0002_platform` + `0003_tenancy` + `0004_audit_integrity` + `seed/dev.sql` + 42 اختبارًا، مُتحقق منها على PostgreSQL 13.23 و 16.15 بمالك بدون superuser |
+| `api/` | ✅ كل مسارات العقد (المصادقة، والعيادة، و `/api/data`، و `/api/rpc`، والملفات، والإدارة، والدعوات، والمنصة) + `scripts/create-super-admin.js` + 157 اختبارًا على الـ migrations الحقيقية، منها `frontend.test.js` الذي يشغّل `src/apiclient.jsx` و `src/supabase.jsx` الحقيقيين ضد الـ API |
 | `src/*.jsx` | منقول من المستودع الأصلي `clinksys` (commit `cfd073d`) مع `assets/` و `supabase/` و `scripts/` |
 | البناء | `npm run build` (`scripts/build.mjs`، esbuild) يترجم `src/*.jsx` مسبقًا إلى `dist/` مع React production؛ صفحة الاستيراد ومكتبة Excel تُحمّلان عند الحاجة فقط ([07](07-Performance-Audit.md)) |
 | `server.js` | خادم ملفات ثابتة بدون اعتماديات؛ يخدم `dist/` في الإنتاج، وكل ملفات المستودع في وضع `--dev` فقط |
@@ -97,7 +97,7 @@
  │ /api/auth/*      دخول، خروج، جلسة، كلمة المرور                  │
  │ /api/orgs/resolve حل العيادة من slug (عام)                      │
  │ /api/data        بديل PostgREST: جداول من قائمة سماح             │
- │ /api/rpc/:fn     الدوال الـ 25 الحالية                          │
+ │ /api/rpc/:fn     23 دالة من قائمة سماح                          │
  │ /api/files/*     رفع/تنزيل/حذف + روابط موقّعة                    │
  │ /api/admin/*     بديل Edge Functions (داخل العيادة)              │
  │ /api/org/*       دعوات الموظفين (مدير العيادة)                   │
@@ -118,29 +118,32 @@
 
 ```
 api/                        Node.js API (cPanel: Setup Node.js App, startup file app.js)
-  app.js                    Express: /api/* + static dist/
-  package.json              تبعيات الـ API فقط
-  src/config.js             متغيرات البيئة (أدناه)
+  app.js                    يصدّر التطبيق ويستمع على PORT (متوافق مع Passenger)
+  package.json, README.md   التبعيات، والتشغيل المحلي، والنشر على cPanel
+  src/config.js             متغيرات البيئة وفحوص الإنتاج
+  src/create-app.js, src/static.js, src/errors.js
   src/db.js                 Pool + withContext(ctx, fn)
   src/auth.js, src/tenant.js, src/mailer.js, src/files.js
+  src/catalog.js, src/data-query.js, src/rpc-whitelist.js   /api/data و /api/rpc
+  src/audit.js, src/members.js, src/invites.js, src/platform.js
   src/routes/{auth,orgs,data,rpc,files,admin,org,invitations,platform}.js
   scripts/create-super-admin.js
-  test/*.test.js            node:test على PostgreSQL محلي
+  test/*.test.js            app, auth, data, rpc, files, tenant, mailer, admin,
+                            invitations, platform, journey (J1/J2), security,
+                            frontend (src/ الحقيقي ضد الـ API), create-super-admin
+  test/fixtures/extras.sql  حسابات وحالات عيادات للاختبار فقط فوق بذر التطوير
 db/
+  package.json              تبعية pg فقط (npm --prefix db install)
   migrate.js                يطبق db/migrations/*.sql بالترتيب (schema_migrations)
-  migrations/0001_baseline.sql, 0002_platform.sql, 0003_tenancy.sql, ...
+  migrations/0001_baseline.sql, 0002_platform.sql, 0003_tenancy.sql,
+             0004_audit_integrity.sql
   seed/dev.sql              عيادتان وهميتان + مستخدم لكل دور (للتطوير والاختبار فقط)
-  test/*.test.js            اختبارات العزل بين العيادات
-  src/create-app.js, src/errors.js, src/catalog.js, src/data-query.js,
-  src/rpc-whitelist.js, src/static.js
-  test/fixtures/schema.sql  fixture مطابق للعقد (حتى تُستخدم migrations الحقيقية)
-  README.md                 التشغيل المحلي والنشر على cPanel
-db/package.json             تبعية pg فقط (npm --prefix db install)
+  test/helpers.js, index.js + baseline, isolation, branch, limits, rpc, seed, audit
 src/apiclient.jsx           عميل متوافق مع supabase-js → /api + newRecordId()
-test/apiclient.test.mjs     89 اختبارًا للعميل (node:test + vm)
-src/tenant.jsx              حل العيادة، صفحات الحالة، اختيار العيادة، قبول الدعوة
-src/platform.jsx            لوحة Super Admin
-e2e/                        اختبارات Playwright للرحلات J1–J4
+test/apiclient.test.mjs     90 اختبارًا للعميل (node:test + vm)
+src/tenant.jsx              (Milestone 3) حل العيادة، صفحات الحالة، اختيار العيادة، قبول الدعوة
+src/platform.jsx            (Milestone 3) لوحة Super Admin
+e2e/                        (Milestone 3) اختبارات Playwright للرحلات J1–J4
 scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 ```
 
@@ -189,7 +192,7 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 - `single: "single"` بلا صفوف أو بأكثر من صف يعيد `406 {error:{code:"PGRST116"}}`، و `maybeSingle` يعيد `data:null` حين لا توجد صفوف.
 - أخطاء PostgreSQL تُعاد برسالتها ورمزها (`code` = SQLSTATE)، بدون تفاصيل داخلية أخرى.
 
-`POST /api/rpc/:fn` بالجسم `{args:{...}}` — `fn` من قائمة سماح بالدوال الـ 25 التي تستدعيها الواجهة. الاستدعاء بالمعاملات المسماة، والنتيجة بنفس شكل PostgREST: قيمة مفردة، أو مصفوفة للدوال التي تعيد مجموعة.
+`POST /api/rpc/:fn` بالجسم `{args:{...}}` — `fn` من قائمة سماح بالدوال الـ 23 التي تستدعيها الواجهة. الاستدعاء بالمعاملات المسماة، والنتيجة بنفس شكل PostgREST: قيمة مفردة، أو مصفوفة للدوال التي تعيد مجموعة.
 
 ### الملفات
 
@@ -243,6 +246,17 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 - **`/api/admin/set-status`:** العميل يرسل `{staff_id, active, status:'active'|'inactive'}` (عقد Edge Function الأصلي). أخطاء `/api/admin/*` تصل للواجهة بشكل `{ok:false, error, detail}`، و 401 كـ `invalid_token`.
 - **رموز الأخطاء:** `csrf_header_required`، `invalid_credentials`، `too_many_attempts` (429 + `Retry-After`)، `invalid_session`، `session_revoked`، `weak_password` (6–72 بايت)، `invalid_token`، `org_required`، `not_a_member`، `org_inactive`، `invalid_table`، `invalid_column`، `invalid_filter`، `invalid_order`، `invalid_range`، `invalid_values`، `invalid_on_conflict`، `filter_required`، `PGRST116` (406)، `rpc_not_allowed`، `function_not_found` (404)، `invalid_args`، `invalid_path`، `invalid_bucket`، `already_exists` (409)، `file_too_large` (413)، `plan_limit_storage` (422)، `token_expired`. أخطاء الاتصال والخادم في PostgreSQL → 500 «Database error»، وانتهاء المهلة → 503.
 
+### ملاحظات التنفيذ (الإدارة والدعوات والمنصة — المهمة 2.7)
+
+- **`/api/admin/create-user`:** يقبل `branch_ids` اختياريًا (الافتراضي الفرع الحالي؛ لا شيء لـ admin) ويعيد `linked`. يُربط حساب موجود **فقط** إن كان عضوًا سابقًا في هذه العيادة؛ غير ذلك (حساب عيادة أخرى، أو Super Admin، أو حساب معطل، أو بلا عضوية) → `409 email_exists` ويجب دعوته.
+- **`reset-password`:** يُنهي جلسات الحساب، ويُرفض للحسابات المشتركة مع عيادة أخرى أو مع المنصة (`403 shared_account`) ولغير الأعضاء (`no_auth_account`). **`set-status`:** يقبل `active` أو `status`، ويعطّل العضوية و `staff.status` ويزيد `session_version`، **ولا يعطّل `auth.users` أبدًا** (الحساب قد يكون في عيادات أخرى). كل أخطاء `/api/admin` بالشكل `{ok:false, error, detail}`.
+- **`/api/org/invitations`:** القائمة مصفوفة؛ الإنشاء `201 {invitation, email_sent}`؛ إعادة الإرسال تولّد رمزًا جديدًا و 7 أيام؛ الحذف `204` = `status:'revoked'` (لا يُحذف السجل). المقعد: الأعضاء النشطون + الدعوات المعلقة غير المنتهية. الرابط `<scheme>://<slug>.<base>[:port]/?invite=<token>` + `&org=<slug>` في التطوير.
+- **`/api/invitations/:token`:** GET يضيف `account_exists`؛ `410` بالرموز `invitation_used` / `invitation_expired` / `invitation_revoked`؛ `403 org_inactive`. القبول: حساب جديد = اسم + كلمة مرور (6–72 بايت)؛ حساب موجود = **كلمة مروره هو**، ولا تُستبدل أبدًا، والمحاولات الخاطئة تُحسب في حد الدخول. الاستجابة = حمولة الدخول + العيادة + الدور.
+- **`/api/platform/*`:** السياق `admin.<base>`، أو الترويسة `X-Platform: 1` خارج الإنتاج (`403 platform_required`)؛ غير Super Admin → `403 not_super_admin`. مسارات إضافية: دعوات أي عيادة (`GET/POST /organizations/:id/invitations`، و `.../:invitationId/resend`، و `DELETE .../:invitationId`). `stats.retention_overdue`. القوائم والسجل `{data, count}` مع `limit/offset`. بدون `plan_id` → الخطة `default`؛ والوحدات الافتراضية = وحدات التخصص النشطة. سجل التدقيق يخفي حمولة صفوف دوال RPC الخاصة بالعيادات (BR-008).
+- **رموز أخطاء إضافية:** `unauthorized`، `invalid_json`، `payload_too_large` (413)، `invalid_request`، `invalid_columns`، `invalid_action`، `invalid_count`، `invalid_single`، `invalid_upload`، `file_required`، `invalid_paths`، `invalid_expires_in`، `ambiguous_function`، `not_found`، `org_not_found`، `internal_error` (500)، `forbidden`، `missing_token`، `email_exists`، `missing_name`، `invalid_role`، `invalid_email`، `shared_account`، `no_auth_account`، `staff_not_found`، `missing_target`، `cannot_deactivate_self`، `invalid_status`، `plan_limit_users`، `already_member`، `invitation_exists`، `invitation_not_found`، `invitation_not_pending`، `invitation_used`، `invitation_expired`، `invitation_revoked`، `account_disabled`، `branch_required`، `invalid_branch`، `invalid_branch_ids`، `invalid_name`، `not_super_admin`، `platform_required`، `slug_taken`.
+- **السلوك مع القاعدة:** الفرع الافتراضي = أول فرع **نشط** مسموح. مرجع لعيادة أخرى عبر مفتاح مؤجّل يفشل عند `COMMIT` (`400`، `23503`) دون كتابة شيء. upsert على معرّف عيادة أخرى → `403` (`42501`). `PL422` → `422 {message:'plan_limit:...', code:'PL422'}`.
+- **الملفات في التطوير:** `getPublicUrl` في `src/apiclient.jsx` يضيف `?org=<slug>` عندما تأتي العيادة من `?org=`، فتُفتح الروابط المخزنة بالجلسة وحدها؛ في الإنتاج لا يُضاف شيء.
+
 ## Security and privacy
 
 | المتطلب | التطبيق |
@@ -253,6 +267,11 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | حقن SQL | `/api/data` يتحقق من أسماء الجداول والأعمدة من الكتالوج، ويمرر كل القيم كمعاملات؛ `/api/rpc` من قائمة سماح |
 | الملفات (تفصيل) | صلاحيات مأخوذة من سياسات Storage القديمة: القراءة والرفع لـ admin و receptionist و doctor و therapist؛ الاستبدال لـ admin و receptionist؛ الحذف لـ admin و receptionist، ولغيرهم ملفاتهم فقط. العرض المباشر للصور و PDF والنص و MP4 فقط، وغيرها كمرفق مع CSP sandbox. الروابط الموقّعة تتوقف عند إيقاف العيادة |
 | الترويسات | `X-Content-Type-Options`، `Referrer-Policy`، `X-Frame-Options: DENY`، و HSTS عند `COOKIE_SECURE=true`؛ لا تُخدم ملفات dotfiles |
+| سلامة سجل التدقيق | `0004_audit_integrity`: خارج سياق النظام يضبط trigger قيم `id` و `actor_uid` و `actor_role` و `created_at` بنفسه، فلا يستطيع عضو عيادة تزوير صفوف أو حجز معرّفات تكسر تدقيق العيادات الأخرى (ثغرة اكتشفتها المراجعة الأمنية وأُصلحت) |
+| الحسابات المشتركة | `create-user` يربط فقط عضوًا سابقًا في نفس العيادة؛ `reset-password` لا يمس حسابًا مشتركًا مع عيادة أخرى أو المنصة؛ `staff.auth_uid` لا يُوثق به في عمليات الحسابات؛ قبول الدعوة لا يستبدل كلمة مرور حساب موجود |
+| الإعدادات الآمنة | `COOKIE_SECURE` افتراضيًا `true` عند `NODE_ENV=production` (cookie آمن + HSTS)؛ أسرار التطوير المدمجة مقبولة فقط على النطاقات المحلية (`localhost`، `*.localhost`، `*.test`، `127.x`)؛ فحص الطول قبل كل regex للبريد (حماية من ReDoS) |
+| التدقيق (NFR-007) ✅ | كل عملية ناجحة في `/api/admin` و `/api/org` و `/api/invitations` و `/api/platform` تكتب `audit_events` في نفس الـ transaction. المحاولات المرفوضة لا تُسجل بعد |
+| نقاط ضعف معروفة (قرار مطلوب) | الخروج لا يُبطل الـ JWT على الخادم؛ تغيير كلمة المرور لا يطلب الحالية؛ تعطيل عضو في عيادة يزيد `session_version` فيُخرجه من عياداته الأخرى أيضًا؛ رسائل `409/403` تكشف أن معرّفًا أو بريدًا موجود في مكان ما (لا بيانات)؛ حدود المحاولات في الذاكرة لكل عملية |
 | ثغرة موروثة (معروفة) | 23 دالة `security definer` في المخطط الحالي تسمح لمستدعٍ **بلا دور** (`NULL`) بالمرور، و `record_quick_payment` و `list_invoices_filtered` بلا فحص دور إطلاقًا. نُقلت كما هي في `0001`، ومحمية الآن لأن `/api/rpc` يتطلب جلسة وعضوية نشطة؛ الإصلاح في المهمة 2.9 |
 | تجاوز السياق | `app.org_id` يضبطه الخادم بعد التحقق من العضوية؛ `organization_id` الذي يرسله العميل في `values` يُرفض إن خالف العيادة الحالية (سياسة `WITH CHECK`) |
 | النقل (NFR-006) | HTTPS إلزامي على النطاق الرئيسي وكل الروابط الفرعية؛ HSTS |
@@ -282,7 +301,7 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 
 - **البناء:** `npm install` ثم `npm run build` (`scripts/build.mjs`، esbuild) ينتج `dist/`. `npm start` يخدم `dist/`، و `npm run dev` يخدم المصادر مع Babel للتطوير فقط. على Railway يجب أن يظهر في السجل `serving dist/ (production build)`. على hosting.com يُرفع محتوى `dist/` فقط.
 - **التشغيل محليًا:** `scripts/dev-db.sh start` → `DATABASE_URL=... node db/migrate.js` → `psql $DATABASE_URL -f db/seed/dev.sql` → `npm run build` → `cd api && npm start`.
-- **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test 'db/test/*.test.js' 'api/test/*.test.js' 'test/*.test.mjs'` (تشمل **اختبارات العزل السلبية**؛ تمرير مجلد بدل نمط لا يعمل على Node 21+) + Playwright (`e2e/`) لكل PR.
+- **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test 'db/test/*.test.js' 'api/test/*.test.js' 'test/*.test.mjs'` على **قاعدة واحدة** (289 اختبارًا؛ قفل advisory يجعل اختبارات القاعدة مشتركة واختبارات الـ API حصرية). كل ملف اختبار API يمسح القاعدة ويعيد تطبيق الـ migrations والبذر، **ويرفض العمل** على قاعدة فيها حساب لا ينتهي بـ `.test` أو عيادة غير تجريبية. اختبارات القاعدة تطبق `db/seed/dev.sql` تلقائيًا: لا تُوجَّه أبدًا إلى قاعدة حقيقية. تتطلب `npm --prefix db install` و `npm --prefix api install` + Playwright (`e2e/`) لكل PR.
 - **CD:** النشر من `main` بعد نجاح CI؛ migrations تُطبق على staging أولًا ثم production بعد الموافقة.
 - **Rollback:** كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
 
@@ -316,3 +335,4 @@ scripts/dev-db.sh           PostgreSQL محلي بصلاحيات تشبه cPanel
 | 21 أكتوبر 2026 | `src/` و `supabase/` منقولان؛ الأقسام التي تغيرت: أسلوب البناء (esbuild)، و Build output، والمكتبات عند الطلب، وقراءة البيانات (توازي + صفحات)، وأهداف الأداء المقاسة، وخطوة البناء في CI/CD، وقرارات جديدة، وقرار وجهة قاعدة البيانات (مفتوح). الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
 | 21 أكتوبر 2026 | **قرار مالك المنتج: نقل القاعدة وكل خدمات Supabase إلى hosting.com.** أُعيدت كتابة Backend and database و Authentication and roles و Architecture، وأُضيفت Repository layout و API contract، وحُدّثت البيئات و CI والأمان والقرارات. |
 | 22 أكتوبر 2026 | نقطة حفظ بعد ثلاثة وكلاء: `index.html` بلا supabase-js و `src/apiclient.jsx`، و `db/` (0001 + migrate.js)، ونواة `api/`. أُضيفت «ملاحظات التنفيذ» (أشكال الاستجابة، ورموز الأخطاء، وإضافات `/api/data`)، والدوال الـ 23، ومتغيرات البيئة، وقواعد الملفات، والثغرة الموروثة في دوال RPC، وأوامر الاختبار بأنماط. |
+| 22 أكتوبر 2026 | Milestone 2 مكتمل: حالة `db/` و `api/`؛ 23 دالة RPC؛ إعادة كتابة Repository layout؛ ملاحظات تنفيذ الإدارة والدعوات والمنصة ورموز الأخطاء؛ صفوف أمان جديدة (سلامة التدقيق، الحسابات المشتركة، الإعدادات الآمنة، NFR-007، نقاط ضعف معروفة)؛ أمر الاختبار الموحد. |

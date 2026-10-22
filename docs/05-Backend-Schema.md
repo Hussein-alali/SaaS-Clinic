@@ -27,17 +27,19 @@
      using (app_is_system() or organization_id = app_org_id())
      with check (app_is_system() or organization_id = app_org_id());
    ```
-   سياسات الأدوار الحالية تبقى كما هي، وتعمل لأن `app_role()` أصبح يعيد الدور **في العيادة الحالية**.
-7. **`app_role()` الجديدة:** دور `auth.uid()` في `organization_members` للعيادة `app_org_id()`، بشرط أن تكون العضوية `active` والعيادة `active`، وإلا `null`. قيم الأدوار: `admin`، `receptionist`، `doctor`، `therapist`، `staff`.
+   سياسات الأدوار الحالية تبقى كما هي، وتعمل لأن `app_role()` أصبح يعيد الدور **في العيادة الحالية**. **المنفذ ✅:** إضافة سياسة permissive اسمها `system_access` (`app.system = 'on'`) على كل جدول عيادة، وإلا يمنع FORCE RLS سياق النظام نفسه؛ السياسات تستدعي `(select app_org_id())` كـ initplan؛ وجداول القوالب الأربعة فيها `global_rows_read_only_update/_delete`.
+7. **`app_role()` الجديدة ✅:** دور `auth.uid()` في `organization_members` للعيادة `app_org_id()`، بشرط أن تكون العضوية `active` والعيادة `active` **والحساب `active`** (وكذلك `is_super_admin()`)، وإلا `null`. `can_access_branch(NULL)` أو بلا دور = `false`. قيم الأدوار: `admin`، `receptionist`، `doctor`، `therapist`، `staff`.
 8. **الفرع:** `branch_id text NOT NULL DEFAULT app_branch_id() REFERENCES branches(id)` على `bookings` و `sessions` و `invoices` و `payments` و `payment_receipts` و `patient_schedules` و `treatments`. سياسة RESTRICTIVE ثانية `branch_scope` تسمح للمستخدم بصفوف فروعه فقط (`can_access_branch(branch_id)`؛ `admin` يرى كل فروع عيادته).
-9. **القيود الفريدة على مستوى العيادة:** كل `UNIQUE` في جدول عيادة يصبح `(organization_id, ...)`، ومنها: `patients(national_id)`، و `patients(medical_file_no)`، و `staff(lower(email))`، و `payments(receipt_no)`، و `custom_sections(slug)`، و `template_categories(name)`، و `treatment_methods(name)`، و `patient_files(storage_path)`.
+9. **القيود الفريدة على مستوى العيادة** ✅ (مثل `patients_org_national_id_uniq`، و `staff_org_email_lower_uniq`، و `payments_org_receipt_no_key`، و `branches_org_name_key`؛ وللقوالب العامة فهارس `..._global_name_key` بشرط `organization_id IS NULL`؛ وكل جدول عيادة فيه `unique (organization_id, <pk>)` باسم `<table>_org_key`): كل `UNIQUE` في جدول عيادة يصبح `(organization_id, ...)`، ومنها: `patients(national_id)`، و `patients(medical_file_no)`، و `staff(lower(email))`، و `payments(receipt_no)`، و `custom_sections(slug)`، و `template_categories(name)`، و `treatment_methods(name)`، و `patient_files(storage_path)`.
 10. **المعرّفات** (✅ في الواجهة؛ ⏳ في دوال SQL — المهمة 2.10): المفاتيح النصية الحالية (`patient_id`...) تبقى مفتاحًا أساسيًا مفردًا، لكن يجب أن تكون **فريدة عالميًا**. كل مولدات `src/` تستخدم الآن `newRecordId` بنفس البادئات (P-، A-، B-، S-، SCH-، INV-، U-، TM-، TPL-، TRT-...). المتبقي: مولدات داخل دوال SQL (`PMT-` في `record_quick_payment`، و `TPL-` و `TM-` و `TU-` و `TPC-`) تعتمد الوقت + 4 أحرف hex. الواجهة تولّدها بـ `newRecordId(prefix)` = `prefix + Date.now().toString(36) + 6 أحرف عشوائية base36`، بدل `"P-" + 5 أرقام`. التصادم بين عيادتين يفشل بخطأ RLS ولا يكشف بيانات.
 11. **`clinic_settings`:** يصبح سجلًا لكل عيادة: `PRIMARY KEY (organization_id, id)` مع إبقاء `id = 1`. الاستعلام الحالي `.eq("id", 1)` يعيد سجل العيادة الحالية.
 12. **دوال `security definer` الحالية** تعمل كمالك الجداول، والمالك خاضع لـ FORCE RLS، فتعمل بصلاحيات المستخدم والعيادة الحاليين. هذا مقصود. `search_path` ثابت في كل دالة. **تنبيهات مُتحقق منها لـ `0003`:**
     - يجب إعادة تعريف `app_role()` لتقرأ `organization_members` **قبل** فرض FORCE RLS على `staff`، وإلا يحدث `stack depth limit exceeded` (سياسة `staff` تستدعي `app_role()` التي تقرأ `staff`).
     - `SELECT ... FOR UPDATE` داخل الدوال يتطلب سياسة UPDATE أيضًا: مثلًا `record_quick_payment` من طبيب يفشل بـ «appointment not found» بعد فرض RLS على `bookings`. كل دالة تُراجع مقابل الأدوار المقصودة.
     - `/api/orgs/resolve` يقرأ `clinic_settings` بسياق العيادة فقط (بلا دور)، فيلزم سياسة SELECT لا تتطلب دورًا.
-    - المفتاح الأجنبي المركّب `(organization_id, branch_id) → branches(organization_id, id)` على كل جدول مرتبط بفرع.
+    - المفتاح الأجنبي المركّب `(organization_id, branch_id) → branches(organization_id, id)` على كل جدول مرتبط بفرع. ✅
+    - **المنفذ في `0003`:** المفاتيح التي كانت `SET NULL` احتفظت بمفتاحها المفرد، وأُضيف مفتاح مركّب `*_org_fkey` بـ `DEFERRABLE INITIALLY DEFERRED`، فيفشل المرجع لعيادة أخرى عند `COMMIT` (`23503`). مراجع `template_id` يفحصها trigger `check_template_organization()`. سياسات كتابة جديدة للجداول التي كانت تكتبها الدوال فقط: `treatments` (إدخال/تعديل: admin، doctor، therapist؛ حذف: admin، doctor)، و `template_categories` (admin، doctor)، و `template_usage` (إدخال: admin، doctor، therapist)، وحذف `treatment_methods` لـ doctor. `record_quick_payment` يعمل لـ admin و receptionist فقط.
+    - **إصلاحات لأخطاء موروثة من Supabase:** `update_treatment_template` كانت تفشل دائمًا (أُعيدت `_tpl_snapshot`)، و `upsert_template_category` و `upsert_treatment_method` لم تنشئا صفوفًا جديدة أبدًا، ودوال التعديل والحذف على القوالب ترفض الآن الصفوف العامة أو المخفية.
 
 
 ## Entities
@@ -242,9 +244,9 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | الكيان | Read | Create | Update | Delete |
 |---|---|---|---|---|
 | `organizations` | Super Admin؛ الأعضاء: سجل مؤسستهم فقط (حقول عامة عبر `/api/orgs/*`) | Super Admin (`/api/platform`) | Super Admin | لا أحد (`closed` بدل الحذف) |
-| `organization_members` | Super Admin؛ `admin` العيادة | مسارات الدعوة و `create-user` فقط | Super Admin؛ `admin` لعيادته (لا يمنح Super Admin) | لا (`disabled`) |
-| `invitations` | Super Admin؛ `admin` لعيادته | Super Admin؛ `admin` (ضمن حد المستخدمين) | نفس الصلاحية (إلغاء/إعادة إرسال) | — |
-| `branches` | أعضاء العيادة | `admin` (ضمن حد الفروع؛ trigger يرفض التجاوز) | `admin` | لا (`status='inactive'`) |
+| `organization_members` | Super Admin؛ `admin` العيادة | مسارات الدعوة و `create-user` فقط | Super Admin؛ `admin` لعيادته عبر `set-status` (لا يمنح Super Admin، ولا يغيّر `auth.users.status` أبدًا؛ التعطيل يزيد `session_version`) | لا (`disabled`) |
+| `invitations` | Super Admin؛ `admin` لعيادته | Super Admin؛ `admin` (ضمن حد المستخدمين) | إعادة إرسال (رمز جديد + 7 أيام) أو إلغاء (`revoked`) | لا تُحذف أبدًا |
+| `branches` | أعضاء العيادة | `admin` (ضمن حد الفروع؛ trigger يرفض التجاوز) | `admin` | لا (`status='inactive'`) — **فجوة مفتوحة:** القاعدة ما زالت تسمح بحذف فرع غير مرتبط بأي صف، والواجهة الحالية تعتمد على ذلك (المهمة 2.15) |
 | `specialties`, `modules`, `subscription_plans` | كل مستخدم مسجل | Super Admin | Super Admin | Super Admin |
 | `organization_modules`, `subscriptions` | Super Admin؛ أعضاء المؤسسة (قراءة) | Super Admin | Super Admin | Super Admin |
 | `clinic_settings` (لكل عيادة) | أعضاء العيادة | تلقائي عند إنشاء العيادة | `admin` | — |
@@ -253,7 +255,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | `invoices`, `payments` | admin, receptionist (فرعه) | admin, receptionist | admin | admin (مع سجل تدقيق) |
 | `sessions`, `treatments` | admin, doctor, therapist (فرعه/مرضاه) + `org_module_enabled('physio.sessions')` | doctor, therapist | doctor, therapist | admin |
 | `patient_files` + الملفات | أعضاء العيادة حسب الدور؛ الملف في مجلد العيادة على القرص | admin, receptionist, doctor, therapist | — | المرفوع أو admin |
-| `audit_events` | Super Admin (`/api/platform/audit`)؛ `admin` لعيادته | الـ API والدوال فقط | لا أحد | لا أحد |
+| `audit_events` | Super Admin (`/api/platform/audit`)؛ `admin` لعيادته | الـ API والدوال، وأعضاء العيادة عبر `/api/data` لعيادتهم (مثل `patient.edit` من الواجهة)؛ trigger `0004` يفرض `id` و `actor_uid` و `actor_role` و `created_at` خارج سياق النظام | لا أحد | لا أحد |
 
 **قاعدة عامة لكل جدول عيادة:** سياسة `tenant_isolation` RESTRICTIVE (القاعدة 6 في الأعلى)، و `branch_scope` للجداول المرتبطة بفرع، فوق سياسات الأدوار الحالية المبنية على `app_role()`. Super Admin **لا يرى بيانات المرضى**: سياق العيادة لا يُضبط له إلا إن كان عضوًا فيها (BR-008).
 
@@ -277,7 +279,10 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | حدود الخطة | trigger قبل الإدخال على `organization_members`/`invitations` (عدد المستخدمين) و `branches` (عدد الفروع)؛ ومجموع أحجام الملفات في مجلد العيادة قبل الرفع (في الـ API) |
 | تبعيات الوحدات | لا يُفعل `X` إن لم تكن كل `depends_on` مفعلة؛ ولا تُعطل وحدة تعتمد عليها وحدة مفعلة |
 | تطابق المؤسسة | FK مركبة `(organization_id, …)` بين جداول العيادة |
-| الدور | `admin` لا يمنح دورًا خارج القائمة ولا يعدل `platform_admins` |
+| الدور | `admin` لا يمنح دورًا خارج القائمة ولا يعدل `platform_admins`. **فجوة:** `staff_role_check` في `0001` لا يحتوي `staff`، فعضو بدور `staff` يبقى `staff.role` له `NULL` (المهمة 2.14) |
+| انتقالات حالة العيادة | تُفرض في الـ API (لا توجد دالة `set_organization_status` في القاعدة بعد) |
+| المقاعد | الأعضاء النشطون + الدعوات المعلقة غير المنتهية؛ الـ API يفحصها عند `create-user` و `set-status active` وإعادة إرسال دعوة منتهية، والـ triggers تغطي الإدخال. الفروع: النشطة فقط، وإعادة التفعيل تُفحص. خطأ `PL422` برسالة `plan_limit:branches` أو `plan_limit:users`؛ الحد `NULL` أو بلا خطة = بلا حد |
+| الوحدات | `core.*` مسموحة دائمًا؛ الوحدات `planned` أو غير النشطة لا تُفعّل؛ التبعيات تُفحص |
 | الموعد | `branch_id` إلزامي ويتبع نفس المؤسسة؛ لا تعارض لنفس الممارس في نفس الوقت |
 | المبالغ | `amount > 0` (كما في `payments` الحالي) |
 
@@ -298,13 +303,14 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 **المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser). `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
 
 1. ✅ `0001_baseline.sql` (4,866 سطرًا؛ مُتحقق منه على 13.23 و 16.15، ومطابق لكتالوج الأصل: الجداول والأعمدة والقيود والفهارس والـ triggers و 57 سياسة و md5 كل دالة). **ما حُذف:** 30 أمر `GRANT ... TO authenticated`، و `storage.buckets` و 4 سياسات `storage.objects`، و**بذرتا** المدير (القسم 14) و 6 حسابات موظفين بكلمة مرور ثابتة (القسم 15)، و `pgcrypto` (كانت تستخدمه البذرتان فقط)، و `notify pgrst`. **ما بقي داخل الملف:** 49 قالب علاج وتصنيفان، و 9 طرق علاج، وسجل `clinic_settings` (id=1). الوصف الأصلي للمهمة: نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي: schema `auth` التوافقي (القاعدة 2)، وحذف `pgcrypto` و `storage.*` و `auth.identities` و `grant`/`to authenticated`، وتحويل السياسات إلى `TO PUBLIC`، وفصل بذور قوالب العلاج إن لزم. **السلوك لعيادة واحدة يبقى كما هو.**
-2. `0002_platform.sql` — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
-3. `0003_tenancy.sql` — دوال السياق، وإعادة تعريف `app_role()`، و `organization_id` و `branch_id` (القاعدتان 5 و 8)، والقيود الفريدة على مستوى العيادة (9)، و `clinic_settings` لكل عيادة (11)، و FORCE RLS و `tenant_isolation` و `branch_scope` على كل جداول العيادة، و triggers حدود الخطة (الفروع والمستخدمون)، وأعمدة التدقيق (`organization_id`، `target_type`، `target_id`، `result`). **إن وُجدت بيانات قديمة:** تُنشأ «العيادة الأولى» (`physio`، `active`) و «الفرع الرئيسي»، وتُسند إليهما كل الصفوف، وتُحوَّل صفوف `staff` المرتبطة بحساب إلى `organization_members` بنفس الدور.
-4. `0004_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+2. ✅ `0002_platform.sql` (12 جدولًا بلا RLS، و trigger يرفض الـ slugs المحجوزة، و 16 وحدة منها 5 `planned`) — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
+3. ✅ `0003_tenancy.sql` (1,206 سطرًا؛ ينتهي بفحص ذاتي يُفشل الـ migration إن نقص جدول عيادة شيئًا. مع بيانات قديمة: عيادة `clinic` باسم `clinic_settings.name`، و `created_by` = حساب المدير أو أقدم حساب أو حساب معطّل `migration@clinicsys.invalid`، وكل موظف مرتبط بحساب يصبح عضوًا (المعطّل → `disabled`)، وغير المديرين على الفرع الرئيسي، وصفوف المكتبة `TM-DFLT-*` و `TPC-SEED-*` و `TPL-SEED-*` تصبح عامة) — دوال السياق، وإعادة تعريف `app_role()`، و `organization_id` و `branch_id` (القاعدتان 5 و 8)، والقيود الفريدة على مستوى العيادة (9)، و `clinic_settings` لكل عيادة (11)، و FORCE RLS و `tenant_isolation` و `branch_scope` على كل جداول العيادة، و triggers حدود الخطة (الفروع والمستخدمون)، وأعمدة التدقيق (`organization_id`، `target_type`، `target_id`، `result`). **إن وُجدت بيانات قديمة:** تُنشأ «العيادة الأولى» (`physio`، `active`) و «الفرع الرئيسي»، وتُسند إليهما كل الصفوف، وتُحوَّل صفوف `staff` المرتبطة بحساب إلى `organization_members` بنفس الدور.
+4. ✅ `0004_audit_integrity.sql` — trigger `audit_events_stamp` قبل الإدخال (خارج سياق النظام): `id` من التسلسل، و `actor_uid = auth.uid()`، و `actor_role = app_role()`، و `created_at = now()`. السبب: التسلسل المشترك سمح لعضو عيادة بحجز معرّفات تحتاجها كتابات التدقيق في كل العيادات (اكتشفته المراجعة الأمنية).
+5. `0005_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
-**بيانات البذر للتطوير والاختبار** (`db/seed/dev.sql`، **لا يُطبق على الإنتاج أبدًا**): Super Admin (`super@clinicsys.test`)، وعيادتان `demo-physio` (علاج طبيعي) و `demo-dental` (أسنان)، بفرعين لكل منهما، ومستخدم لكل دور في كل عيادة (`<role>@<slug>.test`)، وبضعة مرضى ومواعيد. كلمة مرور التطوير الموحدة `Dev@12345` (bcrypt) موثقة هنا فقط. **لا بيانات حقيقية في staging** إلا بعد إخفاء الهوية (BR-009).
+**بيانات البذر للتطوير والاختبار** (`db/seed/dev.sql`، **لا يُطبق على الإنتاج أبدًا**): Super Admin (`super@clinicsys.test`)، وعيادتان `demo-physio` (علاج طبيعي) و `demo-dental` (أسنان)، بفرعين لكل منهما، ومستخدم لكل دور في كل عيادة (`<role>@<slug>.test`)، وبضعة مرضى ومواعيد. كلمة مرور التطوير الموحدة `Dev@12345` (bcrypt) موثقة هنا فقط. ✅ المنفذ: معرّفات ثابتة (`P-PHY-01`، `br-<slug>-1/2`)، و `receptionist2@<slug>.test` على الفرعين، وصفوف في كل جدول عيادة، ويرفض العمل إن وُجدت عيادات. اختبارات الـ API تضيف `api/test/fixtures/extras.sql` (أدوار وحالات إضافية: `staff`، عضوية معطلة، حساب معطل، عضو في العيادتين، عيادات موقوفة/مغلقة/معلقة/مسودة، خطة 1MB، حساب بـ hash Supabase `$2a$`). **لا بيانات حقيقية في staging** إلا بعد إخفاء الهوية (BR-009).
 
 **نقل البيانات الحقيقية من Supabase** (المهمة 4.7): `pg_dump --data-only` لجداول `public` + `auth.users` (id، email، encrypted_password، raw_user_meta_data) ← استيراد إلى قاعدة hosting.com بعد `0001`، ثم `0003` يسندها إلى العيادة الأولى. الملفات تُنزّل من bucket `patient-files` إلى `FILES_DIR/<org>/patient-files/`.
 
@@ -317,3 +323,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 21 أكتوبر 2026 | إضافة قسم «Data access rules» (حد الـ 1000 صف، التوازي، الترتيب، الخطة المستقبلية)، وتوحيد تسمية الـ migrations مع مجلد `supabase/migrations/` المنقول. الكود: `baebfa9` (نقل `src/`)، `ddd7943` (ترجمة مسبقة)، `11a2c43` (تحميل عند الحاجة)، `04abbe3` (تحميل البيانات) |
 | 21 أكتوبر 2026 | **القاعدة تنتقل إلى hosting.com:** إضافة «hosting.com PostgreSQL conventions» (12 قاعدة ملزمة)؛ أسماء الأدوار تبقى (`admin`...)؛ `invitations.token_hash`؛ إعادة كتابة Authentication flow و Authorization rules و Migration and seed data لمسار `db/migrations/`. |
 | 22 أكتوبر 2026 | `0001_baseline.sql` ✅ وما حُذف منه؛ تفاصيل schema `auth` المنفذة؛ القاعدة 10 منفذة في الواجهة (ومتبقية في دوال SQL)؛ أربعة تنبيهات مُتحقق منها لـ `0003`؛ مكان بيانات الملفات. |
+| 22 أكتوبر 2026 | Milestone 2: `0002`/`0003`/`0004` ✅ وتفاصيلها؛ `system_access` والـ initplans وسياسات القوالب العامة؛ شروط `app_role()`؛ المفاتيح المركبة المؤجلة؛ سياسات الكتابة الجديدة وإصلاح 3 دوال موروثة؛ سلامة التدقيق؛ فجوات معروفة (حذف الفروع، دور `staff`)؛ قواعد المقاعد والوحدات وانتقالات الحالة؛ تفاصيل البذر. |

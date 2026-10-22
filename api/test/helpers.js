@@ -1,10 +1,18 @@
 'use strict';
-// Shared test harness.
-//   - Database: API_TEST_DATABASE_URL, default scripts/dev-db.sh on port 55003
-//     ("scripts/dev-db.sh start 55003"). Never DATABASE_URL: every setup()
-//     DROPS the auth and public schemas and reloads test/fixtures/schema.sql.
-//   - node --test runs files in parallel processes; a session-level advisory
-//     lock makes each file own the database while it runs.
+// Shared test harness: the API against the REAL schema.
+//   - Database: API_TEST_DATABASE_URL, else DATABASE_URL, else
+//     scripts/dev-db.sh on port 55003. setup() WIPES that database (drops
+//     the auth and public schemas), applies db/migrations/*.sql with
+//     db/migrate.js, db/seed/dev.sql and test/fixtures/extras.sql;
+//     close() leaves it migrated + seeded again (without the extras), which
+//     is the state db/test expects. It refuses to wipe a database that holds
+//     anything but the dev seed and these fixtures (see assertTestDatabase).
+//   - Needs the db/ dependencies: npm --prefix db install.
+//   - node --test runs files in parallel processes. A session-level
+//     advisory lock (DB_TEST_LOCK) is taken EXCLUSIVELY by each API test
+//     file, and SHARED by db/test (db/test/helpers.js shareDatabase()), so
+//     `node --test 'db/test/*.test.js' 'api/test/*.test.js'` can run both
+//     suites against one database.
 //   - The app listens on an ephemeral port; requests go through node:http so
 //     tests control the Host header, cookies and X-Forwarded-For.
 
@@ -18,37 +26,121 @@ const { Client } = require('pg');
 const { loadConfig } = require('../src/config');
 const { createApp } = require('../src/create-app');
 
+const DB_DIR = path.resolve(__dirname, '..', '..', 'db');
 const TEST_DB_URL =
-  process.env.API_TEST_DATABASE_URL || 'postgres://clinic_owner:clinic_owner_dev@127.0.0.1:55003/clinicsys';
-const LOCK_KEY = 260626; // plan task 2.6
-const FIXTURE = fs.readFileSync(path.join(__dirname, 'fixtures', 'schema.sql'), 'utf8');
+  process.env.API_TEST_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  'postgres://clinic_owner:clinic_owner_dev@127.0.0.1:55003/clinicsys';
+const DB_TEST_LOCK = 2026102210; // same key in db/test/helpers.js
+const SEED = fs.readFileSync(path.join(DB_DIR, 'seed', 'dev.sql'), 'utf8');
+const EXTRAS = fs.readFileSync(path.join(__dirname, 'fixtures', 'extras.sql'), 'utf8');
 const PASSWORD = 'Dev@12345';
 
+function loadMigrate() {
+  try {
+    return require(path.join(DB_DIR, 'migrate.js')).migrate;
+  } catch (err) {
+    if (err && err.code === 'MODULE_NOT_FOUND') {
+      throw new Error(`cannot load db/migrate.js (${err.message.split('\n')[0]}): run "npm --prefix db install" first`);
+    }
+    throw err;
+  }
+}
+
+// Ids from db/seed/dev.sql (de000000-...) and test/fixtures/extras.sql (a7000000-...).
 const ORG = {
-  physio: '10000000-0000-4000-8000-000000000001',
-  dental: '10000000-0000-4000-8000-000000000002',
-  suspended: '10000000-0000-4000-8000-000000000003',
-  closed: '10000000-0000-4000-8000-000000000004',
-  pending: '10000000-0000-4000-8000-000000000005',
-  draft: '10000000-0000-4000-8000-000000000006',
+  physio: 'de000000-0000-4000-8000-0000000a0001',
+  dental: 'de000000-0000-4000-8000-0000000a0002',
+  suspended: 'a7000000-0000-4000-8000-0000000a0003',
+  closed: 'a7000000-0000-4000-8000-0000000a0004',
+  pending: 'a7000000-0000-4000-8000-0000000a0005',
+  draft: 'a7000000-0000-4000-8000-0000000a0006',
+};
+
+const BRANCH = {
+  physio1: 'br-demo-physio-1',
+  physio2: 'br-demo-physio-2',
+  dental1: 'br-demo-dental-1',
+  dental2: 'br-demo-dental-2',
 };
 
 const USER = {
-  superAdmin: { id: '00000000-0000-4000-8000-000000000002', email: 'super@clinicsys.test' },
-  physioAdmin: { id: '00000000-0000-4000-8000-000000000011', email: 'admin@demo-physio.test' },
-  physioReception: { id: '00000000-0000-4000-8000-000000000012', email: 'receptionist@demo-physio.test' },
-  physioDoctor: { id: '00000000-0000-4000-8000-000000000013', email: 'doctor@demo-physio.test' },
-  physioStaff: { id: '00000000-0000-4000-8000-000000000014', email: 'staff@demo-physio.test' },
-  former: { id: '00000000-0000-4000-8000-000000000015', email: 'former@demo-physio.test' },
-  physioTherapist: { id: '00000000-0000-4000-8000-000000000016', email: 'therapist@demo-physio.test' },
-  dentalAdmin: { id: '00000000-0000-4000-8000-000000000021', email: 'admin@demo-dental.test' },
-  suspendedAdmin: { id: '00000000-0000-4000-8000-000000000031', email: 'admin@demo-suspended.test' },
-  outsider: { id: '00000000-0000-4000-8000-000000000041', email: 'outsider@clinicsys.test' },
-  multi: { id: '00000000-0000-4000-8000-000000000042', email: 'multi@clinicsys.test' },
-  disabled: { id: '00000000-0000-4000-8000-000000000043', email: 'disabled@clinicsys.test' },
-  changer: { id: '00000000-0000-4000-8000-000000000044', email: 'changer@demo-physio.test' },
-  resetter: { id: '00000000-0000-4000-8000-000000000045', email: 'reset@demo-physio.test' },
+  // db/seed/dev.sql
+  superAdmin: { id: 'de000000-0000-4000-8000-000000000001', email: 'super@clinicsys.test' },
+  physioAdmin: { id: 'de000000-0000-4000-8000-000000000111', email: 'admin@demo-physio.test' },
+  physioReception: { id: 'de000000-0000-4000-8000-000000000112', email: 'receptionist@demo-physio.test' }, // branch 1
+  physioDoctor: { id: 'de000000-0000-4000-8000-000000000113', email: 'doctor@demo-physio.test' },
+  physioTherapist: { id: 'de000000-0000-4000-8000-000000000114', email: 'therapist@demo-physio.test' },
+  physioReception2: { id: 'de000000-0000-4000-8000-000000000115', email: 'receptionist2@demo-physio.test' }, // branches 1+2
+  dentalAdmin: { id: 'de000000-0000-4000-8000-000000000121', email: 'admin@demo-dental.test' },
+  dentalReception: { id: 'de000000-0000-4000-8000-000000000122', email: 'receptionist@demo-dental.test' },
+  // test/fixtures/extras.sql
+  physioStaff: { id: 'a7000000-0000-4000-8000-000000000001', email: 'staff@demo-physio.test' },
+  former: { id: 'a7000000-0000-4000-8000-000000000002', email: 'former@demo-physio.test' },
+  outsider: { id: 'a7000000-0000-4000-8000-000000000003', email: 'outsider@clinicsys.test' },
+  multi: { id: 'a7000000-0000-4000-8000-000000000004', email: 'multi@clinicsys.test' },
+  disabled: { id: 'a7000000-0000-4000-8000-000000000005', email: 'disabled@clinicsys.test' },
+  changer: { id: 'a7000000-0000-4000-8000-000000000006', email: 'changer@demo-physio.test' },
+  resetter: { id: 'a7000000-0000-4000-8000-000000000007', email: 'reset@demo-physio.test' },
+  suspendedAdmin: { id: 'a7000000-0000-4000-8000-000000000008', email: 'admin@demo-suspended.test' },
+  legacy: { id: 'a7000000-0000-4000-8000-000000000009', email: 'legacy@demo-physio.test' },
 };
+
+const KNOWN_SLUGS = ['demo-physio', 'demo-dental', 'demo-suspended', 'demo-closed', 'demo-pending', 'demo-draft'];
+// Clinics the tests create through the API (/api/platform/organizations) use
+// this slug prefix, and their accounts end in .test like every test account.
+const TEST_SLUG_PREFIX = 'apitest-';
+
+/**
+ * Refuses to wipe a database that holds anything but test data: every
+ * account must be *.test and every clinic one of the test slugs; a
+ * single-clinic (pre-0003) database must have no patients.
+ */
+async function assertTestDatabase(client) {
+  const { rows: [t] } = await client.query(`
+    select to_regclass('auth.users') is not null as users,
+           to_regclass('public.organizations') is not null as orgs,
+           to_regclass('public.patients') is not null as patients`);
+  const problems = [];
+  if (t.users) {
+    const { rows } = await client.query(`select email from auth.users where lower(email) !~ '\\.test$' limit 3`);
+    if (rows.length) problems.push(`accounts that are not *.test (${rows.map((r) => r.email).join(', ')})`);
+  }
+  if (t.orgs) {
+    const { rows } = await client.query(
+      'select slug from public.organizations where slug <> all($1) and left(slug, $3) <> $2 limit 3',
+      [KNOWN_SLUGS, TEST_SLUG_PREFIX, TEST_SLUG_PREFIX.length],
+    );
+    if (rows.length) problems.push(`clinics that are not test clinics (${rows.map((r) => r.slug).join(', ')})`);
+  } else if (t.patients) {
+    const { rows } = await client.query('select count(*)::int as n from public.patients');
+    if (rows[0].n) problems.push(`${rows[0].n} patient row(s)`);
+  }
+  if (problems.length) {
+    throw new Error(
+      `refusing to wipe ${TEST_DB_URL.replace(/:[^:@/]*@/, ':***@')}: it has ${problems.join(' and ')}. ` +
+        'Point API_TEST_DATABASE_URL at a scratch database (scripts/dev-db.sh reset <port>).',
+    );
+  }
+}
+
+/** Drops auth + public, applies the real migrations and the dev seed (+ the API fixtures). */
+async function resetDatabase(client, { extras = true } = {}) {
+  await assertTestDatabase(client);
+  await client.query(
+    'drop schema if exists auth cascade; drop schema if exists public cascade; create schema public;',
+  );
+  await loadMigrate()({ databaseUrl: TEST_DB_URL, log: () => {} });
+  try {
+    await client.query(SEED);
+    if (extras) await client.query(EXTRAS);
+  } catch (err) {
+    await client.query('rollback').catch(() => {});
+    throw err;
+  } finally {
+    await client.query("select set_config('app.system', 'off', false)").catch(() => {});
+  }
+}
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -117,17 +209,30 @@ function multipart(fields, file) {
   return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
+/** Same shape as newRecordId() in src/apiclient.jsx: prefix + base36 time + 6 random base36. */
+function newRecordId(prefix) {
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let rnd = '';
+  for (const b of crypto.randomBytes(6)) rnd += alphabet[b % 36];
+  return `${prefix}${Date.now().toString(36)}${rnd}`;
+}
+
 /**
  * Locks and resets the database, starts the API. Returns a harness:
- *   {app, config, port, sql(text, params), asUser(userId, orgId, sql, params),
- *    request(method, path, opts), client(opts), login(email, opts), outbox(), close()}
+ *   {app, config, port, sql(text, params), asSystem(text, params),
+ *    asUser(userId, orgId, text, params, branchId), request(method, path, opts),
+ *    client(opts), login(email, opts), as(user, opts), outbox(), close()}
  */
 async function setup({ env = {}, dist } = {}) {
-  const lock = new Client({ connectionString: TEST_DB_URL });
+  const lock = new Client({ connectionString: TEST_DB_URL, application_name: 'clinicsys-api-test' });
   await lock.connect();
-  await lock.query('select pg_advisory_lock($1)', [LOCK_KEY]);
-  await lock.query('drop schema if exists auth cascade; drop schema if exists public cascade; create schema public; create schema auth;');
-  await lock.query(FIXTURE);
+  try {
+    await lock.query('select pg_advisory_lock($1)', [DB_TEST_LOCK]);
+    await resetDatabase(lock, { extras: true });
+  } catch (err) {
+    await lock.end().catch(() => {});
+    throw err;
+  }
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'clinicsys-api-test-'));
   const distDir = dist || path.join(tmp, 'dist');
@@ -148,13 +253,18 @@ async function setup({ env = {}, dist } = {}) {
     const s = app.listen(port, '127.0.0.1', () => resolve(s));
   });
 
+  /** SQL as the table owner without a request context: platform tables and
+   *  auth.* (no RLS). Clinic tables have FORCE RLS and show no rows here. */
   const sql = (text, params) => lock.query(text, params);
 
-  /** Runs SQL as a member (RLS applies) — for seeding inside a clinic. */
-  async function asUser(userId, orgId, text, params) {
+  async function inContext(settings, text, params) {
     await lock.query('begin');
     try {
-      await lock.query("select set_config('app.user_id', $1, true), set_config('app.org_id', $2, true)", [userId, orgId]);
+      await lock.query(
+        `select set_config('app.user_id', $1, true), set_config('app.org_id', $2, true),
+                set_config('app.branch_id', $3, true), set_config('app.system', $4, true)`,
+        [settings.userId || '', settings.orgId || '', settings.branchId || '', settings.system ? 'on' : 'off'],
+      );
       const r = await lock.query(text, params);
       await lock.query('commit');
       return r;
@@ -163,18 +273,24 @@ async function setup({ env = {}, dist } = {}) {
       throw err;
     }
   }
+  /** SQL in the system context (app.system = 'on'): every clinic row. */
+  const asSystem = (text, params) => inContext({ system: true }, text, params);
+  /** SQL as a member of a clinic (RLS applies), optionally in a branch. */
+  const asUser = (userId, orgId, text, params, branchId) => inContext({ userId, orgId, branchId }, text, params);
 
   const request = (method, urlPath, opts) => rawRequest(port, method, urlPath, opts);
 
   /**
    * A browser-like client: sends X-Requested-With: clinicsys, the cookie,
    * X-Org-Slug (slug), X-Branch-Id (branch), Host (host) and
-   * X-Forwarded-For (ip) when given.
+   * X-Forwarded-For (ip) when given; platform: true adds X-Platform: 1
+   * (the development form of the admin.<base> platform context).
    */
-  function client({ cookie, slug, branch, host, ip, csrf = true } = {}) {
+  function client({ cookie, slug, branch, host, ip, csrf = true, platform = false } = {}) {
     const base = () => {
       const h = {};
       if (csrf) h['x-requested-with'] = 'clinicsys';
+      if (platform) h['x-platform'] = '1';
       if (cookie) h.cookie = typeof cookie === 'string' ? cookie : cookie.value;
       if (slug) h['x-org-slug'] = slug;
       if (branch) h['x-branch-id'] = branch;
@@ -186,6 +302,7 @@ async function setup({ env = {}, dist } = {}) {
       get: (p, headers = {}) => request('GET', p, { headers: { ...base(), ...headers } }),
       post: (p, json, headers = {}) => request('POST', p, { headers: { ...base(), ...headers }, json }),
       patch: (p, json, headers = {}) => request('PATCH', p, { headers: { ...base(), ...headers }, json }),
+      put: (p, json, headers = {}) => request('PUT', p, { headers: { ...base(), ...headers }, json }),
       del: (p, headers = {}) => request('DELETE', p, { headers: { ...base(), ...headers } }),
       data: (body, headers = {}) => request('POST', '/api/data', { headers: { ...base(), ...headers }, json: body }),
       rpc: (fn, args, headers = {}) => request('POST', `/api/rpc/${fn}`, { headers: { ...base(), ...headers }, json: { args } }),
@@ -226,12 +343,32 @@ async function setup({ env = {}, dist } = {}) {
   async function close() {
     await new Promise((resolve) => server.close(resolve));
     await app.locals.close();
-    await lock.query('select pg_advisory_unlock($1)', [LOCK_KEY]).catch(() => {});
-    await lock.end();
-    fs.rmSync(tmp, { recursive: true, force: true });
+    try {
+      // Leave the database as db/test expects it: migrated + dev seed only.
+      if (!process.env.API_TEST_KEEP_DB) await resetDatabase(lock, { extras: false });
+    } finally {
+      await lock.query('select pg_advisory_unlock($1)', [DB_TEST_LOCK]).catch(() => {});
+      await lock.end();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   }
 
-  return { app, config, port, tmp, sql, asUser, request, client, login, as, outbox, close };
+  return { app, config, port, tmp, sql, asSystem, asUser, request, client, login, as, outbox, close };
 }
 
-module.exports = { setup, rawRequest, sessionCookie, multipart, freePort, TEST_DB_URL, ORG, USER, PASSWORD };
+module.exports = {
+  setup,
+  rawRequest,
+  sessionCookie,
+  multipart,
+  freePort,
+  newRecordId,
+  resetDatabase,
+  TEST_DB_URL,
+  DB_TEST_LOCK,
+  ORG,
+  BRANCH,
+  USER,
+  PASSWORD,
+  TEST_SLUG_PREFIX,
+};

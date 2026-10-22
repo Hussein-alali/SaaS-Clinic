@@ -376,9 +376,16 @@ window.newRecordId = newRecordId;
         });
       },
       // Not public in fact: GET /api/files/object/* needs the session and the
-      // current clinic (docs/02-TRD.md "الملفات").
+      // current clinic (docs/02-TRD.md "الملفات"). The URL is used as
+      // <img src> / <a href>, which cannot send X-Org-Slug, so when the
+      // clinic comes from ?org=<slug> (development, no clinic subdomain) it
+      // travels as ?org=<slug>, which the API accepts on this route. In
+      // production the Host names the clinic and nothing is added.
       getPublicUrl: function (path) {
-        return { data: { publicUrl: API + "/files/object/" + encodePath(bucket) + "/" + encodePath(path) } };
+        var url = API + "/files/object/" + encodePath(bucket) + "/" + encodePath(path);
+        var org = currentOrgSlug();
+        if (org) url += "?org=" + encodeURIComponent(org);
+        return { data: { publicUrl: url } };
       },
       createSignedUrl: function (path, expiresIn) {
         var seconds = Number(expiresIn);

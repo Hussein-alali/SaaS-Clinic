@@ -67,16 +67,19 @@ async function findMembership(db, userId, slug) {
 }
 
 /**
- * Branches the member may use, oldest first. admin: every branch of the
- * organization; other roles: their member_branches rows. Runs inside the
- * caller's RLS context (branches has FORCE RLS).
- * Returns full branch rows (to_jsonb) when `full`, otherwise {id} only.
+ * Branches the member may use: active branches first (branches are
+ * deactivated with status = 'inactive', never deleted), then oldest first.
+ * admin: every branch of the organization; other roles: their
+ * member_branches rows. Runs inside the caller's RLS context (branches has
+ * FORCE RLS). Returns full branch rows (to_jsonb) when `full`, otherwise
+ * {id} only.
  */
 async function accessibleBranches(client, { orgId, role, memberId }, full = false) {
   const pick = full ? 'to_jsonb(b) as branch' : 'b.id';
   if (role === 'admin') {
     const { rows } = await client.query(
-      `select ${pick} from branches b where b.organization_id = $1 order by b.created_at nulls last, b.id`,
+      `select ${pick} from branches b where b.organization_id = $1
+        order by (b.status = 'active') desc, b.created_at nulls last, b.id`,
       [orgId],
     );
     return full ? rows.map((r) => r.branch) : rows.map((r) => ({ id: r.id }));
@@ -89,13 +92,14 @@ async function accessibleBranches(client, { orgId, role, memberId }, full = fals
        from member_branches mb
        left join branches b on b.id = mb.branch_id
       where mb.member_id = $1 and mb.organization_id = $2
-      order by b.created_at nulls last, mb.branch_id`,
+      order by (b.status = 'active') desc nulls last, b.created_at nulls last, mb.branch_id`,
     [memberId, orgId],
   );
   return rows.map((r) => (full && r.branch ? r.branch : { id: r.id }));
 }
 
-/** X-Branch-Id when accessible, else the first accessible branch, else null. */
+/** X-Branch-Id when accessible, else the first accessible branch (active
+ *  ones sort first), else null. */
 function chooseBranch(branches, requested) {
   if (requested && branches.some((b) => b.id === requested)) return requested;
   return branches.length ? branches[0].id : null;

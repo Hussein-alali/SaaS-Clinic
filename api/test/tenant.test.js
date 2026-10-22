@@ -1,7 +1,7 @@
 'use strict';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, USER, ORG } = require('./helpers');
+const { setup, USER, ORG, BRANCH } = require('./helpers');
 
 let h;
 before(async () => {
@@ -11,23 +11,59 @@ after(async () => {
   await h.close();
 });
 
+// Every active module of the specialty is enabled by db/seed/dev.sql.
+const PHYSIO_MODULES = [
+  'core.appointments', 'core.billing', 'core.branches', 'core.files', 'core.patients', 'core.reports',
+  'core.settings', 'core.staff', 'physio.sessions', 'physio.templates', 'physio.treatment_plans',
+];
+const CORE_MODULES = PHYSIO_MODULES.filter((m) => m.startsWith('core.'));
+
 test('resolve: active clinic → id, status, specialty, enabled modules, public settings', async () => {
   const res = await h.client().get('/api/orgs/resolve?slug=demo-physio');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body, {
     id: ORG.physio,
     slug: 'demo-physio',
-    name: 'Demo Physio',
+    name: 'عيادة العلاج الطبيعي التجريبية',
     status: 'active',
     specialty_code: 'physio',
-    // disabled (core.branches) and platform-inactive (legacy.reports) modules are left out
-    modules: ['core.appointments', 'core.patients', 'physio.sessions'],
-    settings: { display_name: 'عيادة العلاج الطبيعي', subtitle: 'نظام العيادة', logo: null, primary_color: '#123456' },
+    modules: PHYSIO_MODULES,
+    settings: { display_name: 'عيادة العلاج الطبيعي التجريبية', subtitle: 'بيانات تجريبية', logo: null, primary_color: '#7BBDE8' },
   });
   // public route: no cookie, no CSRF header needed
   const plain = await h.request('GET', '/api/orgs/resolve?slug=DEMO-PHYSIO');
   assert.equal(plain.status, 200);
   assert.equal(plain.body.id, ORG.physio);
+  // dental: its specialty modules are 'planned' in the catalog, so only core.* is listed
+  const dental = await h.client().get('/api/orgs/resolve?slug=demo-dental');
+  assert.equal(dental.body.specialty_code, 'dental');
+  assert.deepEqual(dental.body.modules, CORE_MODULES);
+});
+
+test('resolve: disabled modules and modules that are not active in the catalog are left out', async () => {
+  await h.sql(
+    `update organization_modules set enabled = false
+      where organization_id = $1 and module_id = (select id from modules where code = 'core.reports')`,
+    [ORG.physio],
+  );
+  // enabled for the clinic, but 'planned' in the catalog
+  await h.sql(
+    `update organization_modules set enabled = true
+      where organization_id = $1 and module_id = (select id from modules where code = 'dental.chart')`,
+    [ORG.dental],
+  );
+  try {
+    const physio = await h.client().get('/api/orgs/resolve?slug=demo-physio');
+    assert.deepEqual(physio.body.modules, PHYSIO_MODULES.filter((m) => m !== 'core.reports'));
+    const dental = await h.client().get('/api/orgs/resolve?slug=demo-dental');
+    assert.deepEqual(dental.body.modules, CORE_MODULES);
+  } finally {
+    await h.sql(
+      `update organization_modules set enabled = (m.code <> 'dental.chart')
+         from modules m
+        where m.id = organization_modules.module_id and m.code in ('core.reports', 'dental.chart')`,
+    );
+  }
 });
 
 test('resolve never leaks details of suspended, closed, draft or unknown clinics', async () => {
@@ -42,6 +78,8 @@ test('resolve never leaks details of suspended, closed, draft or unknown clinics
   const pending = await h.client().get('/api/orgs/resolve?slug=demo-pending');
   assert.equal(pending.status, 200, 'pending_activation is shown so the first admin can accept the invitation');
   assert.equal(pending.body.status, 'pending_activation');
+  assert.equal(pending.body.specialty_code, 'general');
+  assert.equal(pending.body.settings.display_name, 'عيادة قيد التفعيل', 'clinic_settings read without a role');
 });
 
 test('resolve without ?slug uses the Host subdomain, then X-Org-Slug', async () => {
@@ -60,11 +98,13 @@ test('current: org from Host <slug>.localhost (dev base domain), role, branches,
   assert.equal(res.status, 200);
   assert.equal(res.body.organization.id, ORG.physio);
   assert.equal(res.body.organization.slug, 'demo-physio');
-  assert.deepEqual(res.body.organization.modules, ['core.appointments', 'core.patients', 'physio.sessions']);
+  assert.deepEqual(res.body.organization.modules, PHYSIO_MODULES);
   assert.equal(res.body.role, 'admin');
-  assert.deepEqual(res.body.branches.map((b) => b.id), ['br-physio-main', 'br-physio-east'], 'admin: every branch, oldest first');
+  assert.deepEqual(res.body.branches.map((b) => b.id), [BRANCH.physio1, BRANCH.physio2], 'admin: every branch, oldest first');
   assert.equal(res.body.branches[0].name, 'الفرع الرئيسي');
-  assert.equal(res.body.current_branch_id, 'br-physio-main');
+  assert.equal(res.body.branches[0].status, 'active');
+  assert.deepEqual(res.body.branches[0].working_hours, { sat: ['09:00', '21:00'], sun: ['09:00', '21:00'] });
+  assert.equal(res.body.current_branch_id, BRANCH.physio1);
 });
 
 test('current: X-Org-Slug works when the host carries no clinic; Host wins over the header', async () => {
@@ -73,37 +113,57 @@ test('current: X-Org-Slug works when the host carries no clinic; Host wins over 
   assert.equal(viaHeader.status, 200);
   assert.equal(viaHeader.body.organization.id, ORG.dental);
   assert.equal(viaHeader.body.role, 'receptionist');
-  assert.deepEqual(viaHeader.body.branches.map((b) => b.id), ['br-dental-west']);
+  assert.deepEqual(viaHeader.body.branches.map((b) => b.id), [BRANCH.dental2]);
 
   const hostWins = await h.client({ cookie, slug: 'demo-dental', host: `demo-physio.localhost:${h.port}` }).get('/api/orgs/current');
   assert.equal(hostWins.body.organization.id, ORG.physio);
   assert.equal(hostWins.body.role, 'therapist');
 });
 
-test('branch selection: X-Branch-Id when accessible, else the first accessible branch', async () => {
+test('branch selection: X-Branch-Id when accessible, else the first accessible active branch', async () => {
   const admin = await h.login(USER.physioAdmin.email);
-  const east = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: 'br-physio-east' }).get('/api/orgs/current');
-  assert.equal(east.body.current_branch_id, 'br-physio-east');
-  const foreign = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: 'br-dental-main' }).get('/api/orgs/current');
-  assert.equal(foreign.body.current_branch_id, 'br-physio-main', 'a branch of another clinic is ignored');
+  const second = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: BRANCH.physio2 }).get('/api/orgs/current');
+  assert.equal(second.body.current_branch_id, BRANCH.physio2);
+  const foreign = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: BRANCH.dental1 }).get('/api/orgs/current');
+  assert.equal(foreign.body.current_branch_id, BRANCH.physio1, 'a branch of another clinic is ignored');
+  const placeholder = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: 'br_main' }).get('/api/orgs/current');
+  assert.equal(placeholder.body.current_branch_id, BRANCH.physio1, "the frontend's placeholder id falls back");
 
   const recep = await h.login(USER.physioReception.email);
-  const r = await h.client({ cookie: recep.cookie, slug: 'demo-physio', branch: 'br-physio-main' }).get('/api/orgs/current');
+  const r = await h.client({ cookie: recep.cookie, slug: 'demo-physio', branch: BRANCH.physio2 }).get('/api/orgs/current');
   assert.equal(r.body.role, 'receptionist');
-  assert.deepEqual(r.body.branches.map((b) => b.id), ['br-physio-east']);
-  assert.equal(r.body.current_branch_id, 'br-physio-east', 'member_branches limit non-admins');
+  assert.deepEqual(r.body.branches.map((b) => b.id), [BRANCH.physio1]);
+  assert.equal(r.body.current_branch_id, BRANCH.physio1, 'member_branches limit non-admins');
+
+  const recep2 = await h.login(USER.physioReception2.email);
+  const r2 = await h.client({ cookie: recep2.cookie, slug: 'demo-physio', branch: BRANCH.physio2 }).get('/api/orgs/current');
+  assert.deepEqual(r2.body.branches.map((b) => b.id), [BRANCH.physio1, BRANCH.physio2]);
+  assert.equal(r2.body.current_branch_id, BRANCH.physio2);
 
   const multi = await h.login(USER.multi.email);
-  const m = await h.client({ cookie: multi.cookie, slug: 'demo-physio', branch: 'br-physio-east' }).get('/api/orgs/current');
-  assert.equal(m.body.current_branch_id, 'br-physio-east');
   const m2 = await h.client({ cookie: multi.cookie, slug: 'demo-physio' }).get('/api/orgs/current');
-  assert.equal(m2.body.current_branch_id, 'br-physio-main');
+  assert.equal(m2.body.current_branch_id, BRANCH.physio1);
 
   const staff = await h.login(USER.physioStaff.email);
   const s = await h.client({ cookie: staff.cookie, slug: 'demo-physio' }).get('/api/orgs/current');
   assert.equal(s.status, 200);
+  assert.equal(s.body.role, 'staff');
   assert.deepEqual(s.body.branches, []);
   assert.equal(s.body.current_branch_id, null);
+});
+
+test('an inactive branch is never chosen by default, but can still be asked for', async () => {
+  await h.asSystem("update branches set status = 'inactive' where id = $1", [BRANCH.physio1]);
+  try {
+    const admin = await h.login(USER.physioAdmin.email);
+    const res = await h.client({ cookie: admin.cookie, slug: 'demo-physio' }).get('/api/orgs/current');
+    assert.equal(res.body.current_branch_id, BRANCH.physio2);
+    assert.deepEqual(res.body.branches.map((b) => b.id), [BRANCH.physio2, BRANCH.physio1], 'active branches first');
+    const asked = await h.client({ cookie: admin.cookie, slug: 'demo-physio', branch: BRANCH.physio1 }).get('/api/orgs/current');
+    assert.equal(asked.body.current_branch_id, BRANCH.physio1);
+  } finally {
+    await h.asSystem("update branches set status = 'active' where id = $1", [BRANCH.physio1]);
+  }
 });
 
 test('a non-member gets 403, whatever the route', async () => {
@@ -112,7 +172,7 @@ test('a non-member gets 403, whatever the route', async () => {
   for (const res of [
     await c.get('/api/orgs/current'),
     await c.data({ table: 'patients' }),
-    await c.rpc('get_treatment', { p_treatment_id: 'T1' }),
+    await c.rpc('get_treatment', { p_treatment_id: 'TRT-PHY-B1-1' }),
     await c.post('/api/files/sign', { bucket: 'patient-files', path: 'a/b.pdf' }),
     await c.get('/api/files/object/patient-files/a/b.pdf'),
   ]) {
@@ -123,6 +183,7 @@ test('a non-member gets 403, whatever the route', async () => {
   const dental = await h.login(USER.dentalAdmin.email);
   const cross = await h.client({ cookie: dental.cookie, slug: 'demo-physio' }).data({ table: 'patients' });
   assert.equal(cross.status, 403);
+  assert.equal(cross.body.error.code, 'not_a_member');
   // a Super Admin is not a clinic member either (BR-008)
   const sa = await h.login(USER.superAdmin.email);
   assert.equal((await h.client({ cookie: sa.cookie, slug: 'demo-physio' }).data({ table: 'patients' })).status, 403);
@@ -155,13 +216,31 @@ test('suspending a clinic blocks its members on the next request', async () => {
   const admin = await h.login(USER.dentalAdmin.email);
   const c = h.client({ cookie: admin.cookie, slug: 'demo-dental' });
   assert.equal((await c.data({ table: 'patients' })).status, 200);
-  await h.sql("update organizations set status = 'suspended' where id = $1", [ORG.dental]);
+  await h.sql("update organizations set status = 'suspended', status_reason = 'test' where id = $1", [ORG.dental]);
   try {
     const r = await c.data({ table: 'patients' });
     assert.equal(r.status, 403);
+    assert.equal(r.body.error.code, 'org_inactive');
     const resolve = await h.client().get('/api/orgs/resolve?slug=demo-dental');
     assert.deepEqual(resolve.body, { slug: 'demo-dental', status: 'suspended' });
   } finally {
-    await h.sql("update organizations set status = 'active' where id = $1", [ORG.dental]);
+    await h.sql("update organizations set status = 'active', status_reason = null where id = $1", [ORG.dental]);
+  }
+});
+
+test('the database agrees: app_role() is NULL wherever the API answers 403', async () => {
+  // The API's membership check and the database's app_role() are two
+  // implementations of convention 7; they must give the same answer.
+  const cases = [
+    [USER.physioAdmin.id, ORG.physio, 'admin'],
+    [USER.multi.id, ORG.dental, 'receptionist'],
+    [USER.former.id, ORG.physio, null], // disabled membership
+    [USER.dentalAdmin.id, ORG.physio, null], // other clinic
+    [USER.suspendedAdmin.id, ORG.suspended, null], // suspended clinic
+    [USER.superAdmin.id, ORG.physio, null], // BR-008
+  ];
+  for (const [user, org, role] of cases) {
+    const { rows } = await h.asUser(user, org, 'select public.app_role() as role');
+    assert.equal(rows[0].role, role, `${user} in ${org}`);
   }
 });

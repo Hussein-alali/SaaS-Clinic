@@ -10,16 +10,29 @@ db/
 ├── package.json             # dependency: pg (nothing else)
 ├── migrate.js               # applies migrations/*.sql in order
 ├── migrations/
-│   └── 0001_baseline.sql    # Supabase_All_In_One.sql ported to plain PostgreSQL
+│   ├── 0001_baseline.sql    # Supabase_All_In_One.sql ported to plain PostgreSQL
+│   ├── 0002_platform.sql    # platform/identity tables + catalog seed (no RLS)
+│   ├── 0003_tenancy.sql     # organization_id/branch_id, FORCE RLS, plan limits
+│   └── 0004_audit_integrity.sql # members' audit rows: id/actor/time set by the database
+├── seed/
+│   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/
-    └── baseline.test.js     # node:test + pg, against a real database
+    ├── helpers.js           # shared: migrate + seed once, contexts, fixtures, shared test lock
+    ├── audit.test.js        # 0004: audit rows cannot be forged or squat ids
+    ├── index.js             # `node --test db/test/` on Node 21+
+    ├── baseline.test.js     # migrate.js and the 0001 port
+    ├── isolation.test.js    # tenant isolation of every clinic table
+    ├── branch.test.js       # branch_scope / member_branches
+    ├── limits.test.js       # plan limits (PL422)
+    ├── rpc.test.js          # the 0001 RPCs under tenant context
+    └── seed.test.js         # what dev.sql provides
 ```
 
 ## Requirements
 
 - Node.js 18 or 20 (the hosting.com range). Node 22 also works; see the test
   command below.
-- PostgreSQL 13 or newer. The baseline has been applied and tested on 13.23
+- PostgreSQL 13 or newer. The migrations and tests have been run on 13.23
   and 16.
 - Install the dependency once: `npm --prefix db install`.
 
@@ -80,14 +93,46 @@ application directory, with the production `DATABASE_URL`. Take a backup with
 
 ```sh
 export DATABASE_URL=$(scripts/dev-db.sh reset 55001)
-node --test db/test/                 # Node 18 / 20
-node --test db/test/*.test.js        # Node 21+ (a directory argument is no longer expanded)
+node --test db/test/                 # any Node version (test/index.js handles Node 21+)
+node --test 'db/test/*.test.js'      # same, with a glob
 npm --prefix db test                 # any Node version
+node --test db/test/ api/test/       # both suites on one database (see below)
 ```
 
-The tests run the real `node db/migrate.js` against `DATABASE_URL`. On a fresh
-database it applies the migrations; on a migrated one it applies nothing. The
-tests then check:
+The tests run the real migrations against `DATABASE_URL` (a no-op when they
+are applied). The tenancy tests (`helpers.js` → `ensureDatabase()`) also apply
+`db/seed/dev.sql` when the demo clinics are missing — and refuse when the
+database already has other organizations, so point them at a database made
+by `scripts/dev-db.sh reset`. Everything else runs in rolled-back
+transactions; several test files can share one database at the same time.
+
+The API tests (`api/test`) wipe, re-migrate and re-seed the same database
+when `API_TEST_DATABASE_URL` is unset. The two suites coordinate with the
+advisory lock 2026102210: every db test process holds it **shared** for its
+lifetime (`helpers.js` → `shareDatabase()`, also called by
+`baseline.test.js`), each API test file holds it **exclusively** and leaves
+the database migrated + seeded when it ends. Without that lock a combined run
+fails (checked: 9 db tests failed with it disabled).
+
+On Node ≥ 21 a directory argument to `node --test` is treated as a file
+pattern; `test/index.js` then loads every `*.test.js` inside its own
+`describe()` in one process (on Node 18/20 it is an empty file).
+
+`isolation.test.js` discovers every table with `organization_id` from the
+catalog. For each clinic table it checks FORCE RLS, the RESTRICTIVE
+`tenant_isolation` policy, the default/NOT NULL/FK/index on
+`organization_id`, organization-scoped uniques, and — as the table owner with
+the API's request context — that a demo-physio member never reads, inserts,
+updates or deletes demo-dental rows; that a non-member context, no context, a
+Super Admin, a disabled membership/account and a suspended clinic get nothing
+(except the public branding rows: `clinic_settings` and visible
+`custom_sections`, which `/api/orgs/resolve` reads without a role, and one's
+own `staff` row); and that the global template library is readable by both
+clinics and writable by neither. `branch.test.js`, `limits.test.js`,
+`rpc.test.js` and `seed.test.js` cover branches, plan limits, the RPCs and the
+seed.
+
+`baseline.test.js` checks:
 
 - the migration CLI: it applies once, a second run applies nothing, it exits 1
   without `DATABASE_URL` or a reachable database, a failing file is rolled back
@@ -113,7 +158,8 @@ leave the database as the migration made it. Other test files can share the
 database.
 
 After `0003_tenancy.sql` replaces `app_role()`, the two old-role-model tests
-skip themselves; the tenancy and isolation tests cover that model.
+skip themselves, and the 0001 seed rows are counted in the system context
+(they are now global rows); the tenancy tests cover the new model.
 
 ### Known issue (todo test)
 
@@ -126,6 +172,74 @@ For example, `create_treatment_template` succeeds anonymously.
 The baseline keeps this behaviour on purpose: it is a faithful port. A later
 migration should change the guards to `if v_role is null or v_role not in
 (...)`; the todo test then passes.
+
+## Multi-clinic model (0002 + 0003)
+
+The rules are in `docs/05-Backend-Schema.md` (conventions 3–12). In practice:
+
+- **Request context.** The API runs each request in a transaction and sets,
+  with `set_config(..., true)`: `app.user_id` (→ `auth.uid()`), `app.org_id`
+  (→ `app_org_id()`, only after checking an active membership in an active
+  clinic), `app.branch_id` (→ `app_branch_id()`), and `app.system = 'on'` for
+  internal operations only (→ `app_is_system()`). Never let a request choose
+  these values directly.
+- **Platform tables** (`organizations`, `organization_members`,
+  `member_branches`, `invitations`, `platform_admins`, `specialties`,
+  `modules`, `specialty_modules`, `organization_modules`,
+  `subscription_plans`, `subscriptions`, `reserved_slugs`) have no RLS; only
+  dedicated API routes touch them.
+- **Clinic tables** (the 25 others) have `organization_id NOT NULL DEFAULT
+  app_org_id()` and ENABLE + FORCE RLS. On top of the 0001 role policies
+  (which now see the role in the current clinic, `app_role()`), every clinic
+  table has the RESTRICTIVE `tenant_isolation` policy and a permissive
+  `system_access` policy for `app.system = 'on'`. `bookings`, `sessions`,
+  `invoices`, `payments`, `payment_receipts`, `patient_schedules` and
+  `treatments` also have `branch_id NOT NULL DEFAULT app_branch_id()` and the
+  RESTRICTIVE `branch_scope` policy (`can_access_branch()`: the admin sees
+  every branch, others their `member_branches`).
+- **Global rows.** `organization_id IS NULL` in `treatment_templates`,
+  `template_categories`, `treatment_methods` and `template_usage` = the
+  platform's library (the 0001 seed): readable by every clinic, written only
+  in the system context. `audit_events.organization_id IS NULL` = a platform
+  event (system context only).
+- **Audit integrity (0004).** Outside the system context a BEFORE INSERT
+  trigger sets `audit_events.id` (shared sequence), `actor_uid` (`auth.uid()`),
+  `actor_role` (`app_role()`) and `created_at` (`now()`), whatever the caller
+  sent: members cannot forge the actor or back-date rows, and cannot occupy
+  ids the sequence hands out to other clinics.
+- **References stay in one clinic:** composite foreign keys
+  `(organization_id, x) → parent (organization_id, key)`. The ones that replace
+  `ON DELETE SET NULL` keys are `DEFERRABLE INITIALLY DEFERRED` (checked at
+  commit) next to the original single-column key.
+- **Plan limits:** a new active branch, an activated membership or a new
+  pending invitation beyond `subscription_plans.max_branches` / `max_users`
+  raises SQLSTATE `PL422` with the message `plan_limit:branches` or
+  `plan_limit:users` (the API maps it to HTTP 422). `NULL` = unlimited.
+- **Existing data.** On a database that already holds single-clinic data (a
+  Supabase import), 0003 creates the organization `clinic` (physio, active,
+  plan `default`) and its branch `الفرع الرئيسي`, moves every row there,
+  and turns `staff` rows linked to an account into `organization_members`
+  (non-admins get the main branch). On a fresh database it only removes the
+  default `clinic_settings` row: the API creates one per clinic.
+
+## Development seed (`db/seed/dev.sql`)
+
+**Never run it on production.** It refuses a database that already has
+organizations.
+
+```sh
+export DATABASE_URL=$(scripts/dev-db.sh reset 55001)
+node db/migrate.js
+psql "$DATABASE_URL" -f db/seed/dev.sql    # or let the tests apply it
+```
+
+Every password is `Dev@12345`. Accounts: `super@clinicsys.test` (Super Admin,
+no clinic) and, for `demo-physio` (physio) and `demo-dental` (dental),
+`admin@`, `receptionist@`, `doctor@`, `therapist@` (branch 1 only, except the
+admin) and `receptionist2@<slug>.test` (both branches). Each clinic has two
+branches (`br-<slug>-1`, `br-<slug>-2`) and rows in every clinic table. To
+change the seed, edit the file (the password hashes were generated with
+bcryptjs, cost 10).
 
 ## What 0001_baseline.sql changed against `Supabase_All_In_One.sql`
 

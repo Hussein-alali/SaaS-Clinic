@@ -81,18 +81,24 @@ test('/api: unknown routes are JSON 404s with security headers and no-store', as
   assert.equal((await h.request('GET', '/api')).status, 404);
 });
 
-test('route modules for admin/org/invitations/platform are mounted (empty for now)', async () => {
-  for (const p of ['/api/admin/create-user', '/api/org/invitations', '/api/invitations/abc', '/api/platform/stats']) {
+test('route modules for admin/org/invitations/platform are mounted and guarded', async () => {
+  // No session: 401 (admin answers in the Edge Function shape).
+  const admin = await h.client().post('/api/admin/create-user', {});
+  assert.equal(admin.status, 401);
+  assert.deepEqual(admin.body, { ok: false, error: 'missing_token', detail: 'Authentication required' });
+  for (const p of ['/api/org/invitations', '/api/platform/stats']) {
     const res = await h.client().get(p);
-    assert.equal(res.status, 404, p);
-    assert.equal(res.body.error.code, 'not_found');
+    assert.equal(res.status, 401, p);
+    assert.equal(res.body.error.code, 'unauthorized');
   }
+  // Public: an unknown invitation token is a 404.
+  const inv = await h.client().get('/api/invitations/abc');
+  assert.equal(inv.status, 404);
+  assert.equal(inv.body.error.code, 'invitation_not_found');
   for (const name of ['admin', 'org', 'invitations', 'platform']) {
     const router = require(`../src/routes/${name}`);
     assert.equal(typeof router, 'function', `${name} exports an Express router`);
-    assert.equal(typeof router.get, 'function');
-    assert.equal(typeof router.use, 'function');
-    assert.deepEqual(router.stack, [], `${name} has no routes yet`);
+    assert.ok(router.stack.length > 0, `${name} has routes`);
   }
 });
 

@@ -28,11 +28,14 @@ src/rpc-whitelist.js   the functions the frontend may call
 src/files.js           paths, signed links, safe download headers
 src/mailer.js          SMTP (nodemailer) or JSON files in .outbox/
 src/static.js          dist/ with SPA fallback
-src/routes/            auth, orgs, data, rpc, files, admin*, org*, invitations*, platform*
-test/                  node:test against a real PostgreSQL (fixture: test/fixtures/schema.sql)
+src/audit.js           writeAudit(): audit_events rows in the same transaction
+src/members.js         memberships, member_branches, staff rows, plan seats, newRecordId()
+src/invites.js         invitation tokens (SHA-256), links, e-mails, resend/revoke
+src/platform.js        slug rules, module dependencies, plans, organization detail
+src/routes/            auth, orgs, data, rpc, files, admin, org, invitations, platform
+scripts/create-super-admin.js   creates or promotes a Super Admin (platform_admins)
+test/                  node:test against the real migrations + db/seed/dev.sql (+ test/fixtures/extras.sql)
 ```
-
-`*` = mounted but empty: plan task 2.7 fills them in (see "Writing routes").
 
 ## Environment variables
 
@@ -41,11 +44,11 @@ test/                  node:test against a real PostgreSQL (fixture: test/fixtur
 | `NODE_ENV` | `development` | `production` (turns on the checks below) |
 | `PORT` | `3000` | set by Passenger |
 | `DATABASE_URL` | `postgres://clinic_owner:clinic_owner_dev@127.0.0.1:54329/clinicsys` | **required** |
-| `JWT_SECRET` | a fixed dev value | **required**, ≥ 32 characters |
-| `FILES_SIGNING_SECRET` | a fixed dev value | **required**, ≥ 32 characters, different from `JWT_SECRET` |
+| `JWT_SECRET` | a fixed dev value (only when `APP_BASE_DOMAIN` is local) | **required**, ≥ 32 characters |
+| `FILES_SIGNING_SECRET` | a fixed dev value (only when `APP_BASE_DOMAIN` is local) | **required**, ≥ 32 characters, different from `JWT_SECRET` |
 | `APP_BASE_DOMAIN` | `localhost` | `clinicsyseg.com` (`staging.clinicsyseg.com` on staging) |
 | `COOKIE_DOMAIN` | empty (host-only cookie) | `.clinicsyseg.com` |
-| `COOKIE_SECURE` | `false` | `true` (also sends HSTS) |
+| `COOKIE_SECURE` | `false` | `true` by default (also sends HSTS); `false` turns it off |
 | `TRUST_PROXY` | `loopback` | hops or addresses of the web server in front of Node (see deployment) |
 | `FILES_DIR` | `api/uploads` | a folder **outside** `public_html`, e.g. `/home/<user>/clinicsys-files` |
 | `DIST_DIR` | `../dist` (relative to `api/`) | where `dist/` was uploaded |
@@ -59,16 +62,28 @@ test/                  node:test against a real PostgreSQL (fixture: test/fixtur
 
 With `NODE_ENV=production` the API refuses to start (exit code 1) when
 `DATABASE_URL`, `JWT_SECRET` or `FILES_SIGNING_SECRET` is missing or weak.
+Outside production the built-in development secrets (public, in
+`src/config.js`) are accepted only when `APP_BASE_DOMAIN` is a local name
+(`localhost`, `*.localhost`, `*.test`, `127.x.x.x`); on any other domain
+the API refuses to start until both secrets are set, so a server left in
+cPanel "Development" mode cannot accept sessions anyone can sign.
 Secrets live only in the cPanel Node.js app environment — never in Git.
 
 ## Running locally
 
 ```bash
-scripts/dev-db.sh start                 # prints DATABASE_URL (port 54329)
-# apply the schema: node db/migrate.js + db/seed/dev.sql (plan tasks 2.2–2.4)
+export DATABASE_URL=$(scripts/dev-db.sh start)   # port 54329
+npm --prefix db install && node db/migrate.js
+psql "$DATABASE_URL" -f db/seed/dev.sql  # demo-physio / demo-dental, password Dev@12345
 npm install && npm run build            # repository root → dist/
 cd api && npm install && npm start      # http://localhost:3000
 ```
+
+Then open `http://localhost:3000/?org=demo-physio` and sign in as
+`admin@demo-physio.test` (or `receptionist@`, `doctor@`, `therapist@`,
+`receptionist2@`) with `Dev@12345`; `super@clinicsys.test` is the Super Admin
+(platform: `http://admin.localhost:3000`, or any host with `X-Platform: 1` in
+development).
 
 Open `http://demo-physio.localhost:3000` (browsers resolve `*.localhost` to
 127.0.0.1), or `http://localhost:3000` with the `X-Org-Slug` header (the
@@ -78,19 +93,62 @@ frontend's `?org=<slug>`). `http://admin.localhost:3000` is the platform
 ## Tests
 
 ```bash
-scripts/dev-db.sh start 55003           # the test database
+export API_TEST_DATABASE_URL=$(scripts/dev-db.sh reset 55003)   # a scratch database
+npm --prefix db install                 # the tests run db/migrate.js
 cd api && npm test                      # = node --test test/
 scripts/dev-db.sh stop 55003
 ```
 
-The tests **drop and recreate the `auth` and `public` schemas** of
-`API_TEST_DATABASE_URL` (default
-`postgres://clinic_owner:clinic_owner_dev@127.0.0.1:55003/clinicsys`) and load
-`test/fixtures/schema.sql`, a small database that follows the contract of the
-real migrations (conventions 1–12 of the Schema doc). Test files take a
-PostgreSQL advisory lock, so they can run in parallel processes.
+The tests run against the **real schema**: each test file **drops the `auth`
+and `public` schemas** of `API_TEST_DATABASE_URL` (else `DATABASE_URL`, else
+`postgres://clinic_owner:clinic_owner_dev@127.0.0.1:55003/clinicsys`), applies
+`db/migrations/*.sql` with `db/migrate.js`, `db/seed/dev.sql` and
+`test/fixtures/extras.sql` (accounts and clinics in states the dev seed does
+not have: a `staff` role, a disabled membership, a disabled account, a member
+of both clinics, suspended / closed / pending / draft clinics, a plan with a
+1 MB storage limit, an account with a Supabase `$2a$` hash). When the file
+ends, the database is left migrated + seeded (without the extras), the state
+`db/test` expects; `API_TEST_KEEP_DB=1` skips that. Every password is
+`Dev@12345`; ids and accounts are in `test/helpers.js` (`ORG`, `USER`,
+`BRANCH`).
+
+Safety: the harness refuses to wipe a database that has an account that is
+not `*.test`, a clinic other than the test slugs (and the `apitest-*` clinics
+the tests create through `/api/platform`), or (before 0003) any patient.
+
+`journey.test.js` runs J1/J2 through the API only: the Super Admin creates a
+clinic, the invitation e-mail lands in the outbox, the first admin accepts
+(clinic active), adds a branch (the plan's branch limit → 422), invites a
+receptionist for one branch (user limit → 422), and the receptionist reads
+only that branch; suspension then ends both open sessions.
+`create-super-admin.test.js` runs the script as a child process.
+`security.test.js` holds the regression tests of the 22 Oct 2026 security
+review: forged/id-squatting audit rows through `/api/data`, create-user on an
+account that belongs to no clinic, an oversized e-mail (regex backtracking),
+the production `Secure` cookie default and the refusal of the public
+development secrets on a non-local `APP_BASE_DOMAIN`.
+`frontend.test.js` loads `../src/apiclient.jsx` + `../src/supabase.jsx` (plain
+JS, joined like the bundle) into a `node:vm` "browser" with a real `fetch` and
+a cookie jar, signs in at `?org=demo-physio` and drives every Supabase call
+chain of `src/supabase.jsx`, `src/screens1.jsx` and `src/import.jsx` through
+the functions the screens call (as admin, receptionist, doctor, therapist, a
+non-member and a deactivated member). `FRONTEND_COMPAT_REPORT=1` prints one
+line per call with its requests and HTTP statuses.
+
+`test/helpers.js` takes the advisory lock 2026102210 **exclusively** while a
+file runs, and `db/test` takes it **shared**, so both suites can run in one
+command against one database, in parallel processes:
+
+```bash
+node --test 'db/test/*.test.js' 'api/test/*.test.js'   # any Node version
+node --test db/test/ api/test/                          # also works: see test/index.js
+```
+
 `test/index.js` makes `node --test test/` work on Node ≥ 21 too, where a
-directory argument is no longer expanded.
+directory argument is no longer expanded. `rpc.test.js` adds a few
+`apitest_*` functions to the database and to the whitelist (in-process only)
+to cover result shapes no real RPC has (set of rows, set of scalars, void,
+composite row, int8, overloads).
 
 ## API summary
 
@@ -115,6 +173,16 @@ needs the header `X-Requested-With: clinicsys` (403 `csrf_header_required`).
 | `GET /api/files/object/:bucket/*path` | session + clinic; `?org=<slug>` may name the clinic for `<img src>` in development |
 | `GET /api/files/signed?token=` | no session; HMAC-SHA256 over `{org, bucket, path, exp}` |
 | `POST /api/files/remove` `{bucket, paths}` | `{removed:[paths]}` |
+| `POST /api/admin/create-user` `{email, password, name, role, phone[, branch_ids]}` | clinic admin. `{ok:true, uid, staff_id, linked}`; see "Clinic administration" |
+| `POST /api/admin/reset-password` `{staff_id \| auth_uid, password}` | clinic admin. `{ok:true, staff_id}`; ends the account's sessions |
+| `POST /api/admin/set-status` `{staff_id, active}` (or `status`) | clinic admin. `{ok:true, staff_id, status}` |
+| `GET /api/org/invitations` | clinic admin. `[invitation]` (newest first; `status` pending/accepted/revoked/expired) |
+| `POST /api/org/invitations` `{email, role, branch_ids}` | clinic admin. 201 `{invitation, email_sent}`; 409 `already_member` / `invitation_exists`; 422 `plan_limit:users` |
+| `POST /api/org/invitations/:id/resend` | new token + 7 days → `{invitation, email_sent}` |
+| `DELETE /api/org/invitations/:id` | 204; status `revoked` (rows are kept) |
+| `GET /api/invitations/:token` | public. `{organization:{name, slug}, email, role, status, expires_at, account_exists}`; 404 / 410 / 403 `org_inactive` |
+| `POST /api/invitations/:token/accept` `{password, name}` | public. Login payload + `organization`, `role` + cookie |
+| `/api/platform/*` | Super Admin only; see "Platform (Super Admin)" |
 
 Clinic context: the organization comes from the Host `<slug>.<APP_BASE_DOMAIN>`,
 otherwise from `X-Org-Slug`; it is set only for an active member of an
@@ -167,22 +235,112 @@ remove — admin and receptionist anything, others only what they uploaded
 PDF, plain text and MP4 render inline; everything else downloads as
 `application/octet-stream` with a sandbox CSP.
 
-## Writing routes (plan task 2.7)
+## Clinic administration (`/api/admin/*`, `/api/org/*`)
 
-`src/routes/{admin,org,invitations,platform}.js` export empty Express routers,
-already mounted at `/api/admin`, `/api/org`, `/api/invitations`, `/api/platform`.
+The caller is an **active admin of the current clinic** (Host / `X-Org-Slug`).
+`/api/admin/*` keeps the Edge Function bodies (`admin-create-user`,
+`admin-reset-password`, `admin-set-status`): every error is
+`{ok:false, error, detail}` with the HTTP status (401 → `missing_token` /
+`invalid_token`, 403 `forbidden` for other roles, 422 `plan_limit_users`).
+
+- **create-user**: Edge validation order (`invalid_email`, `weak_password`,
+  `invalid_role` — admin, receptionist, doctor, therapist; default
+  receptionist — `missing_name`). A new e-mail gets an account; an account
+  that belongs to this clinic only (a former member) is re-linked and its
+  password set; an active member, an account of another clinic or a Super
+  Admin → 409 `email_exists` (they join by invitation). Then: active
+  membership, `member_branches` (`branch_ids`, default the caller's current
+  branch; none for admin), the staff row (created or linked by `auth_uid` /
+  e-mail, same role), pending invitations of the e-mail revoked. Seats =
+  active members + pending invitations (422 when full).
+- **reset-password**: the staff row is looked up with the caller's RLS; the
+  account must be a member of THIS clinic (`staff.auth_uid` alone is
+  admin-editable and never trusted → `no_auth_account`) and of no other
+  clinic and not a Super Admin (403 `shared_account`). `session_version + 1`;
+  the caller keeps their own session (cookie re-issued).
+- **set-status**: inactive → `staff.status = 'inactive'`, membership
+  `disabled`, `session_version + 1` (open sessions end). `auth.users.status`
+  is **not** changed: the account may belong to other clinics, and accounts
+  are not the clinic admin's to lock (docs/05: memberships are disabled, not
+  accounts). Active → membership `active` (seat checked). An admin cannot
+  deactivate themselves.
+- **Invitations**: token = 32 random bytes (base64url), only its SHA-256 in
+  `invitations.token_hash`, 7 days. Link
+  `<https|http>://<slug>.<APP_BASE_DOMAIN>[:PORT]/?invite=<token>`, plus
+  `&org=<slug>` outside production. Non-admin roles need ≥ 1 active branch.
+  A pending invitation holds a seat (trigger → 422); an expired one is shown
+  as `expired`, and re-sending it takes a seat again. The e-mail is sent
+  after the commit; `email_sent` is `false` on failure and `null` when SMTP
+  takes more than 10 s (the invitation stays valid either way).
+- **Accept** (`/api/invitations/:token/accept`): one transaction (system
+  context). A new e-mail needs `password` (6–72 bytes) and `name`; an
+  existing account must give **its own** password (never overwritten;
+  failures count in the login rate limit, 429). Membership `active` with the
+  invitation's role and still-existing branches, staff row created/linked
+  (role `staff` → `staff.role` NULL: 0001's CHECK has no `staff`), invitation
+  `accepted`, and the first admin moves a `pending_activation` clinic to
+  `active`. 410 `invitation_used` / `invitation_expired` /
+  `invitation_revoked`; 403 `org_inactive`, `account_disabled`.
+
+Every action writes `audit_events` in its transaction: `staff.create`,
+`staff.password_reset`, `staff.activate`, `staff.deactivate`,
+`invitation.create|resend|revoke|accept`, `user.create`,
+`organization.activate`.
+
+## Platform (Super Admin, `/api/platform/*`)
+
+Needs a session, a `platform_admins` row (403 `not_super_admin`) and the
+platform context: Host `admin.<APP_BASE_DOMAIN>`, or `X-Platform: 1` when
+`NODE_ENV` is not `production` (403 `platform_required`).
+
+| Route | Notes |
+|---|---|
+| `GET /stats` | `{organizations:{draft, pending_activation, active, suspended, closed, total}, pending_invitations, retention_overdue}` |
+| `GET /organizations?q=&status=&specialty=&limit=&offset=` | `{data, count}`, newest first |
+| `POST /organizations` `{name, slug, specialty_code, modules, plan_id, admin_email}` | 201 detail + `invitation`, `email_sent`. ONE transaction: organization `pending_activation`, branch «الفرع الرئيسي» (`br_…`), `clinic_settings`, `organization_modules` (`modules` or the specialty's active defaults; dependencies checked), subscription, first-admin invitation. No `plan_id` → plan `default` |
+| `GET /organizations/:id` | `{organization, modules, branches, members, invitations, subscription, usage}` (no patient data) |
+| `PATCH /organizations/:id` `{name, specialty_code, plan_id}` | detail |
+| `POST /organizations/:id/status` `{status, reason}` | `draft→pending_activation→active⇄suspended→closed` (409 `invalid_transition`); `reason` required for suspended/closed; suspend sets `suspended_at`, `retention_until = now() + 6 months`; reactivation clears both |
+| `PUT /organizations/:id/modules` `{codes}` | the enabled set; `depends_on` must be in it (400 `module_dependency`); only catalog-`active` modules; plan `included_modules` (core.* always allowed, else 422 `plan_limit_modules`); other rows kept disabled |
+| `PUT /organizations/:id/subscription` `{plan_id, status, period_start, period_end, notes}` | new `subscriptions` row (history kept) + `organizations.plan_id` |
+| `GET/POST /organizations/:id/invitations`, `POST …/invitations/:invId/resend`, `DELETE …/invitations/:invId` | as `/api/org/invitations`, for any clinic in `pending_activation` or `active` |
+| `GET /slug-available?slug=` | `{available, reason}`; reason `invalid_format` (`^[a-z0-9]([a-z0-9-]{1,30}[a-z0-9])$`), `reserved` (`reserved_slugs`), `taken` |
+| `GET /specialties`, `GET /modules` | catalogs (specialties with `default_modules`) |
+| `GET /plans`, `POST /plans`, `PATCH /plans/:id` | `{code, name, max_users, max_branches, max_storage_mb, included_modules, status}`; `null` = unlimited |
+| `GET /audit?organization_id=&actor=<uuid or e-mail>&action=<name or prefix*>&from=&to=&limit=&offset=` | `{data, count}`, newest first; `payload` only for the API's own platform/membership rows (clinic RPC rows may hold patient data) |
+
+Every write is audited with `actor_role = 'super_admin'`.
+
+### Super Admin accounts
+
+```bash
+DATABASE_URL=... node api/scripts/create-super-admin.js --email owner@example.com --password '…' [--name 'Owner']
+printf '%s' "$PASS" | DATABASE_URL=... node api/scripts/create-super-admin.js --email owner@example.com --password-stdin
+```
+
+Creates the account (or promotes an existing one: re-activated, password
+replaced only when given, which ends its sessions) and adds the
+`platform_admins` row; audited as `platform_admin.create|grant`. Exit code 1
+on any error.
+
+## Writing routes
 
 ```js
 const { requireOrg } = require('../tenant');           // session + active membership → req.ctx
 const auth = require('../auth');                         // requireSession, requireSuperAdmin,
                                                          // validatePassword, hashPassword, issueSession, sha256
+const { writeAudit } = require('../audit');
 const { badRequest, forbidden, notFound, HttpError } = require('../errors');
 
-router.post('/create-user', requireOrg(), async (req, res) => {
+router.post('/example', requireOrg(), async (req, res) => {
   if (req.ctx.role !== 'admin') throw forbidden();
-  const { db, mailer, config } = req.app.locals;
-  const row = await db.withContext(req.ctx, (client) => client.query('...'));         // RLS as the caller
-  await db.withContext({ ...req.ctx, system: true }, (client) => client.query('...')); // internal operation
+  const { db } = req.app.locals;
+  await db.withContext(req.ctx, async (client) => {          // RLS as the caller
+    await client.query('...');
+    await writeAudit(client, { orgId: req.ctx.orgId, actorUid: req.ctx.userId, actorRole: 'admin',
+                               action: 'thing.change', tableName: 'things', rowPk: '…' });
+  });
+  // db.withContext({ ...req.ctx, system: true }, fn) — internal operation (app.system = 'on')
   res.json({ ok: true });
 });
 ```
@@ -190,8 +348,7 @@ router.post('/create-user', requireOrg(), async (req, res) => {
 Handlers may be `async` and `throw`: the error handler answers
 `{error:{message, code}}` (and maps PostgreSQL errors as above). Platform and
 identity tables have no RLS: query them with `db.query` and check permissions
-in the route. `req.app.locals.background(fn)` runs work after the response
-(used for e-mails).
+in the route. `req.app.locals.background(fn)` runs work after the response.
 
 ## Deploying on hosting.com (cPanel → Setup Node.js App)
 

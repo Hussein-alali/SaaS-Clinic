@@ -38,6 +38,18 @@ function trustProxy(v) {
   return s.split(',').map((x) => x.trim()).filter(Boolean);
 }
 
+/** localhost, *.localhost, *.test and loopback addresses (RFC 2606 / 6761 names). */
+function isLocalDomain(domain) {
+  return (
+    domain === 'localhost' ||
+    domain.endsWith('.localhost') ||
+    domain.endsWith('.test') ||
+    /^127(?:\.\d{1,3}){3}$/.test(domain) ||
+    domain === '::1' ||
+    domain === '[::1]'
+  );
+}
+
 function loadConfig(env = process.env) {
   const nodeEnv = str(env.NODE_ENV, 'development');
   const production = nodeEnv === 'production';
@@ -74,6 +86,22 @@ function loadConfig(env = process.env) {
   const port = int(env.PORT, 3000);
   const appBaseDomain = str(env.APP_BASE_DOMAIN, 'localhost').toLowerCase().replace(/^\.+|\.+$/g, '');
 
+  // The development secrets are public (they are in this file). A server
+  // started outside production mode on a real domain (e.g. cPanel
+  // "Application mode: Development") would accept session cookies anyone
+  // can sign, Super Admin included. Defaults are only allowed on local names.
+  if (!production && !isLocalDomain(appBaseDomain)) {
+    const usingDefaults = ['JWT_SECRET', 'FILES_SIGNING_SECRET'].filter((n) => !str(env[n], ''));
+    if (usingDefaults.length) {
+      const err = new Error(
+        `Invalid API configuration:\n  - ${usingDefaults.join(' and ')} must be set: the built-in development ` +
+          `secrets are only allowed when APP_BASE_DOMAIN is a local name (got "${appBaseDomain}")`,
+      );
+      err.code = 'CONFIG_INVALID';
+      throw err;
+    }
+  }
+
   return Object.freeze({
     nodeEnv,
     production,
@@ -87,7 +115,9 @@ function loadConfig(env = process.env) {
     // development: http://<base>:<PORT>.
     publicBaseUrl: production ? `https://${appBaseDomain}` : `http://${appBaseDomain}:${port}`,
     cookieDomain: str(env.COOKIE_DOMAIN, ''),
-    cookieSecure: bool(env.COOKIE_SECURE, false),
+    // TRD: Secure in production. Default on in production (COOKIE_SECURE=false
+    // turns it off explicitly), off in development (http://localhost).
+    cookieSecure: bool(env.COOKIE_SECURE, production),
     trustProxy: trustProxy(env.TRUST_PROXY),
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,

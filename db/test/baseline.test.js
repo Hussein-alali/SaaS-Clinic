@@ -9,9 +9,15 @@
 // (app_role() reads staff). Every write happens inside a transaction that is
 // rolled back, so the database is left exactly as the migration made it and
 // other test files can share it.
+//
+// Once 0003_tenancy is applied (app_role() reads organization_members and
+// every clinic table has FORCE ROW LEVEL SECURITY), the two old-role-model
+// tests skip themselves and the 0001 seed rows are counted in the system
+// context; isolation/branch/limits/rpc.test.js cover the new model. The
+// assertions hold whether or not db/seed/dev.sql has been applied.
 'use strict';
 
-const { test } = require('node:test');
+const { test, before } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
@@ -20,6 +26,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { Client } = require('pg');
 const { migrate, listMigrations, MigrationError } = require('../migrate.js');
+const { shareDatabase } = require('./helpers');
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const REPO_ROOT = path.join(__dirname, '..', '..');
@@ -82,6 +89,12 @@ function runMigrateCli(env, cwd = REPO_ROOT) {
 }
 
 const suffix = () => crypto.randomBytes(4).toString('hex');
+
+// Never while an API test file is wiping and re-seeding the same database
+// (api/test/helpers.js takes the same lock exclusively).
+before(async () => {
+  if (DATABASE_URL) await shareDatabase();
+});
 
 test('node db/migrate.js (from the repo root) applies the baseline once; a second run applies nothing', () => {
   requireDb();
@@ -157,20 +170,42 @@ test('catalog: schema_migrations, 25 RPCs, no extensions, policies TO PUBLIC, no
     assert.deepEqual(noRls.rows.map((r) => r.relname).filter((n) => !platformTables.has(n)), []);
 
     // Seeds: kept (template library, default methods, settings row) and removed (accounts).
-    const seed = await c.query(`
-      select (select count(*)::int from clinic_settings where id = 1) as settings,
-             (select count(*)::int from treatment_methods where method_id like 'TM-DFLT-%') as methods,
-             (select count(*)::int from template_categories where category_id in ('TPC-SEED-SPINE','TPC-SEED-SHOULDER')) as categories,
-             (select count(*)::int from treatment_templates where template_id like 'TPL-SEED-SPN-%') as spine,
-             (select count(*)::int from treatment_templates where template_id like 'TPL-SEED-SHD-%') as shoulder,
-             (select count(*)::int from staff where staff_id in ('ST-AMR','ST-ABDELRAHMAN','ST-ESMAIL','ST-MENNA','ST-DALIA','ST-RAWDA','ST-MARIAM')) as seeded_staff,
-             (select count(*)::int from auth.users where lower(email) like '%@clinic.eg') as seeded_users`);
-    assert.deepEqual(seed.rows[0],
-      { settings: 1, methods: 9, categories: 2, spine: 35, shoulder: 14, seeded_staff: 0, seeded_users: 0 });
+    // After 0003_tenancy every clinic table has FORCE ROW LEVEL SECURITY, so
+    // the rows are counted in the system context (app.system = 'on'); the
+    // 0001 library is then global (organization_id NULL) and the single
+    // settings row has become one row per organization (none on a fresh
+    // database, one per seeded clinic otherwise).
+    const tenancy = await hasTenancy(c);
+    await c.query('begin');
+    try {
+      if (tenancy) await c.query(`select set_config('app.system', 'on', true)`);
+      const lib = tenancy ? 'and organization_id is null' : '';
+      const seed = await c.query(`
+        select (select count(*)::int from clinic_settings where id = 1
+                  ${tenancy ? 'and organization_id not in (select id from public.organizations)' : ''}) as settings,
+               (select count(*)::int from treatment_methods where method_id like 'TM-DFLT-%' ${lib}) as methods,
+               (select count(*)::int from template_categories where category_id in ('TPC-SEED-SPINE','TPC-SEED-SHOULDER') ${lib}) as categories,
+               (select count(*)::int from treatment_templates where template_id like 'TPL-SEED-SPN-%' ${lib}) as spine,
+               (select count(*)::int from treatment_templates where template_id like 'TPL-SEED-SHD-%' ${lib}) as shoulder,
+               (select count(*)::int from staff where staff_id in ('ST-AMR','ST-ABDELRAHMAN','ST-ESMAIL','ST-MENNA','ST-DALIA','ST-RAWDA','ST-MARIAM')) as seeded_staff,
+               (select count(*)::int from auth.users where lower(email) like '%@clinic.eg') as seeded_users`);
+      assert.deepEqual(seed.rows[0],
+        { settings: tenancy ? 0 : 1, methods: 9, categories: 2, spine: 35, shoulder: 14, seeded_staff: 0, seeded_users: 0 });
+    } finally {
+      await c.query('rollback');
+    }
   } finally {
     await c.end();
   }
 });
+
+// 0003_tenancy applied? (clinic tables then carry organization_id)
+async function hasTenancy(c) {
+  const { rows } = await c.query(`
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'clinic_settings' and column_name = 'organization_id'`);
+  return rows.length > 0;
+}
 
 test('auth compat schema: auth.users, auth.uid(), auth.password_reset_tokens', async () => {
   requireDb();

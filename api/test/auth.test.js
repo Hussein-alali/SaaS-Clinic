@@ -55,11 +55,31 @@ test('login success returns user, memberships and an httpOnly SameSite=Lax 12h c
 });
 
 test('remember me issues a 30-day cookie; e-mail is case-insensitive; Supabase $2a$ hashes work', async () => {
+  const { rows } = await h.sql('select left(encrypted_password, 4) as prefix from auth.users where id = $1', [USER.legacy.id]);
+  assert.equal(rows[0].prefix, '$2a$', 'fixture: a hash as Supabase Auth stored it');
   const res = await h
     .client({ ip: '10.0.0.2' })
-    .post('/api/auth/login', { email: USER.physioReception.email.toUpperCase(), password: PASSWORD, remember: true });
+    .post('/api/auth/login', { email: USER.legacy.email.toUpperCase(), password: PASSWORD, remember: true });
   assert.equal(res.status, 200);
   assert.match(sessionCookie(res).header, /Max-Age=2592000/);
+  assert.equal(res.body.user.name, 'Supabase hash');
+});
+
+test('every account of the dev seed signs in with Dev@12345 and sees its clinic', async () => {
+  const { rows } = await h.sql(
+    `select u.email, o.slug, m.role
+       from auth.users u
+       join organization_members m on m.user_id = u.id
+       join organizations o on o.id = m.organization_id
+      where u.id::text like 'de000000-%' order by u.email`,
+  );
+  assert.equal(rows.length, 10, 'five roles in each of the two demo clinics');
+  for (const [i, r] of rows.entries()) {
+    const { res } = await h.login(r.email, { ip: `10.0.9.${i + 1}` });
+    assert.deepEqual(res.body.memberships.map((m) => `${m.slug}:${m.role}`), [`${r.slug}:${r.role}`], r.email);
+  }
+  const sa = await h.login(USER.superAdmin.email, { ip: '10.0.9.99' });
+  assert.equal(sa.res.body.is_super_admin, true);
 });
 
 test('super admin flag and users without memberships', async () => {

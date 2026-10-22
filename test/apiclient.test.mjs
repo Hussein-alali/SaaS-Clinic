@@ -483,6 +483,17 @@ describe("storage: /api/files/*", () => {
     assert.equal(requests.length, 0);
   });
 
+  test("getPublicUrl carries ?org=<slug> when the clinic comes from ?org= (development)", () => {
+    // <img src> cannot send X-Org-Slug; GET /api/files/object accepts ?org=.
+    const fromUrl = boot({ search: "?org=Demo-Physio" });
+    assert.equal(fromUrl.client().storage.from("patient-files").getPublicUrl("P-1/pf_1-a.png").data.publicUrl,
+      "/api/files/object/patient-files/P-1/pf_1-a.png?org=demo-physio");
+    const remembered = boot({ session: { "clinicsys.org": "demo-dental" } });
+    assert.equal(remembered.client().storage.from("patient-files").getPublicUrl("a.pdf").data.publicUrl,
+      "/api/files/object/patient-files/a.pdf?org=demo-dental");
+    assert.equal(fromUrl.requests.length + remembered.requests.length, 0);
+  });
+
   test("createSignedUrl(path, 3600) → POST /api/files/sign with expiresIn capped at 600", async () => {
     const { requests, client } = boot({ handler: () => json(200, { signedUrl: "/api/files/signed?token=abc" }) });
     const store = client().storage.from("patient-files");
