@@ -154,7 +154,7 @@ function HomeHeader({ kicker, title, sub, right }){
   return (
     <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:22,gap:16,flexWrap:"wrap"}}>
       <div>
-        <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>{kicker}</span></div>
+        <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{kicker}</span></div>
         <h1 className="h1">{title}</h1>
         <div className="muted" style={{fontSize:13.5,marginTop:4}}>{sub}</div>
       </div>
@@ -168,7 +168,7 @@ function ApptRow({ a, right }){
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12,background:a.status==="قيد التنفيذ"?"var(--blue-50)":"#fff"}}>
       <div style={{textAlign:"center",minWidth:48}}>
         <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time}</div>
-        <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> د</div>
+        <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> {tt("د")}</div>
       </div>
       <div style={{width:1,height:30,background:"var(--ink-200)"}}/>
       <div style={{flex:1,minWidth:0}}>
@@ -206,37 +206,37 @@ function ReceptionDashboard({ go, user }){
   return (
     <Page>
       <HomeHeader
-        kicker="لوحة الاستقبال"
-        title={<>صباح الخير، {user.name.split(" ")[0]} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></>}
-        sub={`${todayLabelAr()} — حركة مكتب الاستقبال اليوم في ${activeBranchName()}.`}
+        kicker={tt("لوحة الاستقبال")}
+        title={<>{tt("صباح الخير، {name}", { name: user.name.split(" ")[0] })} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></>}
+        sub={tt("{date} — حركة مكتب الاستقبال اليوم في {branch}.", { date: todayLabelAr(), branch: activeBranchName() })}
         right={<>
-          <button className="btn btn-secondary" onClick={()=>go("patients")}><I.Plus size={14}/> مريض جديد</button>
-          <button className="btn btn-secondary" onClick={()=>setQuickPayOpen(true)}><I.CreditCard size={14}/> دفع سريع</button>
-          <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={14}/> حجز موعد</button>
+          <button className="btn btn-secondary" onClick={()=>go("patients")}><I.Plus size={14}/> {tt("مريض جديد")}</button>
+          <button className="btn btn-secondary" onClick={()=>setQuickPayOpen(true)}><I.CreditCard size={14}/> {tt("دفع سريع")}</button>
+          <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={14}/> {tt("حجز موعد")}</button>
         </>}
       />
 
       <div className="grid-stats" style={{marginBottom:18}}>
-        <StatCard label="مواعيد اليوم"  value={`${booked.length}/${appts.length}`} accent="#3A7FB5" icon={<I.Calendar size={15}/>}/>
-        <StatCard label="بانتظار الوصول" value={String(waiting.length)} accent="#D49044" icon={<I.Clock size={15}/>}/>
-        <StatCard label="فترات متاحة"   value={String(free.length)} accent="#3FA984" icon={<I.Plus size={15}/>}/>
-        <StatCard label="تحصيل اليوم"   value={`EGP ${(collected/1000).toFixed(1)}K`} accent="#7BBDE8" icon={<I.Dollar size={15}/>}/>
-        <StatCard label="مستحقات معلّقة" value={`EGP ${(outstanding/1000).toFixed(1)}K`} accent="#D8665A" icon={<I.CreditCard size={15}/>}/>
+        <StatCard label={tt("مواعيد اليوم")}  value={`${booked.length}/${appts.length}`} accent="#3A7FB5" icon={<I.Calendar size={15}/>}/>
+        <StatCard label={tt("بانتظار الوصول")} value={String(waiting.length)} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label={tt("فترات متاحة")}   value={String(free.length)} accent="#3FA984" icon={<I.Plus size={15}/>}/>
+        <StatCard label={tt("تحصيل اليوم")}   value={fmtMoneyShort(collected)} accent="#7BBDE8" icon={<I.Dollar size={15}/>}/>
+        <StatCard label={tt("مستحقات معلّقة")} value={fmtMoneyShort(outstanding)} accent="#D8665A" icon={<I.CreditCard size={15}/>}/>
       </div>
 
       <div className="rgrid c-lg" style={{"--gtc":"1.4fr 1fr"}}>
         {/* Check-in queue */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div><div className="h2">طابور الوصول</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>سجّل وصول المرضى عند حضورهم</div></div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>كل المواعيد <I.ArrowRight size={12}/></button>
+            <div><div className="h2">{tt("طابور الوصول")}</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("سجّل وصول المرضى عند حضورهم")}</div></div>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>{tt("كل المواعيد")} <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {booked.slice(0,7).map(a=>(
               <ApptRow key={a.id} a={a} right={
-                a.status==="مكتمل" ? <span className="badge b-green"><I.Check size={11}/>تم</span>
+                a.status==="مكتمل" ? <span className="badge b-green"><I.Check size={11}/>{tt("تم")}</span>
                 : a.status==="قيد التنفيذ" ? <ApptBadge s={a.status}/>
-                : <button className="btn btn-secondary" style={{fontSize:12,padding:"6px 10px"}}><I.Check size={12}/> تسجيل وصول</button>
+                : <button className="btn btn-secondary" style={{fontSize:12,padding:"6px 10px"}}><I.Check size={12}/> {tt("تسجيل وصول")}</button>
               }/>
             ))}
           </div>
@@ -245,22 +245,22 @@ function ReceptionDashboard({ go, user }){
         {/* Daily cash */}
         <div style={{display:"flex",flexDirection:"column",gap:18}}>
           <div className="card card-pad">
-            <div className="h2" style={{marginBottom:4}}>صندوق اليوم</div>
-            <div className="muted" style={{fontSize:12.5,marginBottom:14}}>ملخص التحصيل النقدي والبطاقات</div>
+            <div className="h2" style={{marginBottom:4}}>{tt("صندوق اليوم")}</div>
+            <div className="muted" style={{fontSize:12.5,marginBottom:14}}>{tt("ملخص التحصيل النقدي والبطاقات")}</div>
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span className="mono" style={{fontSize:30,fontWeight:600}}>EGP {collected.toLocaleString("en-US")}</span>
+              <span className="mono" style={{fontSize:30,fontWeight:600}}>{fmtMoney(collected)}</span>
             </div>
             <div style={{height:8,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",margin:"12px 0"}}>
               <div style={{height:"100%",width:`${collected/(collected+outstanding)*100}%`,background:"var(--green)",borderRadius:999}}/>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5}}>
-              <span className="muted">محصّل {Math.round(collected/(collected+outstanding)*100)}%</span>
-              <span style={{color:"#A8443A"}}>متبقٍ EGP {outstanding.toLocaleString("en-US")}</span>
+              <span className="muted">{tt("محصّل {pct}%", { pct: Math.round(collected/(collected+outstanding)*100) })}</span>
+              <span style={{color:"#A8443A"}}>{tt("متبقٍ {amount}", { amount: fmtMoney(outstanding) })}</span>
             </div>
           </div>
           <div className="card card-pad">
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <div className="h2">فواتير تحتاج تحصيل</div>
+              <div className="h2">{tt("فواتير تحتاج تحصيل")}</div>
               <span className="badge b-amber">{unpaid.length}</span>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -268,11 +268,11 @@ function ReceptionDashboard({ go, user }){
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10}}>
                   <div className="av sm" style={{background:"var(--ink-100)",color:"var(--ink-700)"}}>{initialsOf(p.patient)}</div>
                   <div style={{flex:1,minWidth:0}}><div style={{fontSize:12.5,fontWeight:500}}>{p.patient}</div><div className="mono" style={{fontSize:11,color:"var(--ink-500)"}}>{p.id}</div></div>
-                  <div style={{textAlign:"left"}}><div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString("en-US")}</div><PayBadge s={p.status}/></div>
+                  <div style={{textAlign:"end"}}><div className="mono" style={{fontSize:12.5,fontWeight:600}}>{fmtMoney(p.amount-p.paid)}</div><PayBadge s={p.status}/></div>
                 </div>
               ))}
             </div>
-            <button className="btn btn-blue" style={{width:"100%",justifyContent:"center",marginTop:14}} onClick={()=>go("payments")}>فتح المدفوعات <I.ArrowRight size={13}/></button>
+            <button className="btn btn-blue" style={{width:"100%",justifyContent:"center",marginTop:14}} onClick={()=>go("payments")}>{tt("فتح المدفوعات")} <I.ArrowRight size={13}/></button>
           </div>
         </div>
       </div>
@@ -300,40 +300,40 @@ function DoctorDashboard({ go, user }){
   const reviewPlans = myPatients.filter(p=>p.remain > 0 && p.remain <= 4);
   const caseMix = [
     // Real counts only: with no patients the chart shows its empty state.
-    { label:"عمود فقري", v: myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف/.test(p.diag)).length, color:"#7BBDE8" },
-    { label:"مفاصل",     v: myPatients.filter(p=>/كتف|ركبة|رضف/.test(p.diag)).length, color:"#7E6BD3" },
-    { label:"أخرى",      v: myPatients.length - myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف|كتف|ركبة|رضف/.test(p.diag)).length, color:"#BDD8E9" },
+    { label:tt("عمود فقري"), v: myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف/.test(p.diag)).length, color:"#7BBDE8" },
+    { label:tt("مفاصل"),     v: myPatients.filter(p=>/كتف|ركبة|رضف/.test(p.diag)).length, color:"#7E6BD3" },
+    { label:tt("أخرى"),      v: myPatients.length - myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف|كتف|ركبة|رضف/.test(p.diag)).length, color:"#BDD8E9" },
   ];
 
   return (
     <Page>
       <HomeHeader
-        kicker="يومي الإكلينيكي"
-        title={<>أهلاً، {user.name} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>🩺</span></>}
-        sub={`${todayLabelAr()} — مواعيد اليوم: ${myAppts.length} · المرضى النشطون: ${active.length}`}
+        kicker={tt("يومي الإكلينيكي")}
+        title={<>{tt("أهلاً، {name}", { name: user.name })} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>🩺</span></>}
+        sub={tt("{date} — مواعيد اليوم: {appts} · المرضى النشطون: {active}", { date: todayLabelAr(), appts: myAppts.length, active: active.length })}
         right={<>
-          <button className="btn btn-secondary" onClick={()=>go("treatments")}><I.Clipboard size={14}/> خطط العلاج</button>
-          <button className="btn btn-blue" onClick={()=>go("patients")}><I.Users size={14}/> مرضاي</button>
+          <button className="btn btn-secondary" onClick={()=>go("treatments")}><I.Clipboard size={14}/> {tt("خطط العلاج")}</button>
+          <button className="btn btn-blue" onClick={()=>go("patients")}><I.Users size={14}/> {tt("مرضاي")}</button>
         </>}
       />
 
       <div className="grid-stats" style={{marginBottom:18}}>
-        <StatCard label="مرضاي"          value={String(myPatients.length)} accent="#7E6BD3" icon={<I.Users size={15}/>}/>
-        <StatCard label="مواعيد اليوم"   value={String(myAppts.length)} accent="#3A7FB5" icon={<I.Calendar size={15}/>}/>
-        <StatCard label="خطط للمراجعة"   value={String(reviewPlans.length)} accent="#D49044" icon={<I.Clipboard size={15}/>}/>
-        <StatCard label="نشطون"          value={String(active.length)} accent="#3FA984" icon={<I.Activity size={15}/>}/>
+        <StatCard label={tt("مرضاي")}          value={String(myPatients.length)} accent="#7E6BD3" icon={<I.Users size={15}/>}/>
+        <StatCard label={tt("مواعيد اليوم")}   value={String(myAppts.length)} accent="#3A7FB5" icon={<I.Calendar size={15}/>}/>
+        <StatCard label={tt("خطط للمراجعة")}   value={String(reviewPlans.length)} accent="#D49044" icon={<I.Clipboard size={15}/>}/>
+        <StatCard label={tt("نشطون")}          value={String(active.length)} accent="#3FA984" icon={<I.Activity size={15}/>}/>
       </div>
 
       <div className="rgrid c-lg" style={{"--gtc":"1fr 1.3fr"}}>
         {/* My clinic today */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div><div className="h2">عيادتي اليوم</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>المجدولة: {myAppts.length}</div></div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>التقويم <I.ArrowRight size={12}/></button>
+            <div><div className="h2">{tt("عيادتي اليوم")}</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("المجدولة: {n}", { n: myAppts.length })}</div></div>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>{tt("التقويم")} <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {myAppts.map(a=> <ApptRow key={a.id} a={a}/>)}
-            {myAppts.length===0 && <div className="muted" style={{fontSize:13,padding:"20px 0",textAlign:"center"}}>لا مواعيد اليوم.</div>}
+            {myAppts.length===0 && <div className="muted" style={{fontSize:13,padding:"20px 0",textAlign:"center"}}>{tt("لا مواعيد اليوم.")}</div>}
           </div>
         </div>
 
@@ -341,14 +341,14 @@ function DoctorDashboard({ go, user }){
         <div style={{display:"flex",flexDirection:"column",gap:18}}>
           <div className="card card-pad">
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <div className="h2">قائمة مرضاي</div>
-              <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("patients")}>عرض الكل <I.ArrowRight size={12}/></button>
+              <div className="h2">{tt("قائمة مرضاي")}</div>
+              <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("patients")}>{tt("عرض الكل")} <I.ArrowRight size={12}/></button>
             </div>
             <div className="tbl-scroll">
-            <table className="tbl" style={{margin:"-4px 0"}}>
-              <thead><tr><th>المريض</th><th>التشخيص</th><th>متبقٍ</th><th>الدفع</th></tr></thead>
+            <CardTable style={{margin:"-4px 0"}}>
+              <thead><tr><th>{tt("المريض")}</th><th>{tt("التشخيص")}</th><th>{tt("متبقٍ")}</th><th>{tt("الدفع")}</th></tr></thead>
               <tbody>
-                {myPatients.length===0 && <tr><td colSpan={4} className="tbl-empty">لا مرضى تحت رعايتك بعد.</td></tr>}
+                {myPatients.length===0 && <tr><td colSpan={4} className="tbl-empty">{tt("لا مرضى تحت رعايتك بعد.")}</td></tr>}
                 {myPatients.map(p=>(
                   <tr key={p.id} data-clickable="true" tabIndex={0} onClick={()=>go("patients")} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();go("patients");} }}>
                     <td><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av sm">{initialsOf(p.name)}</div><span style={{fontWeight:500}}>{p.name}</span></div></td>
@@ -358,13 +358,13 @@ function DoctorDashboard({ go, user }){
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </CardTable>
             </div>
           </div>
           <div className="card card-pad">
-            <div className="h2" style={{marginBottom:4}}>توزيع الحالات</div>
-            <div className="muted" style={{fontSize:12.5,marginBottom:14}}>مرضاي حسب نوع الإصابة</div>
-            <DonutChart data={caseMix} size={140} centerLabel="مريض" centerValue={String(myPatients.length)}/>
+            <div className="h2" style={{marginBottom:4}}>{tt("توزيع الحالات")}</div>
+            <div className="muted" style={{fontSize:12.5,marginBottom:14}}>{tt("مرضاي حسب نوع الإصابة")}</div>
+            <DonutChart data={caseMix} size={140} centerLabel={tt("مريض")} centerValue={String(myPatients.length)}/>
           </div>
         </div>
       </div>
@@ -377,7 +377,6 @@ function DoctorDashboard({ go, user }){
 // THERAPIST — my day: schedule to run, sessions to log, my caseload
 // ════════════════════════════════════════════════════════════════
 function TherapistDashboard({ go, user }){
-  const me = (window.ROLE_PROFILES||{})["الأخصائي"];
   const myAppts   = scopeAppts(DATA.appts).filter(a=>a.status!=="متاح");
   const done      = myAppts.filter(a=>a.status==="مكتمل");
   const remaining = myAppts.filter(a=>a.status!=="مكتمل");
@@ -387,43 +386,43 @@ function TherapistDashboard({ go, user }){
   return (
     <Page>
       <HomeHeader
-        kicker="جدول يومي"
-        title={<>أهلاً، {user.name.split(" ")[0]} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>💪🏼</span></>}
-        sub={`${todayLabelAr()} — ${myAppts.length} جلسات على جدولك اليوم، ${done.length} مكتملة.`}
-        right={<button className="btn btn-blue" onClick={()=>go("sessions")}><I.Activity size={14}/> سجل جلسة</button>}
+        kicker={tt("جدول يومي")}
+        title={<>{tt("أهلاً، {name}", { name: user.name.split(" ")[0] })} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>💪🏼</span></>}
+        sub={tt("{date} — {n} جلسات على جدولك اليوم، {done} مكتملة.", { date: todayLabelAr(), n: myAppts.length, done: done.length })}
+        right={<button className="btn btn-blue" onClick={()=>go("sessions")}><I.Activity size={14}/> {tt("سجل جلسة")}</button>}
       />
 
       <div className="grid-stats" style={{marginBottom:18}}>
-        <StatCard label="جلسات اليوم" value={String(myAppts.length)} accent="#7BBDE8" icon={<I.Calendar size={15}/>}/>
-        <StatCard label="مكتملة"      value={String(done.length)} delta="مكتمل" deltaKind="up" accent="#3FA984" icon={<I.Check size={15}/>}/>
-        <StatCard label="متبقية"      value={String(remaining.length)} accent="#D49044" icon={<I.Clock size={15}/>}/>
-        <StatCard label="مرضاي"       value={String(myPatients.length)} accent="#7E6BD3" icon={<I.Users size={15}/>}/>
-        <StatCard label="حِملي اليوم"  value={`${meT.load}/${meT.max}`} accent="#3A7FB5" icon={<I.Activity size={15}/>}/>
+        <StatCard label={tt("جلسات اليوم")} value={String(myAppts.length)} accent="#7BBDE8" icon={<I.Calendar size={15}/>}/>
+        <StatCard label={tt("مكتملة")}      value={String(done.length)} delta={tt("مكتمل")} deltaKind="up" accent="#3FA984" icon={<I.Check size={15}/>}/>
+        <StatCard label={tt("متبقية")}      value={String(remaining.length)} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label={tt("مرضاي")}       value={String(myPatients.length)} accent="#7E6BD3" icon={<I.Users size={15}/>}/>
+        <StatCard label={tt("حِملي اليوم")}  value={`${meT.load}/${meT.max}`} accent="#3A7FB5" icon={<I.Activity size={15}/>}/>
       </div>
 
       <div className="rgrid c-lg" style={{"--gtc":"1.3fr 1fr"}}>
         {/* Schedule timeline */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div><div className="h2">جدولي اليوم</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>اضغط لبدء الجلسة وتسجيل الملاحظات</div></div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>التقويم <I.ArrowRight size={12}/></button>
+            <div><div className="h2">{tt("جدولي اليوم")}</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("اضغط لبدء الجلسة وتسجيل الملاحظات")}</div></div>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>{tt("التقويم")} <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {myAppts.map(a=>(
               <ApptRow key={a.id} a={a} right={
-                a.status==="مكتمل" ? <span className="badge b-green"><I.Check size={11}/>تمت</span>
-                : <button className="btn btn-blue" style={{fontSize:12,padding:"6px 10px"}} onClick={()=>go("sessions")}>بدء الجلسة <I.ArrowRight size={11}/></button>
+                a.status==="مكتمل" ? <span className="badge b-green"><I.Check size={11}/>{tt("تمت")}</span>
+                : <button className="btn btn-blue" style={{fontSize:12,padding:"6px 10px"}} onClick={()=>go("sessions")}>{tt("بدء الجلسة")} <I.ArrowRight size={11}/></button>
               }/>
             ))}
-            {myAppts.length===0 && <div className="muted" style={{fontSize:13,padding:"20px 0",textAlign:"center"}}>لا جلسات اليوم.</div>}
+            {myAppts.length===0 && <div className="muted" style={{fontSize:13,padding:"20px 0",textAlign:"center"}}>{tt("لا جلسات اليوم.")}</div>}
           </div>
         </div>
 
         {/* My assigned patients */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div className="h2">مرضاي المسندون</div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("patients")}>عرض الكل <I.ArrowRight size={12}/></button>
+            <div className="h2">{tt("مرضاي المسندون")}</div>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("patients")}>{tt("عرض الكل")} <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {myPatients.map(p=>{

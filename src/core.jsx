@@ -156,7 +156,7 @@ function ChartEmpty({ height }) {
   return (
     <div style={{height, display:"flex", alignItems:"center", justifyContent:"center",
       background:"var(--ink-50)", borderRadius:10, color:"var(--ink-400)", fontSize:12.5}}>
-      لا توجد بيانات بعد
+      {tt("لا توجد بيانات بعد")}
     </div>
   );
 }

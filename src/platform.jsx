@@ -52,88 +52,91 @@
   };
   const INVITABLE = ["pending_activation", "active"];
 
+  // Labels are shown through tt() (src/i18n.jsx); the keys of these maps
+  // are the stored codes and never change with the language.
   const ORG_STATUS = {
-    draft: ["مسودة", "b-grey"],
-    pending_activation: ["بانتظار التفعيل", "b-amber"],
-    active: ["نشطة", "b-green"],
-    suspended: ["موقوفة", "b-red"],
-    closed: ["مغلقة", "pa-b-dark"],
+    draft: [tt("مسودة"), "b-grey"],
+    pending_activation: [tt("بانتظار التفعيل"), "b-amber"],
+    active: [tt("نشطة"), "b-green"],
+    suspended: [tt("موقوفة"), "b-red"],
+    closed: [tt("مغلقة"), "pa-b-dark"],
   };
   const INVITE_STATUS = {
-    pending: ["معلقة", "b-amber"],
-    expired: ["منتهية", "b-grey"],
-    accepted: ["مقبولة", "b-green"],
-    revoked: ["ملغاة", "pa-b-dark"],
+    pending: [tt("معلقة"), "b-amber"],
+    expired: [tt("منتهية"), "b-grey"],
+    accepted: [tt("مقبولة"), "b-green"],
+    revoked: [tt("ملغاة"), "pa-b-dark"],
   };
-  const MEMBER_STATUS = { invited: ["مدعو", "b-amber"], active: ["نشط", "b-green"], disabled: ["معطّل", "b-red"] };
-  const BRANCH_STATUS = { active: ["نشط", "b-green"], inactive: ["معطّل", "b-grey"] };
-  const PLAN_STATUS = { active: ["نشطة", "b-green"], archived: ["مؤرشفة", "b-grey"] };
-  const CATALOG_STATUS = { active: ["متاح", "b-green"], planned: ["قريبًا", "b-amber"], inactive: ["غير متاح", "b-grey"] };
-  const SUB_STATUS = { trial: "تجريبي", active: "نشط", past_due: "متأخر السداد", cancelled: "ملغى" };
+  const MEMBER_STATUS = { invited: [tt("مدعو"), "b-amber"], active: [tt("نشط"), "b-green"], disabled: [tt("معطّل"), "b-red"] };
+  const BRANCH_STATUS = { active: [tt("نشط"), "b-green"], inactive: [tt("معطّل"), "b-grey"] };
+  const PLAN_STATUS = { active: [tt("نشطة"), "b-green"], archived: [tt("مؤرشفة"), "b-grey"] };
+  const CATALOG_STATUS = { active: [tt("متاح"), "b-green"], planned: [tt("قريبًا"), "b-amber"], inactive: [tt("غير متاح"), "b-grey"] };
+  const SUB_STATUS = { trial: tt("تجريبي"), active: tt("نشط"), past_due: tt("متأخر السداد"), cancelled: tt("ملغى") };
   // Notes the API itself writes on subscriptions (POST /organizations).
-  const SYSTEM_NOTES = { "created with the organization": "سُجّل تلقائيًا عند إنشاء العيادة" };
+  const SYSTEM_NOTES = { "created with the organization": tt("سُجّل تلقائيًا عند إنشاء العيادة") };
   const ROLE_LABEL = {
-    admin: "مدير العيادة", receptionist: "موظف استقبال", doctor: "طبيب", therapist: "أخصائي", staff: "موظف",
-    super_admin: "مدير المنصة",
+    admin: tt("مدير العيادة"), receptionist: tt("موظف استقبال"), doctor: tt("طبيب"), therapist: tt("أخصائي"), staff: tt("موظف"),
+    super_admin: tt("مدير المنصة"),
   };
   const ACTION_LABEL = {
-    "organization.create": "إنشاء عيادة",
-    "organization.update": "تعديل بيانات العيادة",
-    "organization.status": "تغيير حالة العيادة",
-    "organization.modules": "تعديل الوحدات",
-    "organization.activate": "تفعيل العيادة",
-    "organization_seeded": "بذر بيانات التطوير",
-    "dev_seed_applied": "بذر بيانات التطوير",
-    "subscription.set": "تعديل الاشتراك",
-    "plan.create": "إنشاء خطة",
-    "plan.update": "تعديل خطة",
-    "invitation.create": "إرسال دعوة",
-    "invitation.resend": "إعادة إرسال دعوة",
-    "invitation.revoke": "إلغاء دعوة",
-    "invitation.accept": "قبول دعوة",
-    "staff.create": "إضافة موظف",
-    "staff.password_reset": "إعادة تعيين كلمة مرور",
-    "staff.activate": "تفعيل موظف",
-    "staff.deactivate": "تعطيل موظف",
-    "member.update": "تعديل دور عضو أو فروعه",
-    "user.create": "إنشاء حساب",
-    "platform_admin.create": "إنشاء مدير منصة",
-    "platform_admin.grant": "منح صلاحية مدير منصة",
+    "organization.create": tt("إنشاء عيادة"),
+    "organization.update": tt("تعديل بيانات العيادة"),
+    "organization.status": tt("تغيير حالة العيادة"),
+    "organization.modules": tt("تعديل الوحدات"),
+    "organization.activate": tt("تفعيل العيادة"),
+    "organization_seeded": tt("بذر بيانات التطوير"),
+    "dev_seed_applied": tt("بذر بيانات التطوير"),
+    "subscription.set": tt("تعديل الاشتراك"),
+    "plan.create": tt("إنشاء خطة"),
+    "plan.update": tt("تعديل خطة"),
+    "invitation.create": tt("إرسال دعوة"),
+    "invitation.resend": tt("إعادة إرسال دعوة"),
+    "invitation.revoke": tt("إلغاء دعوة"),
+    "invitation.accept": tt("قبول دعوة"),
+    "staff.create": tt("إضافة موظف"),
+    "staff.password_reset": tt("إعادة تعيين كلمة مرور"),
+    "staff.activate": tt("تفعيل موظف"),
+    "staff.deactivate": tt("تعطيل موظف"),
+    "member.update": tt("تعديل دور عضو أو فروعه"),
+    "user.create": tt("إنشاء حساب"),
+    "platform_admin.create": tt("إنشاء مدير منصة"),
+    "platform_admin.grant": tt("منح صلاحية مدير منصة"),
   };
-  const TARGET_LABEL = { organization: "عيادة", invitation: "دعوة", plan: "خطة", platform: "المنصة", staff: "موظف", user: "حساب", member: "عضو" };
+  const TARGET_LABEL = {
+    organization: tt("عيادة"), invitation: tt("دعوة"), plan: tt("خطة"), platform: tt("المنصة"), staff: tt("موظف"), user: tt("حساب"), member: tt("عضو"),
+  };
 
   // ── Small helpers ────────────────────────────────────────────
   const P = (path) => "/platform" + path;
   const qs = (params) => (window.ClinicApi ? window.ClinicApi.query(params) : "");
   const pad = (n) => String(n).padStart(2, "0");
-  function fmtDate(v) {
-    if (!v) return "—";
-    if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) return String(v);
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return String(v);
-    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-  }
-  function fmtDateTime(v) {
-    if (!v) return "—";
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return String(v);
-    return fmtDate(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
-  }
-  function todayIso() { return fmtDate(new Date()); }
-  function plusMonths(months) { const d = new Date(); d.setMonth(d.getMonth() + months); return fmtDate(d); }
-  const fmtLimit = (v, unit) => (v === null || v === undefined ? "غير محدود" : unit ? v + " " + unit : String(v));
+  // A local calendar day as YYYY-MM-DD: the value of <input type=date> and
+  // of the API's date fields. What people read goes through fmtDate().
+  function isoDay(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function todayIso() { return isoDay(new Date()); }
+  function plusMonths(months) { const d = new Date(); d.setMonth(d.getMonth() + months); return isoDay(d); }
+  const fmtLimit = (v, unit) => (v === null || v === undefined ? tt("غير محدود") : unit ? v + " " + unit : String(v));
   // "المقاعد: 3 من 10" / "المقاعد: 3 · بلا حد في الخطة" (a label first,
   // so no Arabic number agreement is needed).
   const usageText = (n, max, label) => (label ? label + ": " : "") + (max === null || max === undefined
-    ? n + " · بلا حد في الخطة"
-    : n + " من " + max);
-  const quote = (code, names) => "«" + ((names && names[code]) || code) + "»";
+    ? tt("{n} · بلا حد في الخطة", { n })
+    : tt("{n} من {max}", { n, max }));
+  // «name» in Arabic, “name” in English; lists joined with the language's comma.
+  const quoted = (text) => (IS_RTL ? "«" + text + "»" : "\u201c" + text + "\u201d");
+  const quote = (code, names) => quoted((names && names[code]) || code);
+  const joinList = (items) => items.join(IS_RTL ? "، " : ", ");
   const codesIn = (text) => String(text || "").match(MODULE_CODE_RE) || [];
+  // Catalog names are data: modules have only name_ar; a specialty shows
+  // its name_en in the English interface when it has one.
+  const specLabel = (s) => (s ? (!IS_RTL && s.name_en) || s.name_ar || s.code : "");
   const namesOf = (modules) => { const m = {}; (modules || []).forEach((x) => { m[x.code] = x.name_ar; }); return m; };
+  const specNamesOf = (specs) => { const m = {}; (specs || []).forEach((s) => { m[s.code] = specLabel(s); }); return m; };
   const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
   // "3 وحدات افتراضية" / "11 وحدة افتراضية" (Arabic number agreement).
-  const modulesCount = (n) => (n === 0 ? "بلا وحدات افتراضية" : n === 1 ? "وحدة افتراضية واحدة" : n === 2 ? "وحدتان افتراضيتان"
-    : n >= 3 && n <= 10 ? n + " وحدات افتراضية" : n + " وحدة افتراضية");
+  const modulesCount = (n) => (n === 0 ? tt("بلا وحدات افتراضية") : n === 1 ? tt("وحدة افتراضية واحدة") : n === 2 ? tt("وحدتان افتراضيتان")
+    : n >= 3 && n <= 10 ? tt("{n} وحدات افتراضية", { n }) : tt("{n} وحدة افتراضية", { n }));
+  // A status label inside a sentence: lower case in English ("a suspended clinic").
+  const statusWord = (map, v) => { const l = (map[v] || [v])[0]; return IS_RTL ? l : String(l).toLowerCase(); };
 
   // The clinic's address. Production: admin.<base> → <slug>.<base>. In
   // development (?platform=1 on localhost) the product domain is shown, and

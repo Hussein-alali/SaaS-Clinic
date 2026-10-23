@@ -206,18 +206,20 @@ function tenantRequest(method, path, body) {
   }));
 }
 
+// The friendly text of an API error code (already in the page language), else
+// `fallback` (Arabic source text, translated here).
 function tenantFriendly(code, fallback) {
   const f = window.friendlyAuthError;
   const text = typeof f === "function" ? f(code, "") : "";
-  return text || fallback || "تعذّر تنفيذ العملية";
+  return text || tt(fallback || "تعذّر تنفيذ العملية");
 }
 
 // UTF-8 length: the API accepts passwords of 6–72 BYTES (bcrypt).
 function tenantPasswordProblem(pw) {
   let bytes = String(pw || "").length;
   try { bytes = new TextEncoder().encode(String(pw || "")).length; } catch (_) {}
-  if (bytes < 6) return "كلمة المرور 6 أحرف على الأقل";
-  if (bytes > 72) return "كلمة المرور طويلة جدًا (72 بايت كحد أقصى — الحرف العربي بايتان)";
+  if (bytes < 6) return tt("كلمة المرور 6 أحرف على الأقل");
+  if (bytes > 72) return tt("كلمة المرور طويلة جدًا (72 بايت كحد أقصى — الحرف العربي بايتان)");
   return "";
 }
 
@@ -302,12 +304,12 @@ function tenantLoginVerdict(res, slug) {
   if (!m) {
     return {
       ok: false, code: "not_a_member",
-      error: "ليست لديك عضوية نشطة في هذه العيادة. إن كانت عضويتك معطّلة فتواصل مع مدير العيادة.",
+      error: tt("ليست لديك عضوية نشطة في هذه العيادة. إن كانت عضويتك معطّلة فتواصل مع مدير العيادة."),
     };
   }
   const user = tenantBuildUser({ user: res.user, staff: res.staff, role: m.role || res.role });
   if (!user) {
-    return { ok: false, code: "role_unsupported", error: "دورك في هذه العيادة لا يتيح استخدام هذه الواجهة بعد — تواصل مع مدير العيادة." };
+    return { ok: false, code: "role_unsupported", error: tt("دورك في هذه العيادة لا يتيح استخدام هذه الواجهة بعد — تواصل مع مدير العيادة.") };
   }
   tenantSetSession(res.session);
   return { ok: true, user, membership: m };
@@ -337,7 +339,7 @@ async function tenantRestoreSession(slug) {
     const user = tenantBuildUser({ user: res.user || fresh.user, staff: res.staff, role: m.role });
     if (!user) {
       await window.signOut();
-      return { state: "none", notice: { kind: "error", text: "دورك في هذه العيادة لا يتيح استخدام هذه الواجهة بعد — تواصل مع مدير العيادة." } };
+      return { state: "none", notice: { kind: "error", text: tt("دورك في هذه العيادة لا يتيح استخدام هذه الواجهة بعد — تواصل مع مدير العيادة.") } };
     }
     return { state: "member", user, session: fresh };
   }
@@ -348,7 +350,7 @@ async function tenantRestoreSession(slug) {
     try { await window.signOut(); } catch (_) {}
     const text = res.reason === "account-inactive" ? res.error
       : (res.code === "org_inactive" ? tenantFriendly("org_inactive")
-        : "ليست لديك عضوية نشطة في هذه العيادة. إن كانت عضويتك معطّلة فتواصل مع مدير العيادة.");
+        : tt("ليست لديك عضوية نشطة في هذه العيادة. إن كانت عضويتك معطّلة فتواصل مع مدير العيادة."));
     return { state: "none", notice: { kind: "error", text } };
   }
   return { state: "error" };
@@ -502,7 +504,7 @@ function TenantLoading({ text }) {
   return (
     <div role="status" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, background: "var(--ink-50)" }}>
       <span className="spin" aria-hidden="true" style={{ width: 18, height: 18, border: "2px solid var(--blue-500)", borderTopColor: "transparent", borderRadius: "50%" }} />
-      <span className="muted" style={{ fontSize: 13.5 }}>{text || "جارٍ التحميل…"}</span>
+      <span className="muted" style={{ fontSize: 13.5 }}>{text || tt("جارٍ التحميل…")}</span>
     </div>
   );
 }
@@ -521,7 +523,7 @@ function TenantBrandPanel({ title, lead, points, brand, subtitle, logo }) {
           : <I.Logo size={36} aria-hidden="true" />}
         <div>
           <div style={{ fontWeight: 600, fontSize: 20, color: "#0F1E2B" }}>{brand || "ClinicSystem EG"}</div>
-          <div style={{ fontSize: 11.5, color: "#1E4A6E" }}>{subtitle || "نظام إدارة العيادات"}</div>
+          <div style={{ fontSize: 11.5, color: "#1E4A6E" }}>{subtitle || tt("نظام إدارة العيادات")}</div>
         </div>
       </div>
       <div className="auth-brand-extra" style={{ maxWidth: 460 }}>
@@ -545,15 +547,35 @@ function TenantBrandPanel({ title, lead, points, brand, subtitle, logo }) {
   );
 }
 
+// The language switch of the entry screens (docs/04 «اللغتان»): always the
+// top end corner of the page — above the form on wide screens, on the brand
+// bar on phones — with a 44px touch target. AuthScreen (src/ui.jsx) can use
+// the same window.TenantLangCorner inside a position:relative page.
+function TenantLangCorner() {
+  return (
+    <div className="tenant-lang" style={{ position: "absolute", top: 12, insetInlineEnd: 12, zIndex: 5 }}>
+      <LangSwitch className="btn btn-secondary"
+        style={{ minHeight: 44, minWidth: 44, padding: "0 14px", justifyContent: "center", fontSize: 13 }} />
+    </div>
+  );
+}
+
 function TenantSplit({ panel, children }) {
   return (
-    <div className="auth-grid">
+    <div className="auth-grid" style={{ position: "relative" }}>
+      <TenantLangCorner />
       {panel}
       <main style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "clamp(20px, 5vw, 40px)" }}>
         <div style={{ width: "100%", maxWidth: 420 }}>{children}</div>
       </main>
     </div>
   );
+}
+
+// «العودة»: the arrow points to where the reading started (right in Arabic).
+function TenantBackIcon() {
+  const Ico = I[IS_RTL ? "ArrowRight" : "ArrowLeft"];
+  return <Ico size={13} />;
 }
 
 // «نسيت كلمة المرور»: one generic answer whatever the address (the API
@@ -567,7 +589,7 @@ function TenantForgotForm({ onBack, initialEmail }) {
   async function submit(e) {
     e && e.preventDefault();
     const value = email.trim();
-    if (!TENANT_EMAIL_RE.test(value)) { setError("أدخل بريدًا إلكترونيًا صحيحًا"); return; }
+    if (!TENANT_EMAIL_RE.test(value)) { setError(tt("أدخل بريدًا إلكترونيًا صحيحًا")); return; }
     setBusy(true); setError("");
     const res = window.sendPasswordReset ? await window.sendPasswordReset(value) : { ok: false, error: tenantFriendly("network_error") };
     setBusy(false);
@@ -577,20 +599,20 @@ function TenantForgotForm({ onBack, initialEmail }) {
 
   return (
     <>
-      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>إعادة تعيين كلمة المرور</h1>
-      <div className="muted" style={{ fontSize: 14, marginBottom: 24 }}>أدخل بريدك المسجّل وسنرسل إليه رابطًا لمرة واحدة.</div>
+      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>{tt("إعادة تعيين كلمة المرور")}</h1>
+      <div className="muted" style={{ fontSize: 14, marginBottom: 24 }}>{tt("أدخل بريدك المسجّل وسنرسل إليه رابطًا لمرة واحدة.")}</div>
       {sent
-        ? <TenantNotice notice={{ kind: "success", text: TENANT_RESET_SENT }} />
+        ? <TenantNotice notice={{ kind: "success", text: tt(TENANT_RESET_SENT) }} />
         : (
           <form onSubmit={submit} noValidate>
-            <TenantField id="forgot-email" label="البريد الإلكتروني" type="email" dir="ltr" autoComplete="email" autoFocus
+            <TenantField id="forgot-email" label={tt("البريد الإلكتروني")} type="email" dir="ltr" autoComplete="email" autoFocus
               value={email} onChange={setEmail} error={error} />
-            <TenantSubmit busy={busy}>إرسال رابط الإعادة</TenantSubmit>
+            <TenantSubmit busy={busy}>{tt("إرسال رابط الإعادة")}</TenantSubmit>
           </form>
         )}
       <button type="button" onClick={onBack}
         style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 13, marginTop: 8, minHeight: 40, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
-        <I.ArrowRight size={13} /> العودة لتسجيل الدخول
+        <TenantBackIcon /> {tt("العودة لتسجيل الدخول")}
       </button>
     </>
   );
