@@ -3,7 +3,27 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Beactive — سيستم عيادة علاج الطبيعي</title>
+<!-- i18n:lang-chunk -->
+<script>
+/* Interface language before anything renders (src/i18n.jsx): ?lang=ar|en,
+   else the saved choice, else Arabic. English also loads its dictionary
+   ahead of the app (the build sets KINETIC_LANG_EN; `npm run dev` loads
+   src/lang/*.jsx with the other scripts). */
+(function () {
+  var l = null;
+  try {
+    var q = /[?&]lang=(ar|en)\b/.exec(location.search);
+    if (q) { l = q[1]; localStorage.setItem("clinicsys.lang", l); }
+    else l = localStorage.getItem("clinicsys.lang");
+  } catch (e) {}
+  if (l !== "en") l = "ar";
+  var h = document.documentElement;
+  h.lang = l; h.dir = l === "ar" ? "rtl" : "ltr";
+  window.CLINICSYS_LANG = l;
+  if (l === "en" && window.KINETIC_LANG_EN) document.write('<script src="' + window.KINETIC_LANG_EN + '"><\/script>');
+})();
+</script>
+<title>ClinicSystem EG</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='9' fill='%237BBDE8'/%3E%3Cpath d='M10 22 L13 14 L16 19 L19 11 L22 22' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='22' cy='22' r='1.6' fill='%23fff'/%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,13 +35,13 @@
     --blue-300:#BDD8E9;
     --blue-100:#E8F1F7;
     --blue-50:#F4F8FB;
-    --blue-700:#3A7FB5;
+    --blue-700:#33709E;   /* was #3A7FB5 (4.3:1 on white); 5.3:1 now */
     --blue-900:#1E4A6E;
 
     /* neutrals (cool) */
     --ink-900:#0F1E2B;
     --ink-700:#2E4458;
-    --ink-500:#647686;
+    --ink-500:#5B6C7C;    /* was #647686 (4.4:1 on --ink-50); >= 4.7:1 on every surface now */
     --ink-400:#8898A8;
     --ink-300:#BFCAD4;
     --ink-200:#DCE3EA;
@@ -58,11 +78,14 @@
 
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;height:100%;background:var(--ink-50);color:var(--ink-900);font-family:var(--font-sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-  body{direction:rtl}
-  /* Flip directional arrows in RTL (continue/back buttons read naturally) */
+  /* The direction comes from <html lang dir> (set before the app runs:
+     rtl in Arabic, ltr in English, src/i18n.jsx); body inherits it. Layout
+     rules use logical properties (inline-start/end) so both read naturally. */
+  /* Arrows in buttons mean forward (ArrowRight) and back (ArrowLeft): drawn
+     for LTR, mirrored only in RTL, so «next» points to where reading goes. */
   [dir="rtl"] .btn svg path[d^="M5 12h14M12 5"],
   [dir="rtl"] .btn svg path[d^="M19 12H5M12 19"]{transform:scaleX(-1);transform-origin:center}
-  /* But not chevrons (used for collapsibles, crumbs) — they auto-flip via dir anyway */
+  /* Chevrons (collapsibles, crumbs) are not mirrored. */
   button{font-family:inherit}
   input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
   a{color:inherit;text-decoration:none}
@@ -100,14 +123,14 @@
   .btn-secondary:hover{background:var(--ink-50);border-color:var(--ink-300)}
   .btn-ghost{background:transparent;color:var(--ink-700)}
   .btn-ghost:hover{background:var(--ink-100)}
-  .btn-blue{background:var(--blue-500);color:#fff;box-shadow:0 4px 14px rgba(123,189,232,.45)}
-  .btn-blue:hover{background:var(--blue-700)}
+  .btn-blue{background:var(--blue-700);color:#fff;box-shadow:0 4px 14px rgba(51,112,158,.28)}
+  .btn-blue:hover{background:var(--blue-900)}
   .btn-icon{padding:8px;border-radius:8px}
 
   /* badges */
   .badge{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:500;line-height:1.4}
-  .b-green{background:var(--green-bg);color:#2C8067}
-  .b-amber{background:var(--amber-bg);color:#9B6321}
+  .b-green{background:var(--green-bg);color:#277660}
+  .b-amber{background:var(--amber-bg);color:#8C5A1E}
   .b-red{background:var(--red-bg);color:#A8443A}
   .b-violet{background:var(--violet-bg);color:#5A4BAD}
   .b-blue{background:var(--blue-100);color:var(--blue-900)}
@@ -121,8 +144,10 @@
     -webkit-appearance:none;-moz-appearance:none;appearance:none;
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23647686' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
     background-repeat:no-repeat;background-position:left 12px center;background-size:12px 12px;
-    padding-left:32px;padding-right:12px;cursor:pointer;font-weight:500;color:var(--ink-900);
+    padding-inline-end:32px;padding-inline-start:12px;cursor:pointer;font-weight:500;color:var(--ink-900);
   }
+  /* the arrow sits at the inline end: left in Arabic, right in English */
+  html[dir="ltr"] select.input{background-position:right 12px center}
   select.input:hover{border-color:var(--ink-300);background-color:var(--ink-50)}
   select.input:focus{background-color:#fff}
   select.input option{font-weight:500;padding:6px 10px;color:var(--ink-900);background:#fff}
@@ -160,7 +185,7 @@
   .tbl tbody tr[data-clickable="true"]{cursor:pointer;transition:background-color .12s ease}
   .tbl tbody tr[data-clickable="true"]:hover td,
   .tbl tbody tr[data-clickable="true"]:focus-within td{background:var(--blue-50)}
-  .tbl tbody tr[data-clickable="true"]:focus-visible{outline:2px solid var(--blue-500);outline-offset:-2px}
+  .tbl tbody tr[data-clickable="true"]:focus-visible{outline:2px solid var(--blue-700);outline-offset:-2px}
 
   /* Scroll wrapper carries the frame + rounds tables that aren't inside a card */
   .tbl-scroll{
@@ -189,11 +214,11 @@
     transition:border-color .15s ease, box-shadow .15s ease, background-color .12s ease;
   }
   .pcombo-trigger:hover:not(.is-disabled){border-color:var(--ink-300)}
-  .pcombo-trigger.is-open,
-  .pcombo-trigger:focus-visible{
+  .pcombo-trigger.is-open{
     outline:none;border-color:var(--blue-500);
     box-shadow:0 0 0 4px rgba(123,189,232,.18);
   }
+  .pcombo-trigger:focus-visible{outline:2px solid var(--blue-700);outline-offset:2px;border-color:var(--blue-700)}
   .pcombo-trigger.is-disabled{background:var(--ink-50);cursor:not-allowed;opacity:.7}
   .pcombo-sel{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
   .pcombo-av{background:var(--blue-100);color:var(--blue-900)}
@@ -302,12 +327,12 @@
   @keyframes shimmer {0%{background-position:200% 0}100%{background-position:-200% 0}}
 
   /* sidebar */
-  .sidebar{width:240px;background:#fff;border-right:1px solid var(--ink-200);display:flex;flex-direction:column;height:100vh;position:sticky;top:0;flex-shrink:0}
+  .sidebar{width:240px;background:#fff;border-inline-end:1px solid var(--ink-200);display:flex;flex-direction:column;height:100vh;position:sticky;top:0;flex-shrink:0}
   .nav-item{display:flex;align-items:center;gap:11px;padding:8px 12px;border-radius:9px;cursor:pointer;color:var(--ink-700);font-size:13.5px;font-weight:500;margin:0 10px;transition:background .12s}
   .nav-item:hover{background:var(--ink-100)}
   .nav-item.active{background:var(--blue-100);color:var(--blue-900)}
   .nav-item.active svg{color:var(--blue-700)}
-  .nav-section{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-400);padding:14px 22px 6px;font-weight:600}
+  .nav-section{font-size:11px;color:var(--ink-500);padding:14px 22px 6px;font-weight:600}
 
   /* topbar */
   .topbar{height:62px;background:#fff;border-bottom:1px solid var(--ink-200);display:flex;align-items:center;padding:0 28px;gap:16px;position:sticky;top:0;z-index:20}
@@ -320,7 +345,7 @@
   .crumb{display:flex;align-items:center;gap:8px;color:var(--ink-500);font-size:12.5px;margin-bottom:8px}
   .crumb svg{color:var(--ink-300)}
 
-  /* toggle */
+  /* toggle (on = knob to the right in both languages, as today) */
   .switch{position:relative;width:34px;height:20px;background:var(--ink-200);border-radius:999px;cursor:pointer;transition:background .15s;flex-shrink:0}
   .switch.on{background:var(--blue-500)}
   .switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -364,8 +389,19 @@
   /* settings / reports side menu — becomes a wrapping tab row on tablet */
   /* (rules live in the 1024px media block below) */
 
-  /* focus ring */
-  button:focus-visible, a:focus-visible, .input:focus-visible{outline:2px solid var(--blue-500);outline-offset:2px}
+  /* focus ring (docs/04): 2px --blue-700, 2px offset, on every keyboard
+     stop — custom role=link/tab/button/option items included. Boxes
+     focused from code (dialogs, tabindex=-1) keep their own outline:none. */
+  button:focus-visible, a:focus-visible, .input:focus-visible,
+  select:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible,
+  [role="button"]:focus-visible, [role="link"]:focus-visible, [role="tab"]:focus-visible,
+  [role="switch"]:focus-visible, [role="radio"]:focus-visible, [role="option"]:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible{outline:2px solid var(--blue-700);outline-offset:2px}
+  /* text for screen readers only */
+  .sr-only{position:absolute !important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  /* «تخطَّ إلى المحتوى»: off screen until it has the keyboard focus */
+  .skip-link{position:fixed;top:8px;inset-inline-start:-9999px;z-index:400;background:#fff;color:var(--blue-900);padding:10px 14px;border-radius:8px;box-shadow:var(--shadow-md);font-weight:600}
+  .skip-link:focus{inset-inline-start:8px}
 
   /* misc */
   hr.sep{border:none;border-top:1px solid var(--ink-200);margin:0}
@@ -422,7 +458,27 @@
 
   /* ── Small tablet / large phone (<= 900px) ──────────────────── */
   @media (max-width: 900px){
-    .auth-grid{grid-template-columns:1fr}
+    .auth-grid{grid-template-columns:1fr;align-content:start}
+  }
+  /* Phones: the entry screens show only the clinic's name above the form,
+     so the form starts in the first screen (docs/04 S02). */
+  @media (max-width: 640px){
+    .auth-brand{padding:16px 20px !important;gap:0 !important}
+    .auth-brand .auth-brand-extra{display:none !important}
+  }
+  /* <CardTable> (src/ui.jsx): one card per row on phones (docs/04, task 3.20) */
+  @media (max-width: 640px){
+    .tbl-scroll > .tbl-cards,.tbl-cards{min-width:0 !important;display:block}
+    .tbl-cards thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .tbl-cards tbody{display:block}
+    .tbl-cards tbody tr{display:block;height:auto;padding:8px 0;border-bottom:1px solid var(--ink-100)}
+    .tbl-cards tbody tr:last-child{border-bottom:none}
+    .tbl-cards tbody td{display:grid;grid-template-columns:max-content minmax(0,1fr);justify-items:end;align-items:center;column-gap:12px;row-gap:0;padding:5px 14px;border-bottom:none;background:transparent !important;text-align:end;min-height:32px;white-space:normal}
+    .tbl-cards tbody td > *{grid-column:2;max-width:100%}
+    .tbl-cards tbody td[data-label]::before{content:attr(data-label);grid-column:1;grid-row:1 / span 4;justify-self:start;color:var(--ink-500);font-size:11.5px;font-weight:500;text-align:start}
+    .tbl-cards tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
+    .tbl-cards tbody td:not([data-label]) > *{grid-column:1}
+    .tbl-cards tbody td[colspan]{display:block;text-align:center}
   }
 
   /* ── Phone (<= 768px) ───────────────────────────────────────── */
@@ -433,12 +489,14 @@
       position:fixed;top:0;bottom:0;inset-inline-start:0;
       width:min(84vw, 300px);z-index:100;
       transform:translateX(100%);       /* RTL: hide off the right edge */
-      transition:transform .22s ease;
+      /* closed: out of the Tab order and the accessibility tree too */
+      visibility:hidden;
+      transition:transform .22s ease, visibility 0s linear .22s;
       box-shadow:none;
       height:100dvh;
     }
-    html[dir="ltr"] .sidebar{transform:translateX(-100%)}
-    .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
+    html[dir="ltr"] .sidebar{transform:translateX(-100%)}   /* LTR: off the left edge */
+    .sidebar.open, html[dir="ltr"] .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg);visibility:visible;transition:transform .22s ease}
     .sidebar-backdrop.open{display:block}
 
     .topbar{height:56px;padding:0 12px;gap:8px}
@@ -471,7 +529,16 @@
     .input{height:42px}
     textarea.input{height:auto;min-height:70px}
     .nav-item{padding:11px 12px}
-    .seg button{padding:8px 12px}
+    /* touch targets >= 40px on tablets; 44px on phones (block below) */
+    .seg button{padding:8px 12px;min-height:40px}
+    .mobile-menu-btn{min-width:40px;min-height:40px}
+    .slot-btn{min-height:40px}
+    .row-menu-item{min-height:40px !important}
+    .switch::after{content:"";position:absolute;inset:-10px -4px}   /* 42x40 hit area, same look */
+    .auth-link{min-height:40px;padding:0 4px !important}
+    input[type="checkbox"],input[type="radio"]{width:20px;height:20px}
+    input.input[type="time"],input.input[type="date"]{min-height:40px}
+    .topbar .topbar-online{display:none}
 
     /* session timeline rows: number+content on row 1, pain+action on row 2 */
     .sess-row{grid-template-columns:56px 1fr}
@@ -490,30 +557,58 @@
     .chat-list{height:auto;max-height:260px}
     .chat-pane{height:460px}
   }
+
+  /* ── Phones (< 640px): touch targets >= 44×44px (docs/04 Accessibility,
+     owner decision 3.27). Hit areas grow; the look stays. ───────────── */
+  @media (max-width: 640px){
+    .btn{min-height:44px}
+    .btn-icon{min-width:44px;min-height:44px}
+    .seg button{min-height:44px}
+    .mobile-menu-btn{min-width:44px;min-height:44px}
+    .slot-btn{min-height:44px}
+    .row-menu-item{min-height:44px !important}
+    .nav-item{min-height:44px}
+    .branch-opt,.branch-action{min-height:44px}
+    .branch-edit{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+    .switch::after{inset:-12px -5px}          /* 44x44 hit area around the 34x20 switch */
+    .auth-link{min-height:44px}
+    .pw-toggle{top:0 !important;width:44px !important;height:44px !important}   /* S02 show password */
+    .input{min-height:44px}
+    input.input[type="time"],input.input[type="date"]{min-height:44px}
+    /* checkbox / radio: a 44px hit area around the 20px box, and the label row */
+    input[type="checkbox"],input[type="radio"]{position:relative}
+    input[type="checkbox"]::after,input[type="radio"]::after{content:"";position:absolute;inset:-12px}
+    label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){min-height:44px}
+  }
 </style>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- SheetJS (xlsx-js-style fork) — styled Excel export for Reports.
-     Community SheetJS can't write cell styles; this fork adds bold
-     headers, borders, column widths and number/currency formats while
-     staying a drop-in `XLSX` global. -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 </head>
 <body>
   <div id="root"></div>
 
+  <script type="text/babel" src="src/lang/en-shell.jsx"></script>
+  <script type="text/babel" src="src/lang/en-tenant.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens1.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens2.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens3.jsx"></script>
+  <script type="text/babel" src="src/lang/en-platform.jsx"></script>
+  <script type="text/babel" src="src/i18n.jsx"></script>
+  <script type="text/babel" src="src/apiclient.jsx"></script>
   <script type="text/babel" src="src/supabase.jsx"></script>
   <script type="text/babel" src="src/core.jsx"></script>
   <script type="text/babel" src="src/ui.jsx"></script>
   <script type="text/babel" src="src/screens1.jsx"></script>
   <script type="text/babel" src="src/roles.jsx"></script>
   <script type="text/babel" src="src/multisession.jsx"></script>
+  <script type="text/babel" src="src/tenant.jsx"></script>
+  <script type="text/babel" src="src/platform.jsx"></script>
   <!-- TEMPORARY: historical patient import page (?import=1). Remove this line
        and src/import.jsx after the paper-record migration is complete. -->
   <script type="text/babel" src="src/import.jsx"></script>
   <script type="text/babel" src="src/screens2.jsx"></script>
+  <script type="text/babel" src="src/screens3.jsx"></script>
 </body>
 </html>

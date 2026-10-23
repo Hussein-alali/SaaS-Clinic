@@ -1,0 +1,23 @@
+# Supabase project config (for the CLI: `supabase link` / `supabase db push`).
+# The project ref is read from `supabase link --project-ref <ref>`; this file
+# only needs to exist for the CLI to recognize the folder as a Supabase project.
+project_id = "kinetic-clinic"
+
+[db]
+# Local dev Postgres port (only used by `supabase start`).
+port = 54322
+major_version = 15
+
+[auth]
+# Turn OFF email confirmation so admin-created staff can log in immediately.
+# Match this in the hosted project: Authentication → Providers → Email.
+enable_confirmations = false
+
+# Admin Edge Functions verify the caller's JWT themselves (and must answer
+# CORS preflights), so the platform-level JWT check is disabled for each.
+[functions.admin-create-user]
+verify_jwt = false
+[functions.admin-reset-password]
+verify_jwt = false
+[functions.admin-set-status]
+verify_jwt = false

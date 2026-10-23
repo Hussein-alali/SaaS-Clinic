@@ -1,8 +1,10 @@
 # Deploying Kinetic (clinksys)
 
-The app is fully static (React + Babel Standalone in the browser). `server.js`
-is a zero-dependency Node static server so any Node host — including Railway —
-can run it with `npm start`.
+The app is fully static. `npm run build` precompiles `src/*.jsx` into
+`dist/` (no Babel in the browser), and `server.js` is a zero-dependency Node
+static server that serves `dist/`, so any Node host — including Railway —
+can run it with `npm start`. Static hosting (e.g. cPanel `public_html`)
+works too: upload the contents of `dist/` only.
 
 ## 1. Prepare Supabase (once)
 
@@ -45,7 +47,11 @@ before the script tags).
 
 1. Push this repository to GitHub.
 2. Railway → **New Project → Deploy from GitHub repo** → pick the repo.
-3. Railway detects Node and runs `npm install` + `npm start` automatically.
+3. Railway detects Node and runs `npm install`, `npm run build` and
+   `npm start` automatically. If the service has a custom Build Command,
+   set it to `npm run build`. The deploy log must show
+   `serving dist/ (production build)` — `serving sources` means the build
+   did not run and visitors get the slow in-browser compile.
 4. **Settings → Networking → Generate Domain** to get the public URL.
 
 No environment variables are required.

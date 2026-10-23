@@ -1,0 +1,10 @@
+-- Supabase seed (runs after migrations on `supabase db reset`).
+--
+-- The only bootstrap this project needs is the admin account, and that
+-- touches auth.users — a one-time step better run explicitly than on every
+-- reset. So this file is intentionally empty; provision the admin by running
+-- the repo-root script once (Dashboard SQL editor or psql):
+--
+--     seed-admin.sql   →   admin login  amir@kinetic.eg / Amir@2026!
+--
+-- (Change the password after first login.)

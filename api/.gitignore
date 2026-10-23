@@ -1,0 +1,5 @@
+node_modules/
+.outbox/
+.outbox-*/
+uploads/
+*.log
