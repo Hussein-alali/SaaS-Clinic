@@ -3,6 +3,11 @@
 //   MAIL_TRANSPORT=smtp  nodemailer over the cPanel SMTP_* account
 //   MAIL_TRANSPORT=file  one JSON file per message in MAIL_OUTBOX_DIR
 //                        (default api/.outbox), for development and tests.
+//
+// Every e-mail is bilingual (docs/02-TRD.md "اللغات"): one message with an
+// Arabic and an English section, the requester's interface language first
+// (the X-Lang header the browser client sends, Arabic by default), because
+// the recipient's own language is not known.
 
 const fs = require('fs');
 const path = require('path');
@@ -15,6 +20,33 @@ const EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-
 
 function isValidEmail(email) {
   return typeof email === 'string' && email.length <= 254 && EMAIL_RE.test(email);
+}
+
+/** The interface language of a request: X-Lang "en" → 'en', anything else → 'ar'. */
+function requestLang(req) {
+  const v = req && typeof req.get === 'function' ? req.get('x-lang') : null;
+  return String(v || '').trim().toLowerCase() === 'en' ? 'en' : 'ar';
+}
+
+const LANG_DIR = { ar: 'rtl', en: 'ltr' };
+
+/**
+ * One message in both languages, `lang` first:
+ *   bilingualMessage('ar', { ar: {subject, text: [lines], html}, en: {...} })
+ *   → { subject: "<ar> / <en> — ClinicSystem EG", text, html }
+ * text: the two sections one after the other; html: one <div dir lang> per
+ * section (the html parts must already be escaped).
+ */
+function bilingualMessage(lang, sections) {
+  const order = lang === 'en' ? ['en', 'ar'] : ['ar', 'en'];
+  const [first, second] = order.map((l) => sections[l]);
+  return {
+    subject: `${first.subject} / ${second.subject} — ClinicSystem EG`,
+    text: order.map((l) => sections[l].text.join('\n')).join('\n\n— — —\n\n'),
+    html: order
+      .map((l) => `<div dir="${LANG_DIR[l]}" lang="${l}" style="text-align:${l === 'ar' ? 'right' : 'left'}">${sections[l].html}</div>`)
+      .join('<hr style="border:none;border-top:1px solid #DCE3EA;margin:20px 0">'),
+  };
 }
 
 function createMailer(config) {
@@ -63,4 +95,4 @@ function createMailer(config) {
   return { send, isValidEmail };
 }
 
-module.exports = { createMailer, isValidEmail };
+module.exports = { createMailer, isValidEmail, requestLang, bilingualMessage };

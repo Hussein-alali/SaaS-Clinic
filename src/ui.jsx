@@ -168,8 +168,10 @@ function BranchSwitcher({ role }) {
         </div>
       )}
 
-      {adding && <BranchFormModal selectAfterAdd onClose={()=>setAdding(false)}/>}
-      {editing && <BranchFormModal editing={editing} onClose={()=>setEditing(null)}/>}
+      {/* At the end of <body>: the sticky sidebar is a stacking context the
+          top bar and the page would otherwise paint over. */}
+      {adding && __rowMenuPortal(<BranchFormModal selectAfterAdd onClose={()=>setAdding(false)}/>)}
+      {editing && __rowMenuPortal(<BranchFormModal editing={editing} onClose={()=>setEditing(null)}/>)}
     </div>
   );
 }
@@ -339,10 +341,10 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
                   </label>
                   {h.open ? (
                     <div style={{display:"flex",alignItems:"center",gap:6,flex:1,minWidth:200}}>
-                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: من", { day: branchDayLabel(d) })} value={h.from} style={{height:32,maxWidth:120}}
+                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: من", { day: branchDayLabel(d) })} value={h.from} style={{height:32,maxWidth:136}}
                         onChange={e=>setDay(d.key, { from: e.target.value })}/>
-                      <span className="muted" style={{fontSize:12}}>{tt("إلى")}</span>
-                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: إلى", { day: branchDayLabel(d) })} value={h.to} style={{height:32,maxWidth:120}}
+                      <span className="muted" style={{fontSize:12}}>{IS_RTL ? "إلى" : "–"}</span>
+                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: إلى", { day: branchDayLabel(d) })} value={h.to} style={{height:32,maxWidth:136}}
                         onChange={e=>setDay(d.key, { to: e.target.value })}/>
                     </div>
                   ) : <span className="muted" style={{fontSize:12}}>{tt("مغلق")}</span>}
@@ -420,7 +422,8 @@ function Sidebar({ active, onNav, role, user, isOpen, onClose }) {
   // ── Custom section groups (admin-defined) ─────────────────────
   const customGroups = {};
   customs.filter(s=>s.visible!==false).forEach(s=>{
-    const g = s.group || tt("مخصص");
+    // «مخصص» is the stored default group (src/supabase.jsx): shown translated.
+    const g = (!s.group || s.group === "مخصص") ? tt("مخصص") : s.group;
     if(!customGroups[g]) customGroups[g] = [];
     const iconName = CUSTOM_ICON_WHITELIST.has(s.icon) ? s.icon : "Layers";
     const Ico = I[iconName] || I.Layers;
@@ -2009,7 +2012,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
                   <input id="login-password" className="input" type={showPw?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>{ setPw(e.target.value); if (badField === "pw") setBadField(""); }}
                     aria-invalid={badField === "pw" ? "true" : undefined} aria-describedby={badField === "pw" ? "login-notice" : undefined}
                     style={{height:42,paddingRight:42,borderColor:badField === "pw" ? "var(--red)" : undefined}}/>
-                  <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} aria-pressed={showPw ? "true" : "false"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:1,top:1,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",padding:0,border:"none",borderRadius:9,background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
+                  <button type="button" className="pw-toggle" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} aria-pressed={showPw ? "true" : "false"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:1,top:1,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",padding:0,border:"none",borderRadius:9,background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
                     <I.Eye size={15}/>
                   </button>
                 </div>

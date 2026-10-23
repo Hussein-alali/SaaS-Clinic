@@ -678,10 +678,12 @@ test("receptionist and doctor get neither the branches screen nor staff manageme
   await expect(page.getByRole("button", { name: "إدارة الفروع" })).toHaveCount(0);
   await expect(page.locator("[role=listbox] button")).toHaveCount(0); // no «تعديل» per branch
   await picker(page).click();
-  // A link to the screen falls back to the role's home page.
+  // A link to the screen says the role may not open it (task 3.11) and
+  // keeps the address; the button goes back to the role's home page.
   await page.goto("/?org=demo-physio#/branches");
   await expect(sidebar(page)).toBeVisible();
-  await expect(page).not.toHaveURL(/#\/branches$/);
+  await expect(page.getByRole("alert")).toContainText("ليست لديك صلاحية لهذه الصفحة");
+  await expect(page).toHaveURL(/#\/branches$/);
   await expect(page.locator("[data-branch-card]")).toHaveCount(0);
   for (const path of ["/api/org/members", "/api/org/usage", "/api/org/invitations"]) {
     const r = await page.request.get(path, { headers: { "X-Org-Slug": "demo-physio" } });

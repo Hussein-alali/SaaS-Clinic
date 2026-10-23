@@ -496,9 +496,15 @@ test('platform invitations for any clinic: first admin of a pending clinic activ
     console.error = origError;
   }
   assert.deepEqual((await sa.get(url)).body.map((i) => i.email_status), ['failed']);
-  const resent = await sa.post(`${url}/${res.body.invitation.id}/resend`, {});
+  const resent = await sa.post(`${url}/${res.body.invitation.id}/resend`, {}, { 'x-lang': 'en' });
   assert.equal(resent.status, 200);
   assert.deepEqual([resent.body.email_sent, resent.body.invitation.email_status], [true, 'sent']);
+  // Bilingual e-mails, the Super Admin's interface language (X-Lang) first.
+  const [firstMail, resentMail] = h.outbox().filter((m) => m.to === 'first.admin@demo-pending.test');
+  assert.match(firstMail.subject, /^دعوة للانضمام إلى .+ \/ Invitation to join .+ — ClinicSystem EG$/);
+  assert.match(firstMail.text, /بدور: مدير العيادة\.[\s\S]* as Clinic admin\./);
+  assert.match(resentMail.subject, /^Invitation to join .+ \/ دعوة للانضمام إلى .+ — ClinicSystem EG$/);
+  assert.match(resentMail.html, /^<div dir="ltr" lang="en"/);
   assert.equal((await sa.get(`/api/platform/organizations/${ORG.pending}`)).body.invitations[0].email_status, 'sent');
   const token = tokenFor('first.admin@demo-pending.test');
   assert.equal(h.outbox().filter((m) => m.to === 'first.admin@demo-pending.test').length, 2);

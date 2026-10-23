@@ -271,6 +271,32 @@ test('password reset: 204 always, hashed single-use token valid 1 hour, link to 
   assert.equal((await h.login(USER.resetter.email, { password: 'Reset#Pass1', ip: '10.8.0.3' })).res.status, 200);
 });
 
+test('password reset e-mail: Arabic and English in one message, the requester\'s language (X-Lang) first', async () => {
+  const sent = {};
+  for (const [lang, ip] of [['ar', '10.8.1.1'], ['en', '10.8.1.2']]) {
+    const before = h.outbox().length;
+    const res = await h.client({ ip }).post('/api/auth/reset/request', { email: USER.physioDoctor.email }, lang === 'en' ? { 'x-lang': 'en' } : {});
+    assert.equal(res.status, 204);
+    await h.app.locals.drain();
+    const mails = await waitFor(() => (h.outbox().length > before ? h.outbox() : null));
+    assert.ok(mails, `reset e-mail (${lang})`);
+    sent[lang] = mails[mails.length - 1];
+    assert.equal(sent[lang].to, USER.physioDoctor.email);
+  }
+  const { ar, en } = sent;
+  assert.equal(ar.subject, 'إعادة تعيين كلمة المرور / Reset your password — ClinicSystem EG');
+  assert.equal(en.subject, 'Reset your password / إعادة تعيين كلمة المرور — ClinicSystem EG');
+  assert.ok(ar.text.indexOf('طلبتَ إعادة تعيين') < ar.text.indexOf('You asked to reset'), 'Arabic first by default');
+  assert.ok(en.text.indexOf('You asked to reset') < en.text.indexOf('طلبتَ إعادة تعيين'), 'English first for X-Lang: en');
+  assert.match(ar.html, /^<div dir="rtl" lang="ar"[^>]*>.*<\/div><hr[^>]*><div dir="ltr" lang="en"[^>]*>.*<\/div>$/s);
+  assert.match(en.html, /^<div dir="ltr" lang="en"[^>]*>.*<\/div><hr[^>]*><div dir="rtl" lang="ar"[^>]*>.*<\/div>$/s);
+  for (const mail of [ar, en]) {
+    const links = mail.text.match(new RegExp(`http://localhost:${h.port}/\\?reset=[A-Za-z0-9_-]+`, 'g'));
+    assert.equal(links.length, 2, 'the link in both sections');
+    assert.equal(links[0], links[1]);
+  }
+});
+
 test('password reset: expired and unknown tokens are refused', async () => {
   const token = crypto.randomBytes(32).toString('base64url');
   await h.sql("insert into auth.password_reset_tokens (token_hash, user_id, expires_at) values ($1, $2, now() - interval '1 minute')", [

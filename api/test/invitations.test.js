@@ -435,3 +435,34 @@ test('a slow e-mail: answered null, stored once delivered (after the answer); an
   await Promise.all(tasks.splice(0));
   assert.equal((await stateOf()).email_status, 'pending');
 });
+
+test('invitation e-mail: Arabic and English in one message, the inviting admin\'s language (X-Lang) first', async () => {
+  const admin = await physioAdmin();
+  const last = (to) => h.outbox().filter((m) => m.to === to).pop();
+  const ar = await admin.post('/api/org/invitations', { email: 'bilingual.ar@demo-physio.test', role: 'receptionist', branch_ids: [BRANCH.physio1] });
+  assert.equal(ar.status, 201, ar.text);
+  const en = await admin.post('/api/org/invitations', { email: 'bilingual.en@demo-physio.test', role: 'receptionist', branch_ids: [BRANCH.physio1] }, { 'x-lang': 'en' });
+  assert.equal(en.status, 201, en.text);
+
+  const a = last('bilingual.ar@demo-physio.test');
+  assert.match(a.subject, /^دعوة للانضمام إلى عيادة العلاج الطبيعي التجريبية \/ Invitation to join عيادة العلاج الطبيعي التجريبية — ClinicSystem EG$/);
+  assert.ok(a.text.indexOf('تمت دعوتك') < a.text.indexOf('You have been invited'), 'Arabic first by default');
+  assert.match(a.text, /بدور: موظف استقبال\./);
+  assert.match(a.text, / as Receptionist\./);
+  assert.match(a.html, /^<div dir="rtl" lang="ar"[^>]*>.*<\/div><hr[^>]*><div dir="ltr" lang="en"[^>]*>.*<\/div>$/s);
+  const links = a.text.match(/https?:\/\/\S+/g);
+  assert.equal(links.length, 2);
+  assert.equal(links[0], links[1], 'one link, in both sections');
+  assert.equal((a.html.match(/<a href="/g) || []).length, 2);
+
+  const e = last('bilingual.en@demo-physio.test');
+  assert.match(e.subject, /^Invitation to join .+ \/ دعوة للانضمام إلى .+ — ClinicSystem EG$/);
+  assert.ok(e.text.indexOf('You have been invited') < e.text.indexOf('تمت دعوتك'), 'English first for X-Lang: en');
+  assert.match(e.html, /^<div dir="ltr" lang="en"[^>]*>.*<\/div><hr[^>]*><div dir="rtl" lang="ar"[^>]*>.*<\/div>$/s);
+
+  // A re-send follows the language of whoever re-sends it.
+  const re = await admin.post(`/api/org/invitations/${ar.body.invitation.id}/resend`, {}, { 'x-lang': 'en' });
+  assert.equal(re.status, 200, re.text);
+  assert.match(last('bilingual.ar@demo-physio.test').subject, /^Invitation to join /);
+  for (const r of [ar, en]) assert.equal((await admin.del(`/api/org/invitations/${r.body.invitation.id}`)).status, 204);
+});

@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const path = require('path');
-const { createMailer, isValidEmail } = require('../src/mailer');
+const { createMailer, isValidEmail, requestLang, bilingualMessage } = require('../src/mailer');
 const { FailureLimiter } = require('../src/auth');
 
 /** Just enough SMTP to accept one plain-text message (no TLS, no auth). */
@@ -115,4 +115,30 @@ test('FailureLimiter: sliding window per key, retry-after, reset, bounded memory
   assert.equal(lim.retryAfter('k', t0 + 1001), 0);
   for (let i = 0; i < 20; i++) lim.fail(`key${i}`, t0);
   assert.ok(lim.hits.size <= 5, 'old keys are dropped');
+});
+
+test('bilingualMessage: Arabic and English in one message, the requested language first (Arabic by default)', () => {
+  const sections = {
+    ar: { subject: 'عنوان', text: ['سطر عربي', 'سطر ثان'], html: '<p>عربي</p>' },
+    en: { subject: 'Title', text: ['English line'], html: '<p>English</p>' },
+  };
+  const ar = bilingualMessage('ar', sections);
+  assert.equal(ar.subject, 'عنوان / Title — ClinicSystem EG');
+  assert.equal(ar.text, 'سطر عربي\nسطر ثان\n\n— — —\n\nEnglish line');
+  assert.match(ar.html, /^<div dir="rtl" lang="ar"[^>]*><p>عربي<\/p><\/div><hr[^>]*><div dir="ltr" lang="en"[^>]*><p>English<\/p><\/div>$/);
+  const en = bilingualMessage('en', sections);
+  assert.equal(en.subject, 'Title / عنوان — ClinicSystem EG');
+  assert.equal(en.text, 'English line\n\n— — —\n\nسطر عربي\nسطر ثان');
+  assert.match(en.html, /^<div dir="ltr" lang="en"[^>]*><p>English<\/p><\/div><hr[^>]*><div dir="rtl" lang="ar"[^>]*><p>عربي<\/p><\/div>$/);
+  assert.deepEqual(bilingualMessage(undefined, sections), ar);
+  assert.deepEqual(bilingualMessage('fr', sections), ar);
+});
+
+test('requestLang: X-Lang "en" is English, anything else (or nothing) Arabic', () => {
+  const req = (v) => ({ get: (name) => (String(name).toLowerCase() === 'x-lang' ? v : undefined) });
+  assert.equal(requestLang(req('en')), 'en');
+  assert.equal(requestLang(req(' EN ')), 'en');
+  for (const v of ['ar', 'fr', '', undefined, 'en-US']) assert.equal(requestLang(req(v)), 'ar', String(v));
+  assert.equal(requestLang(null), 'ar');
+  assert.equal(requestLang({}), 'ar');
 });

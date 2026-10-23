@@ -16,7 +16,7 @@ const { HttpError, badRequest, forbidden, notFound, unauthorized, isPgError } = 
 const { writeAudit, PLATFORM_AUDIT_TABLES } = require('../audit');
 const members = require('../members');
 const invites = require('../invites');
-const { isValidEmail } = require('../mailer');
+const { isValidEmail, requestLang } = require('../mailer');
 const P = require('../platform');
 
 const router = express.Router();
@@ -70,9 +70,10 @@ async function loadOrg(db, id, { client = null, lock = false } = {}) {
 }
 
 /** Sends an invitation e-mail after the transaction committed and stores
- *  its outcome on the row (email_status). */
+ *  its outcome on the row (email_status). Bilingual, the Super Admin's
+ *  interface language (X-Lang) first. */
 async function mailInvitation(req, org, invitation, token) {
-  return invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
+  return invites.sendInvitationEmail(req.app.locals, { org, invitation, token, lang: requestLang(req) });
 }
 
 function parseDate(value, field) {

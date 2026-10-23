@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const auth = require('../auth');
-const { isValidEmail } = require('../mailer');
+const { isValidEmail, requestLang, bilingualMessage } = require('../mailer');
 
 const router = express.Router();
 
@@ -93,7 +93,39 @@ router.patch('/profile', auth.requireSession, async (req, res) => {
   res.json({ user: auth.publicUser(rows[0]) });
 });
 
-async function sendResetEmail(app, email) {
+/** The reset e-mail: {subject, text, html}, both languages, `lang` first. */
+function resetMessage(link, lang) {
+  const a = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return bilingualMessage(lang, {
+    ar: {
+      subject: 'إعادة تعيين كلمة المرور',
+      text: [
+        'طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.',
+        `افتح الرابط التالي خلال ساعة واحدة: ${link}`,
+        'إن لم تطلب ذلك فتجاهل هذه الرسالة.',
+      ],
+      html:
+        '<p>طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.</p>' +
+        `<p><a href="${a}">إعادة تعيين كلمة المرور</a> (صالح لمدة ساعة واحدة)</p>` +
+        '<p>إن لم تطلب ذلك فتجاهل هذه الرسالة.</p>',
+    },
+    en: {
+      subject: 'Reset your password',
+      text: [
+        'You asked to reset your ClinicSystem EG password.',
+        `Open this link within one hour: ${link}`,
+        'If you did not ask for this, ignore this e-mail.',
+      ],
+      html:
+        '<p>You asked to reset your ClinicSystem EG password.</p>' +
+        `<p><a href="${a}">Reset your password</a> (valid for one hour)</p>` +
+        '<p>If you did not ask for this, ignore this e-mail.</p>',
+    },
+  });
+}
+
+// lang: the requester's interface language (X-Lang), first in the e-mail.
+async function sendResetEmail(app, email, lang) {
   const { config, db, mailer, resetLimiter } = app.locals;
   const { rows } = await db.query("select id, email from auth.users where lower(email) = lower($1) and status = 'active'", [email]);
   const user = rows[0];
@@ -109,23 +141,7 @@ async function sendResetEmail(app, email) {
     [auth.sha256(token), user.id],
   );
   const link = `${config.publicBaseUrl}/?reset=${encodeURIComponent(token)}`;
-  await mailer.send({
-    to: user.email,
-    subject: 'إعادة تعيين كلمة المرور — ClinicSystem EG',
-    text: [
-      'طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.',
-      `افتح الرابط التالي خلال ساعة واحدة: ${link}`,
-      'إن لم تطلب ذلك فتجاهل هذه الرسالة.',
-      '',
-      'You asked to reset your ClinicSystem EG password.',
-      `Open this link within one hour: ${link}`,
-      'If you did not ask for this, ignore this e-mail.',
-    ].join('\n'),
-    html:
-      '<div dir="rtl"><p>طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.</p>' +
-      `<p><a href="${link}">إعادة تعيين كلمة المرور</a> (صالح لمدة ساعة واحدة)</p>` +
-      '<p>إن لم تطلب ذلك فتجاهل هذه الرسالة.</p></div>',
-  });
+  await mailer.send({ to: user.email, ...resetMessage(link, lang) });
 }
 
 router.post('/reset/request', async (req, res) => {
@@ -140,7 +156,8 @@ router.post('/reset/request', async (req, res) => {
   // 204 always (contract), whether or not the address is valid or has an
   // account; the lookup and the e-mail happen after the response, so the
   // timing does not tell either.
-  if (isValidEmail(email)) req.app.locals.background(() => sendResetEmail(req.app, email));
+  const lang = requestLang(req);
+  if (isValidEmail(email)) req.app.locals.background(() => sendResetEmail(req.app, email, lang));
   res.status(204).end();
 });
 

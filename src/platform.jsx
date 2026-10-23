@@ -137,6 +137,11 @@
     : n >= 3 && n <= 10 ? tt("{n} وحدات افتراضية", { n }) : tt("{n} وحدة افتراضية", { n }));
   // A status label inside a sentence: lower case in English ("a suspended clinic").
   const statusWord = (map, v) => { const l = (map[v] || [v])[0]; return IS_RTL ? l : String(l).toLowerCase(); };
+  // One Arabic word, two English meanings: the dictionaries are shared, so a
+  // word another screen already uses differently gets an empty {placeholder}
+  // in its key here — the Arabic stays exactly the same, the English has its
+  // own entry: tt("الهدف{audit}", { audit: "" }) → «الهدف» / "Target" (not a
+  // treatment "Goal"); tt("إلغاء{revoke}", { revoke: "" }) → "Revoke".
 
   // The clinic's address. Production: admin.<base> → <slug>.<base>. In
   // development (?platform=1 on localhost) the product domain is shown, and
@@ -1701,7 +1706,7 @@
                         {open && canInvite && (
                           <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
                             <Btn kind="ghost" busy={rowBusy === inv.id} onClick={() => resend(inv)} aria-label={tt("إعادة إرسال الدعوة إلى {email}", { email: inv.email })}>{tt("إعادة الإرسال")}</Btn>
-                            <Btn kind="ghost" disabled={rowBusy === inv.id} onClick={() => setRevoke(inv)} aria-label={tt("إلغاء الدعوة إلى {email}", { email: inv.email })}>{tt("إلغاء")}</Btn>
+                            <Btn kind="ghost" disabled={rowBusy === inv.id} onClick={() => setRevoke(inv)} aria-label={tt("إلغاء الدعوة إلى {email}", { email: inv.email })}>{tt("إلغاء{revoke}", { revoke: "" })}</Btn>
                           </div>
                         )}
                       </td>
@@ -2148,7 +2153,7 @@
                 {showOrg && <th>{tt("العيادة")}</th>}
                 <th>{tt("المستخدم")}</th>
                 <th>{tt("العملية")}</th>
-                {!compact && <th>{tt("الهدف")}</th>}
+                {!compact && <th>{tt("الهدف{audit}", { audit: "" })}</th>}
                 {!compact && <th><span className="pa-sr">{tt("التفاصيل")}</span></th>}
               </tr>
             </thead>
@@ -2686,7 +2691,7 @@
   const PLATFORM_CSS = `
 .pa-app{min-height:100vh;min-height:100dvh;background:var(--ink-50)}
 .pa-root{display:flex;min-height:100vh;min-height:100dvh}
-.pa-sidebar{border-right:none;border-left:1px solid var(--ink-200);padding-bottom:12px}
+.pa-sidebar{border-inline-start:none;border-inline-end:1px solid var(--ink-200);padding-bottom:12px}
 .pa-brand{display:flex;align-items:center;gap:10px;padding:18px 18px 8px}
 .pa-sidebar nav{display:flex;flex-direction:column;gap:2px}
 .pa-userbox{display:flex;align-items:center;gap:10px;margin:0 10px;padding:10px;border-top:1px solid var(--ink-100)}
@@ -2694,6 +2699,8 @@
 .pa-page{width:100%;outline:none}
 .pa-skip{position:absolute;inset-inline-start:-9999px;top:8px;z-index:400;background:#fff;padding:8px 12px;border-radius:8px;box-shadow:var(--shadow-md)}
 .pa-skip:focus{inset-inline-start:8px}
+.pa-lang{flex-shrink:0}
+.pa-auth-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .pa-who{font-size:12.5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pa-ellipsis{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pa-nowrap{white-space:nowrap}
@@ -2756,6 +2763,7 @@
 .pa-step-done .pa-step-num{background:var(--green-bg);color:#2C8067}
 .pa-wizard-body{padding:20px 22px}
 .pa-wizard-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--ink-100);background:var(--ink-50);border-radius:0 0 var(--radius-lg) var(--radius-lg)}
+/* The slug row is always dir=ltr (address order), so its corners are physical. */
 .pa-slug{display:flex;align-items:stretch}
 .pa-slug .input{border-top-right-radius:0;border-bottom-right-radius:0;min-width:0}
 .pa-slug-suffix{display:flex;align-items:center;padding:0 12px;border:1px solid var(--ink-200);border-left:none;border-radius:0 10px 10px 0;background:var(--ink-100);color:var(--ink-700);font-size:12.5px;white-space:nowrap}
@@ -2778,9 +2786,9 @@
 .pa-fieldset legend{padding:0 6px;margin-bottom:0}
 .pa-check{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer}
 .pa-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--ink-200)}
-.pa-json{background:var(--ink-900);color:#E6EDF3;border-radius:10px;padding:12px 14px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:50vh;margin:14px 0 0;text-align:left}
-.pa-toasts{position:fixed;top:72px;left:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
-.pa-toast{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--ink-200);border-radius:12px;box-shadow:var(--shadow-lg);padding:11px 12px 11px 14px;font-size:13.5px;animation:popin .2s}
+.pa-json{background:var(--ink-900);color:#E6EDF3;border-radius:10px;padding:12px 14px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:50vh;margin:14px 0 0;text-align:start}
+.pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.pa-toast{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--ink-200);border-radius:12px;box-shadow:var(--shadow-lg);padding-block:11px;padding-inline:12px 14px;font-size:13.5px;animation:popin .2s}
 .pa-toast-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
 .pa-toast-error .pa-toast-dot{background:var(--red)}
 .pa-toast-info .pa-toast-dot{background:var(--blue-700)}
@@ -2799,13 +2807,13 @@
 @media (max-width:768px){
   .pa-hide-sm{display:none}
   .pa-who{display:none}
-  .pa-sidebar{border-left:none}
+  .pa-sidebar{border-inline-end:none}
   .pa-filter{min-width:0;flex:1 1 140px}
   .pa-wizard-body{padding:16px 14px}
   .pa-wizard-foot{padding:12px 14px}
   .pa-kv{grid-template-columns:1fr;gap:2px}
   .pa-kv dd{margin-bottom:8px}
-  .pa-toasts{left:10px;right:10px;top:64px;max-width:none}
+  .pa-toasts{inset-inline:10px;top:64px;max-width:none}
 }
 @media (max-width:640px){
   .pa-app .tbl-scroll{max-height:none;overflow:visible}

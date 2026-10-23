@@ -22,6 +22,7 @@ const { requireOrg } = require('../tenant');
 const { badRequest, forbidden, notFound } = require('../errors');
 const { writeAudit } = require('../audit');
 const invites = require('../invites');
+const { requestLang } = require('../mailer');
 const members = require('../members');
 
 const router = express.Router();
@@ -72,7 +73,8 @@ router.post('/invitations', async (req, res) => {
     return r;
   });
   const org = await currentOrg(db, ctx.orgId);
-  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
+  // Bilingual, the clinic admin's interface language (X-Lang) first.
+  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token, lang: requestLang(req) });
   res.status(201).json({ invitation: invites.describeInvitation(invitation), email_sent: sent });
 });
 
@@ -96,7 +98,8 @@ router.post('/invitations/:id/resend', async (req, res) => {
     return r;
   });
   const org = await currentOrg(db, ctx.orgId);
-  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token });
+  // Bilingual, the clinic admin's interface language (X-Lang) first.
+  const sent = await invites.sendInvitationEmail(req.app.locals, { org, invitation, token, lang: requestLang(req) });
   res.json({ invitation: invites.describeInvitation(invitation), email_sent: sent });
 });
 

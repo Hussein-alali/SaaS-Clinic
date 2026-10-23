@@ -26,7 +26,7 @@ src/catalog.js         table/column/function catalog for /api/data and /api/rpc
 src/data-query.js      SQL builder for /api/data (identifiers validated, values bound)
 src/rpc-whitelist.js   the functions the frontend may call
 src/files.js           paths, signed links, safe download headers
-src/mailer.js          SMTP (nodemailer) or JSON files in .outbox/
+src/mailer.js          SMTP (nodemailer) or JSON files in .outbox/; X-Lang, bilingual messages
 src/static.js          dist/ with SPA fallback
 src/audit.js           writeAudit(): audit_events rows in the same transaction
 src/members.js         memberships, member_branches, staff rows, plan seats, newRecordId()
@@ -154,6 +154,12 @@ composite row, int8, overloads).
 
 All errors: `{"error": {"message", "code"}}`. Every non-GET `/api` request
 needs the header `X-Requested-With: clinicsys` (403 `csrf_header_required`).
+The browser client also sends `X-Lang: ar|en`, the interface language:
+the e-mails a request sends (invitations, password reset) are bilingual,
+Arabic and English in one message (subject `<Arabic> / <English> — ClinicSystem EG`,
+text and HTML in two sections, HTML `dir`/`lang` per section), with the
+requester's language first (Arabic when the header is missing or not `en`).
+Error messages stay English; the frontend shows its own text per `code`.
 
 | Route | Notes |
 |---|---|
@@ -278,7 +284,9 @@ The caller is an **active admin of the current clinic** (Host / `X-Org-Slug`).
   A pending invitation holds a seat (trigger → 422); an expired one is shown
   as `expired`, and re-sending it takes a seat again. The e-mail is sent
   after the commit; `email_sent` is `false` on failure and `null` when SMTP
-  takes more than 10 s (the invitation stays valid either way).
+  takes more than 10 s (the invitation stays valid either way). It is
+  bilingual, the inviting (or re-sending) person's `X-Lang` first, with the
+  role named in both languages (e.g. «موظف استقبال» / Receptionist).
 - **Accept** (`/api/invitations/:token/accept`): one transaction (system
   context). A new e-mail needs `password` (6–72 bytes) and `name`; an
   existing account must give **its own** password (never overwritten;

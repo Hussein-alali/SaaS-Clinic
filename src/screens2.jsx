@@ -2419,14 +2419,27 @@ Object.assign(window, { Payments, Packages, NewInvoiceModal });
 // ===== src/campaigns.jsx =====
 // واتساب الحملة System
 
+// Campaign statuses: the seed and the API store codes ("draft"…), these
+// screens write the Arabic label («جارٍ»…); both are shown by their label.
+const CAMPAIGN_STATUS_AR = { draft: "مسودة", running: "جارٍ", active: "جارٍ", scheduled: "مجدول", completed: "مكتمل" };
+function campaignStatusAr(s) { return CAMPAIGN_STATUS_AR[s] || s; }
+function campaignBadge(s) {
+  const ar = campaignStatusAr(s);
+  return ar==="جارٍ"?"b-green":ar==="مجدول"?"b-blue":ar==="مكتمل"?"b-grey":"b-amber";
+}
+// Ready-made message templates (names are also the builder's lookup keys).
+const CAMPAIGN_TEMPLATE_NAMES = ["تذكير موعد","متابعة ما بعد الجلسة","عرض خاص على الباقات","رسالة رمضان","استطلاع رضا المريض"];
+
 function Campaigns({ go }) {
   const [view, setView] = React.useState("list"); // list | builder | analytics
   const [selected, setSelected] = React.useState(null);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [initialTemplate, setInitialTemplate] = React.useState(null);
+  const [statusFilter, setStatusFilter] = React.useState("الكل");
+  const shownCampaigns = DATA.campaigns.filter(c => statusFilter === "الكل" || campaignStatusAr(c.status) === statusFilter);
 
   if (view === "builder") return <CampaignBuilder initialTemplate={initialTemplate} onCancel={()=>{setInitialTemplate(null);setView("list");}} onSave={()=>{
-    if (window.showToast) window.showToast("تم إطلاق الحملة", "success");
+    if (window.showToast) window.showToast(tt("تم إطلاق الحملة"), "success");
     setInitialTemplate(null);
     setView("list");
   }}/>;
@@ -2436,13 +2449,13 @@ function Campaigns({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>حملات واتساب</span></div>
-          <h1 className="h1">حملات واتساب</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>تواصل مع مرضاك عبر التذكيرات والمتابعات والإعلانات.</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("حملات واتساب")}</span></div>
+          <h1 className="h1">{tt("حملات واتساب")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("تواصل مع مرضاك عبر التذكيرات والمتابعات والإعلانات.")}</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-secondary" onClick={()=>setTemplatesOpen(true)}><I.FileText size={14}/> القوالب</button>
-          <button className="btn btn-blue" onClick={()=>setView("builder")}><I.Plus size={14}/> حملة جديدة</button>
+          <button className="btn btn-secondary" onClick={()=>setTemplatesOpen(true)}><I.FileText size={14}/> {tt("القوالب")}</button>
+          <button className="btn btn-blue" onClick={()=>setView("builder")}><I.Plus size={14}/> {tt("حملة جديدة")}</button>
         </div>
       </div>
 
@@ -2454,33 +2467,32 @@ function Campaigns({ go }) {
         const pct = (a,b)=> b ? `${Math.round(a/b*1000)/10}%` : "—";
         return (
       <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="رسائل مُرسلة"   value={sent.toLocaleString("en-US")} accent="#25D366" icon={<I.WhatsApp size={15}/>}/>
-        <StatCard label="معدل القراءة"             value={pct(read, sent)} accent="#7BBDE8" icon={<I.Eye size={15}/>}/>
-        <StatCard label="معدل الرد"         value={pct(replied, sent)} accent="#7E6BD3" icon={<I.Send size={15}/>}/>
-        <StatCard label="الحملات النشطة"       value={String(DATA.campaigns.filter(c=>c.status==="جارٍ"||c.status==="مجدول").length)} accent="#D8665A" icon={<I.Megaphone size={15}/>}/>
+        <StatCard label={tt("رسائل مُرسلة")}   value={fmtNumber(sent)} accent="#25D366" icon={<I.WhatsApp size={15}/>}/>
+        <StatCard label={tt("معدل القراءة")}             value={pct(read, sent)} accent="#7BBDE8" icon={<I.Eye size={15}/>}/>
+        <StatCard label={tt("معدل الرد")}         value={pct(replied, sent)} accent="#7E6BD3" icon={<I.Send size={15}/>}/>
+        <StatCard label={tt("الحملات النشطة")}       value={String(DATA.campaigns.filter(c=>campaignStatusAr(c.status)==="جارٍ"||campaignStatusAr(c.status)==="مجدول").length)} accent="#D8665A" icon={<I.Megaphone size={15}/>}/>
       </div>
         );
       })()}
 
       <div className="card" style={{overflow:"hidden"}}>
         <div style={{padding:"12px 18px",borderBottom:"1px solid var(--ink-200)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <div className="h3">الحملات</div>
+          <div className="h3">{tt("الحملات")}</div>
           <div style={{flex:1}}/>
-          <div className="seg">
-            <button className="on">الكل</button>
-            <button>جارٍ</button>
-            <button>مجدول</button>
-            <button>مكتمل</button>
-          </div>
+          <Segmented label={tt("حالة الحملة")} value={statusFilter} onChange={setStatusFilter}
+            options={["الكل","جارٍ","مجدول","مكتمل"].map(s => ({ value: s, label: tt(s) }))}/>
         </div>
         <div className="tbl-scroll">
-        <table className="tbl">
-          <thead><tr><th>الحملة</th><th>الجمهور</th><th>مُرسلة</th><th>مقروءة</th><th>ردّ</th><th>القالب</th><th>الجدولة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+        <CardTable>
+          <thead><tr><th>{tt("الحملة")}</th><th>{tt("الجمهور")}</th><th>{tt("مُرسلة")}</th><th>{tt("مقروءة")}</th><th>{tt("ردّ")}</th><th>{tt("القالب")}</th><th>{tt("الجدولة")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
             {DATA.campaigns.length===0 && (
-              <tr><td colSpan={9}><EmptyState icon={<I.Megaphone size={22}/>} title="لا حملات بعد" body="أطلق أول حملة واتساب من زر «حملة جديدة»."/></td></tr>
+              <tr><td colSpan={9}><EmptyState icon={<I.Megaphone size={22}/>} title={tt("لا حملات بعد")} body={tt("أطلق أول حملة واتساب من زر «حملة جديدة».")}/></td></tr>
             )}
-            {DATA.campaigns.map(c=>(
+            {DATA.campaigns.length>0 && shownCampaigns.length===0 && (
+              <tr><td colSpan={9}><div className="tbl-empty"><I.Search size={20}/><div>{tt("لا حملات بهذه الحالة.")}</div></div></td></tr>
+            )}
+            {shownCampaigns.map(c=>(
               <tr key={c.id} data-clickable="true" tabIndex={0} onClick={()=>{setSelected(c);setView("analytics")}} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelected(c);setView("analytics");} }}>
                 <td>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2490,17 +2502,17 @@ function Campaigns({ go }) {
                     <div>
                       <div style={{fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
                         {c.name}
-                        {c.best && <span className="badge b-green" style={{fontSize:10}}><I.Sparkle size={10}/>الأفضل أداءً</span>}
+                        {c.best && <span className="badge b-green" style={{fontSize:10}}><I.Sparkle size={10}/>{tt("الأفضل أداءً")}</span>}
                       </div>
                       <div className="mono" style={{fontSize:11,color:"var(--ink-500)"}}>{c.id}</div>
                     </div>
                   </div>
                 </td>
-                <td className="mono">{c.audience.toLocaleString("en-US")}</td>
-                <td className="mono">{c.sent.toLocaleString("en-US")}</td>
+                <td className="mono">{fmtNumber(c.audience)}</td>
+                <td className="mono">{fmtNumber(c.sent)}</td>
                 <td>
                   <div>
-                    <span className="mono">{c.read.toLocaleString("en-US")}</span>
+                    <span className="mono">{fmtNumber(c.read)}</span>
                     {c.sent>0 && <div style={{height:3,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",marginTop:3,width:80}}>
                       <div style={{height:"100%",width:`${c.read/c.sent*100}%`,background:"var(--blue-500)"}}/>
                     </div>}
@@ -2510,46 +2522,46 @@ function Campaigns({ go }) {
                 <td><span className="pill">{c.template}</span></td>
                 <td><span style={{fontSize:12}}>{c.schedule}</span></td>
                 <td>
-                  <span className={"badge " + (c.status==="جارٍ"?"b-green":c.status==="مجدول"?"b-blue":c.status==="مكتمل"?"b-grey":"b-amber")}>
-                    <span className="dot"></span>{c.status}
+                  <span className={"badge " + campaignBadge(c.status)}>
+                    <span className="dot"></span>{tt(campaignStatusAr(c.status))}
                   </span>
                 </td>
                 <td>
-                  <button className="btn btn-ghost btn-icon" onClick={(e)=>{e.stopPropagation();setSelected(c);setView("analytics")}}><I.Chart size={13}/></button>
+                  <button className="btn btn-ghost btn-icon" title={tt("عرض التحليلات")} aria-label={tt("عرض التحليلات")} onClick={(e)=>{e.stopPropagation();setSelected(c);setView("analytics")}}><I.Chart size={13}/></button>
                   <RowMenu size={13} items={[
-                    { label:"عرض التحليلات", icon:<I.Chart size={13}/>, onClick:()=>{setSelected(c);setView("analytics");} },
-                    { label:"مضاعفة الحملة", icon:<I.Plus size={13}/>, onClick:async()=>{
-                      const clone = { ...c, id: newRecordId((c.id||"CM-")+"-C-"), name: c.name+" — نسخة", status:"مسودة", sent:0, read:0, replied:0 };
+                    { label:tt("عرض التحليلات"), icon:<I.Chart size={13}/>, onClick:()=>{setSelected(c);setView("analytics");} },
+                    { label:tt("مضاعفة الحملة"), icon:<I.Plus size={13}/>, onClick:async()=>{
+                      const clone = { ...c, id: newRecordId((c.id||"CM-")+"-C-"), name: tt("{name} — نسخة", { name: c.name }), status:"مسودة", sent:0, read:0, replied:0 };
                       try { await window.KineticData.upsert("campaigns", clone); }
                       catch (e) { console.warn("clone campaign failed", e); }
-                      if (window.showToast) window.showToast(`تم نسخ الحملة`,"success");
+                      if (window.showToast) window.showToast(tt("تم نسخ الحملة"),"success");
                     }},
-                    { label:c.status==="جارٍ"?"إيقاف مؤقت":"استئناف", icon:<I.X size={13}/>, onClick:async()=>{
-                      const nextStatus = c.status==="جارٍ" ? "مجدول" : "جارٍ";
+                    { label:campaignStatusAr(c.status)==="جارٍ"?tt("إيقاف مؤقت"):tt("استئناف"), icon:<I.X size={13}/>, onClick:async()=>{
+                      const nextStatus = campaignStatusAr(c.status)==="جارٍ" ? "مجدول" : "جارٍ";
                       try { await window.KineticData.upsert("campaigns", { ...c, status: nextStatus }); }
                       catch (e) { console.warn("toggle campaign failed", e); }
-                      if (window.showToast) window.showToast(nextStatus==="جارٍ"?"تم الاستئناف":"تم الإيقاف المؤقت","success");
+                      if (window.showToast) window.showToast(nextStatus==="جارٍ"?tt("تم الاستئناف"):tt("تم الإيقاف المؤقت"),"success");
                     }},
-                    { label:"حذف الحملة", icon:<I.X size={13}/>, danger:true, onClick:async()=>{
-                      if (!window.confirm(`حذف حملة ${c.name}؟`)) return;
+                    { label:tt("حذف الحملة"), icon:<I.X size={13}/>, danger:true, onClick:async()=>{
+                      if (!window.confirm(tt("حذف حملة {name}؟", { name: c.name }))) return;
                       try { await window.KineticData.remove("campaigns", c.id); }
                       catch (e) { console.warn("delete campaign failed", e); }
-                      if (window.showToast) window.showToast("تم حذف الحملة","success");
+                      if (window.showToast) window.showToast(tt("تم حذف الحملة"),"success");
                     }},
                   ]}/>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
         </div>
       </div>
       {templatesOpen && (
-        <Modal title="قوالب الحملات" onClose={()=>setTemplatesOpen(false)}>
-          {["تذكير موعد","متابعة ما بعد الجلسة","عرض خاص على الباقات","رسالة رمضان","استطلاع رضا المريض"].map((t,i)=>(
+        <Modal title={tt("قوالب الحملات")} onClose={()=>setTemplatesOpen(false)}>
+          {CAMPAIGN_TEMPLATE_NAMES.map((t,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"1px solid var(--ink-100)"}}>
-              <span style={{fontSize:13}}>{t}</span>
-              <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>{setInitialTemplate(t);setTemplatesOpen(false);setView("builder");if(window.showToast)window.showToast(`تم تحميل القالب: ${t}`,"success");}}>استخدام</button>
+              <span style={{fontSize:13}}>{tt(t)}</span>
+              <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>{setInitialTemplate(t);setTemplatesOpen(false);setView("builder");if(window.showToast)window.showToast(tt("تم تحميل القالب: {name}", { name: tt(t) }),"success");}}>{tt("استخدام")}</button>
             </div>
           ))}
         </Modal>
@@ -2561,7 +2573,7 @@ function Campaigns({ go }) {
 function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
   const templateNameMap = { "تذكير موعد":1, "متابعة ما بعد الجلسة":2, "عرض خاص على الباقات":3, "رسالة رمضان":3, "استطلاع رضا المريض":0 };
   const [step, setStep] = React.useState(1);
-  const [name, setName] = React.useState(initialTemplate || "متابعة ربع سنوية لمرضى أسفل الظهر");
+  const [name, setName] = React.useState(initialTemplate ? tt(initialTemplate) : tt("متابعة ربع سنوية لمرضى أسفل الظهر"));
   const [template, setTemplate] = React.useState(initialTemplate != null ? (templateNameMap[initialTemplate] || 0) : 0);
   const [previewOpen, setPreviewOpen] = React.useState(false);
   const [filters, setFilters] = React.useState({
@@ -2582,17 +2594,18 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
   );
 
   const templates = [
-    { name:"متابعة ربع سنوية", body:"أهلاً {{first_name}} 👋 it's been a while! How is your {{condition}} feeling? Reply 1 to book a جلسة, 2 to chat مع a therapist." },
-    { name:"تذكير بموعد", body:"أهلاً {{first_name}}, reminder for your جلسة tomorrow at {{time}} مع {{therapist}}. Reply CONFIRM to confirm or RESCHEDULE." },
-    { name:"متابعة بعد العمليات", body:"أهلاً {{first_name}}, how's your recovery? Your therapist {{therapist}} wants to check in. Are you experiencing any discomfort?" },
-    { name:"تهاني عيد الميلاد", body:"Happy birthday {{first_name}}! 🎉 Wishing you a year من pain-free movement. Enjoy 15% off your next package this month." },
+    // The bodies' {{…}} tags are message variables, not tt() placeholders.
+    { name:tt("متابعة ربع سنوية"), body:tt("أهلاً {{first_name}} 👋 it's been a while! How is your {{condition}} feeling? Reply 1 to book a جلسة, 2 to chat مع a therapist.") },
+    { name:tt("تذكير بموعد"), body:tt("أهلاً {{first_name}}, reminder for your جلسة tomorrow at {{time}} مع {{therapist}}. Reply CONFIRM to confirm or RESCHEDULE.") },
+    { name:tt("متابعة بعد العمليات"), body:tt("أهلاً {{first_name}}, how's your recovery? Your therapist {{therapist}} wants to check in. Are you experiencing any discomfort?") },
+    { name:tt("تهاني عيد الميلاد"), body:tt("Happy birthday {{first_name}}! 🎉 Wishing you a year من pain-free movement. Enjoy 15% off your next package this month.") },
   ];
 
   return (
     <Page>
-      <div className="crumb" style={{cursor:"pointer"}} onClick={onCancel}><span>حملات واتساب</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>حملة جديدة</span></div>
-      <h1 className="h1" style={{marginBottom:6}}>إنشاء حملة</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:22}}>ابنِ، استهدف وجدول في 4 خطوات.</div>
+      <div className="crumb" style={{cursor:"pointer"}} onClick={onCancel}><span>{tt("حملات واتساب")}</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{tt("حملة جديدة")}</span></div>
+      <h1 className="h1" style={{marginBottom:6}}>{tt("إنشاء حملة")}</h1>
+      <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("ابنِ، استهدف وجدول في 4 خطوات.")}</div>
 
       <div className="card" style={{padding:18,marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div className="stepper" style={{gap:0,flex:1}}>
@@ -2606,7 +2619,7 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                   display:"flex",alignItems:"center",justifyContent:"center",
                   fontSize:11,fontWeight:600
                 }}>{i+1<step ? <I.Check size={12}/> : i+1}</div>
-                <span className="step-label" style={{fontSize:12.5,fontWeight:i+1===step?600:500,color:i+1===step?"var(--ink-900)":"var(--ink-500)"}}>{s}</span>
+                <span className="step-label" style={{fontSize:12.5,fontWeight:i+1===step?600:500,color:i+1===step?"var(--ink-900)":"var(--ink-500)"}}>{tt(s)}</span>
               </div>
               {i<3 && <div style={{flex:1,minWidth:12,height:1,background:i+1<step?"var(--green)":"var(--ink-200)",margin:"0 14px"}}/>}
             </React.Fragment>
@@ -2618,37 +2631,37 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
         <div className="card card-pad" style={{minHeight:540}}>
           {step===1 && (
             <div>
-              <div className="h2" style={{marginBottom:18}}>الحملة basics</div>
-              <Field label="الاسم" required><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field>
+              <div className="h2" style={{marginBottom:18}}>{tt("الحملة basics")}</div>
+              <Field label={tt("الاسم")} required><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field>
               <div style={{height:14}}/>
-              <Field label="الهدف">
+              <Field label={tt("الهدف")}>
                 <div className="rgrid half-sm" style={{"--gtc":"repeat(4,1fr)",gap:8}}>
                   {["حجوزات","إعادة تفاعل","تذكيرات","إعلانات"].map((g,i)=>(
                     <button key={g} className="btn btn-secondary" style={{justifyContent:"flex-start",padding:12,background:i===1?"var(--blue-50)":"#fff",borderColor:i===1?"var(--blue-500)":"var(--ink-200)"}}>
-                      {g}
+                      {tt(g)}
                     </button>
                   ))}
                 </div>
               </Field>
               <div style={{height:14}}/>
-              <Field label="وصف داخلي"><textarea className="input" style={{height:70,padding:10}} placeholder="ما هدف هذه الحملة؟"/></Field>
+              <Field label={tt("وصف داخلي")}><textarea className="input" style={{height:70,padding:10}} placeholder={tt("ما هدف هذه الحملة؟")}/></Field>
             </div>
           )}
 
           {step===2 && (
             <div>
-              <div className="h2" style={{marginBottom:18}}>الجمهور المستهدف</div>
+              <div className="h2" style={{marginBottom:18}}>{tt("الجمهور المستهدف")}</div>
               <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14}}>
-                <Field label="التشخيص"><input className="input" value={filters.diag} onChange={e=>setFilters({...filters,diag:e.target.value})}/></Field>
-                <Field label="الحالة/نوع الإصابة"><select className="input"><option>أي</option><option>بعد العمليات</option><option>أمراض مزمنة pain</option></select></Field>
-                <Field label="الفئة العمرية"><input className="input" defaultValue="35 – 75"/></Field>
-                <Field label="الجنس"><select className="input" value={filters.gender} onChange={e=>setFilters({...filters,gender:e.target.value})}><option>أي</option><option>أنثى</option><option>ذكر</option></select></Field>
-                <Field label="طبيب"><select className="input"><option>أي</option>{[...new Set(DATA.patients.map(p=>p.dr).filter(d=>d&&d!=="—"))].map(d=><option key={d}>{d}</option>)}</select></Field>
-                <Field label="الأخصائي"><select className="input"><option>أي</option>{DATA.therapists.map(t=><option key={t.id||t.name}>{t.name}</option>)}</select></Field>
-                <Field label="الجلسات المتبقية"><select className="input" value={filters.remaining} onChange={e=>setFilters({...filters,remaining:e.target.value})}><option>أي</option><option>0</option><option>1–2</option><option>≥ 3</option></select></Field>
-                <Field label="آخر زيارة"><select className="input" value={filters.lastVisit} onChange={e=>setFilters({...filters,lastVisit:e.target.value})}><option>آخر 7 أيام</option><option>14+ days</option><option>30+ days</option><option>60+ days</option></select></Field>
-                <Field label="أمراض مزمنة disease"><select className="input"><option>أي</option><option>سكري</option><option>ضغط دم</option></select></Field>
-                <Field label="الدفع status"><select className="input"><option>أي</option><option>مدفوع</option><option>معلّق</option><option>متأخر</option></select></Field>
+                <Field label={tt("التشخيص")}><input className="input" value={filters.diag} onChange={e=>setFilters({...filters,diag:e.target.value})}/></Field>
+                <Field label={tt("الحالة/نوع الإصابة")}><select className="input"><option>{tt("أي")}</option><option>{tt("بعد العمليات")}</option><option>{tt("أمراض مزمنة pain")}</option></select></Field>
+                <Field label={tt("الفئة العمرية")}><input className="input" defaultValue="35 – 75"/></Field>
+                <Field label={tt("الجنس")}><select className="input" value={filters.gender} onChange={e=>setFilters({...filters,gender:e.target.value})}>{["أي","أنثى","ذكر"].map(g => <option key={g} value={g}>{tt(g)}</option>)}</select></Field>
+                <Field label={tt("طبيب")}><select className="input"><option>{tt("أي")}</option>{[...new Set(DATA.patients.map(p=>p.dr).filter(d=>d&&d!=="—"))].map(d=><option key={d}>{d}</option>)}</select></Field>
+                <Field label={tt("الأخصائي")}><select className="input"><option>{tt("أي")}</option>{DATA.therapists.map(t=><option key={t.id||t.name}>{t.name}</option>)}</select></Field>
+                <Field label={tt("الجلسات المتبقية")}><select className="input" value={filters.remaining} onChange={e=>setFilters({...filters,remaining:e.target.value})}>{["أي","0","1–2","≥ 3"].map(v => <option key={v} value={v}>{tt(v)}</option>)}</select></Field>
+                <Field label={tt("آخر زيارة")}><select className="input" value={filters.lastVisit} onChange={e=>setFilters({...filters,lastVisit:e.target.value})}>{["آخر 7 أيام","14+ days","30+ days","60+ days"].map(v => <option key={v} value={v}>{tt(v)}</option>)}</select></Field>
+                <Field label={tt("أمراض مزمنة disease")}><select className="input"><option>{tt("أي")}</option><option>{tt("سكري")}</option><option>{tt("ضغط دم")}</option></select></Field>
+                <Field label={tt("الدفع status")}><select className="input"><option>{tt("أي")}</option><option>{tt("مدفوع")}</option><option>{tt("معلّق")}</option><option>{tt("متأخر")}</option></select></Field>
               </div>
 
               <div style={{padding:14,background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12,marginTop:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
@@ -2656,21 +2669,22 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                   <I.Users size={18}/>
                 </div>
                 <div style={{flex:1,minWidth:200}}>
-                  <div style={{fontWeight:600,fontSize:13.5,color:"var(--blue-900)"}}>هذا الجمهور يشمل <span className="mono">{audiencePatients.length} مريض</span></div>
-                  <div className="muted" style={{fontSize:12,marginTop:2}}>{filters.diag ? `تشخيص: ${filters.diag} · ` : ""}تكلفة تقديرية EGP {(audiencePatients.length * 0.5).toFixed(0)}</div>
+                  <div style={{fontWeight:600,fontSize:13.5,color:"var(--blue-900)"}}>{ttx("هذا الجمهور يشمل {count}", { count: <span className="mono">{tt("{n} مريض", { n: audiencePatients.length })}</span> })}</div>
+                  <div className="muted" style={{fontSize:12,marginTop:2}}>{filters.diag ? tt("تشخيص: {diag}", { diag: filters.diag }) + " · " : ""}{tt("تكلفة تقديرية {cost}", { cost: fmtMoney(Math.round(audiencePatients.length * 0.5)) })}</div>
                 </div>
-                <button className="btn btn-secondary" onClick={()=>setPreviewOpen(true)}>معاينة القائمة</button>
+                <button className="btn btn-secondary" onClick={()=>setPreviewOpen(true)}>{tt("معاينة القائمة")}</button>
               </div>
             </div>
           )}
 
           {step===3 && (
             <div>
-              <div className="h2" style={{marginBottom:18}}>الرسالة</div>
-              <div className="label">القالب</div>
+              <div className="h2" style={{marginBottom:18}}>{tt("الرسالة")}</div>
+              <div className="label">{tt("القالب")}</div>
               <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:10,marginBottom:18}}>
                 {templates.map((t,i)=>(
                   <button key={i} onClick={()=>setTemplate(i)} style={{
+                    // Physical left in both languages: the sample bodies are mostly Latin text.
                     padding:14,textAlign:"left",cursor:"pointer",
                     border:`1px solid ${template===i?"var(--blue-500)":"var(--ink-200)"}`,
                     borderRadius:11,background: template===i?"var(--blue-50)":"#fff",
@@ -2681,26 +2695,26 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                 ))}
               </div>
 
-              <Field label="الرسالة body"><textarea className="input" style={{height:160,padding:14,resize:"vertical",fontSize:13.5,lineHeight:1.55}} defaultValue={templates[template].body}/></Field>
-              <div className="muted" style={{fontSize:11.5,marginTop:6}}>استخدم <span className="mono">{"{{first_name}}"}</span>, <span className="mono">{"{{therapist}}"}</span>, <span className="mono">{"{{condition}}"}</span> للتخصيص.</div>
+              <Field label={tt("الرسالة body")}><textarea className="input" style={{height:160,padding:14,resize:"vertical",fontSize:13.5,lineHeight:1.55}} defaultValue={templates[template].body}/></Field>
+              <div className="muted" style={{fontSize:11.5,marginTop:6}}>{ttx("استخدم {a}, {b}, {c} للتخصيص.", { a: <span className="mono">{"{{first_name}}"}</span>, b: <span className="mono">{"{{therapist}}"}</span>, c: <span className="mono">{"{{condition}}"}</span> })}</div>
 
               <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
-                <button className="btn btn-secondary" style={{fontSize:12}}><I.Image size={13}/> إرفاق صورة</button>
-                <button className="btn btn-secondary" style={{fontSize:12}}><I.FileText size={13}/> إرفاق PDF</button>
-                <button className="btn btn-secondary" style={{fontSize:12}}><I.Plus size={13}/> زر رد سريع</button>
+                <button className="btn btn-secondary" style={{fontSize:12}}><I.Image size={13}/> {tt("إرفاق صورة")}</button>
+                <button className="btn btn-secondary" style={{fontSize:12}}><I.FileText size={13}/> {tt("إرفاق PDF")}</button>
+                <button className="btn btn-secondary" style={{fontSize:12}}><I.Plus size={13}/> {tt("زر رد سريع")}</button>
               </div>
             </div>
           )}
 
           {step===4 && (
             <div>
-              <div className="h2" style={{marginBottom:18}}>الجدولة</div>
-              <Field label="متى ترسل">
+              <div className="h2" style={{marginBottom:18}}>{tt("الجدولة")}</div>
+              <Field label={tt("متى ترسل")}>
                 <div className="rgrid c-sm" style={{"--gtc":"repeat(3,1fr)",gap:10}}>
                   {[
-                    {l:"إرسال الآن",sub:"خلال 5 دقائق"},
-                    {l:"الجدولة one-shot",sub:"اختر تاريخًا ووقتًا"},
-                    {l:"متكررة",sub:"يومي، أسبوعي، شهري"},
+                    {l:tt("إرسال الآن"),sub:tt("خلال 5 دقائق")},
+                    {l:tt("الجدولة one-shot"),sub:tt("اختر تاريخًا ووقتًا")},
+                    {l:tt("متكررة"),sub:tt("يومي، أسبوعي، شهري")},
                   ].map((s,i)=>(
                     <button key={i} className="btn btn-secondary" style={{flexDirection:"column",alignItems:"flex-start",padding:14,background:i===1?"var(--blue-50)":"#fff",borderColor:i===1?"var(--blue-500)":"var(--ink-200)"}}>
                       <div style={{fontWeight:600,fontSize:13.5}}>{s.l}</div>
@@ -2710,15 +2724,15 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                 </div>
               </Field>
               <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14,marginTop:14}}>
-                <Field label="التاريخ"><input className="input" type="date" defaultValue="2026-06-02"/></Field>
-                <Field label="الوقت"><input className="input" type="time" defaultValue="09:00"/></Field>
-                <Field label="المنطقة الزمنية" span={2}><select className="input"><option>Cairo (GMT+2)</option></select></Field>
+                <Field label={tt("التاريخ")}><input className="input" type="date" defaultValue="2026-06-02"/></Field>
+                <Field label={tt("الوقت")}><input className="input" type="time" defaultValue="09:00"/></Field>
+                <Field label={tt("المنطقة الزمنية")} span={2}><select className="input"><option>Cairo (GMT+2)</option></select></Field>
               </div>
 
               <div style={{padding:14,background:"var(--green-bg)",border:"1px solid #BCE0D1",borderRadius:12,marginTop:18,display:"flex",alignItems:"center",gap:14}}>
                 <I.Check size={20} style={{color:"var(--green)"}}/>
                 <div>
-                  <div style={{fontWeight:600,fontSize:13.5,color:"#2C8067"}}>جاهزة للإطلاق</div>
+                  <div style={{fontWeight:600,fontSize:13.5,color:"#2C8067"}}>{tt("جاهزة للإطلاق")}</div>
                   <div className="muted" style={{fontSize:12}}>312 messages will be queued for Jun 2, 09:00 (Cairo) at ~EGP 156 total.</div>
                 </div>
               </div>
@@ -2727,14 +2741,14 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
 
           <div style={{display:"flex",justifyContent:"space-between",marginTop:24,flexWrap:"wrap",gap:10}}>
             <button className="btn btn-secondary" disabled={step===1} onClick={()=>setStep(step-1)} style={{opacity:step===1?.5:1}}>
-              <I.ArrowLeft size={13}/> رجوع
+              <I.ArrowLeft size={13}/> {tt("رجوع")}
             </button>
             <div style={{display:"flex",gap:10}}>
-              <button className="btn btn-ghost" onClick={onCancel}>إلغاء</button>
+              <button className="btn btn-ghost" onClick={onCancel}>{tt("إلغاء")}</button>
               {step<4 ? (
-                <button className="btn btn-blue" onClick={()=>setStep(step+1)}>متابعة <I.ArrowRight size={13}/></button>
+                <button className="btn btn-blue" onClick={()=>setStep(step+1)}>{tt("متابعة")} <I.ArrowRight size={13}/></button>
               ) : (
-                <button className="btn btn-blue" onClick={onSave}><I.Send size={13}/> إطلاق الحملة</button>
+                <button className="btn btn-blue" onClick={onSave}><I.Send size={13}/> {tt("إطلاق الحملة")}</button>
               )}
             </div>
           </div>
@@ -2742,7 +2756,7 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
 
         {/* Live preview */}
         <div>
-          <div className="label">Live preview · واتساب</div>
+          <div className="label">{tt("Live preview · واتساب")}</div>
           <div style={{
             background:"#ECE5DD",
             borderRadius:18, padding:16,
@@ -2755,44 +2769,46 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                 <I.Logo size={20}/>
               </div>
               <div>
-                <div style={{fontSize:13,fontWeight:600,color:"#075E54"}}>عيادة كينيتك</div>
-                <div style={{fontSize:11,color:"#888"}}>متصل</div>
+                <div style={{fontSize:13,fontWeight:600,color:"#075E54"}}>{tt("عيادة كينيتك")}</div>
+                <div style={{fontSize:11,color:"#888"}}>{tt("متصل")}</div>
               </div>
             </div>
+            {/* Chat bubbles: the incoming one sits at the start with its tail
+                corner at the bottom end, mirrored for left-to-right. */}
             <div style={{display:"flex",justifyContent:"flex-start",marginBottom:8}}>
               <div style={{
-                background:"#fff",borderRadius:"12px 12px 12px 4px",
+                background:"#fff",borderRadius:IS_RTL ? "12px 12px 12px 4px" : "12px 12px 4px 12px",
                 padding:"10px 12px",fontSize:13,maxWidth:"86%",
                 boxShadow:"0 1px 1px rgba(0,0,0,.1)",lineHeight:1.45
               }}>
-                أهلاً <strong>{"{{first_name}}"}</strong> 👋<br/>
-                مرّ وقت طويل! كيف حال <strong>{"{{condition}}"}</strong> مؤخرًا؟<br/><br/>
-                اضغط <strong>1</strong> لحجز جلسة<br/>
-                اضغط <strong>2</strong> للتحدث مع أخصائي
-                <div style={{fontSize:10,color:"#888",textAlign:"right",marginTop:6}}>09:00 · ✓✓</div>
+                {ttx("أهلاً {name} 👋", { name: <strong>{"{{first_name}}"}</strong> })}<br/>
+                {ttx("مرّ وقت طويل! كيف حال {condition} مؤخرًا؟", { condition: <strong>{"{{condition}}"}</strong> })}<br/><br/>
+                {ttx("اضغط {key} لحجز جلسة", { key: <strong>1</strong> })}<br/>
+                {ttx("اضغط {key} للتحدث مع أخصائي", { key: <strong>2</strong> })}
+                <div style={{fontSize:10,color:"#888",textAlign:"start",marginTop:6}}>09:00 · ✓✓</div>
               </div>
             </div>
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
-              <div style={{background:"#DCF8C6",borderRadius:"12px 12px 4px 12px",padding:"10px 12px",fontSize:13}}>
-                1 — book a جلسة
-                <div style={{fontSize:10,color:"#888",textAlign:"right",marginTop:6}}>09:04 · ✓✓</div>
+              <div style={{background:"#DCF8C6",borderRadius:IS_RTL ? "12px 12px 4px 12px" : "12px 12px 12px 4px",padding:"10px 12px",fontSize:13}}>
+                {tt("1 — book a جلسة")}
+                <div style={{fontSize:10,color:"#888",textAlign:"start",marginTop:6}}>09:04 · ✓✓</div>
               </div>
             </div>
             <div style={{display:"flex",justifyContent:"flex-start",marginBottom:8}}>
-              <div style={{background:"#fff",borderRadius:"12px 12px 12px 4px",padding:"10px 12px",fontSize:13,maxWidth:"86%",boxShadow:"0 1px 1px rgba(0,0,0,.1)"}}>
-                تمام! {"{{time}}"} مع {"{{therapist}}"}؟<br/>
-                اضغط <strong>نعم</strong> للتأكيد.
-                <div style={{fontSize:10,color:"#888",textAlign:"right",marginTop:6}}>09:04 · ✓</div>
+              <div style={{background:"#fff",borderRadius:IS_RTL ? "12px 12px 12px 4px" : "12px 12px 4px 12px",padding:"10px 12px",fontSize:13,maxWidth:"86%",boxShadow:"0 1px 1px rgba(0,0,0,.1)"}}>
+                {tt("تمام! {time} مع {therapist}؟", { time: "{{time}}", therapist: "{{therapist}}" })}<br/>
+                {ttx("اضغط {yes} للتأكيد.", { yes: <strong>{tt("نعم")}</strong> })}
+                <div style={{fontSize:10,color:"#888",textAlign:"start",marginTop:6}}>09:04 · ✓</div>
               </div>
             </div>
 
-            <div style={{textAlign:"center",fontSize:11,color:"#888",marginTop:20}}>هذه معاينة توضيحية تلقائية</div>
+            <div style={{textAlign:"center",fontSize:11,color:"#888",marginTop:20}}>{tt("هذه معاينة توضيحية تلقائية")}</div>
           </div>
         </div>
       </div>
       {previewOpen && (
-        <Modal title="معاينة جمهور الحملة" onClose={()=>setPreviewOpen(false)}>
-          <div className="muted" style={{fontSize:12,marginBottom:10}}>عرض عيّنة من المرضى المطابقين للفلاتر الحالية:</div>
+        <Modal title={tt("معاينة جمهور الحملة")} onClose={()=>setPreviewOpen(false)}>
+          <div className="muted" style={{fontSize:12,marginBottom:10}}>{tt("عرض عيّنة من المرضى المطابقين للفلاتر الحالية:")}</div>
           <div style={{maxHeight:360,overflowY:"auto"}}>
             {(DATA.patients || []).slice(0,20).map((p,i)=>(
               <div key={p.patient_id||p.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid var(--ink-100)"}}>
@@ -2804,7 +2820,7 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
                 <span className="muted" style={{fontSize:11}}>{p.diagnosis || p.diag || "—"}</span>
               </div>
             ))}
-            {(!DATA.patients || DATA.patients.length===0) && <div className="muted" style={{fontSize:12,padding:14,textAlign:"center"}}>لا يوجد مرضى في قاعدة البيانات بعد.</div>}
+            {(!DATA.patients || DATA.patients.length===0) && <div className="muted" style={{fontSize:12,padding:14,textAlign:"center"}}>{tt("لا يوجد مرضى في قاعدة البيانات بعد.")}</div>}
           </div>
         </Modal>
       )}
@@ -2813,7 +2829,7 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
 }
 
 function CampaignAnalytics({ c, onBack }) {
-  const [status, setStatus] = React.useState(c.status);
+  const [status, setStatus] = React.useState(campaignStatusAr(c.status));
   const flipStatus = (next, msg) => {
     c.status = next;
     setStatus(next);
@@ -2821,52 +2837,48 @@ function CampaignAnalytics({ c, onBack }) {
     if (window.showToast) window.showToast(msg, "success");
   };
   const funnelData = [
-    { label:"مستهدف", v:c.audience, color:"#BDD8E9" },
-    { label:"مُرسلة",     v:c.sent,     color:"#7BBDE8" },
-    { label:"مقروءة",     v:c.read,     color:"#3A7FB5" },
-    { label:"ردّ",  v:c.replied,  color:"#1E4A6E" },
+    { label:tt("مستهدف"), v:c.audience, color:"#BDD8E9" },
+    { label:tt("مُرسلة"),     v:c.sent,     color:"#7BBDE8" },
+    { label:tt("مقروءة"),     v:c.read,     color:"#3A7FB5" },
+    { label:tt("ردّ"),  v:c.replied,  color:"#1E4A6E" },
   ];
-  const timeSeries = [
-    { label:"يوم 1", v:240 }, { label:"يوم 2", v:320 }, { label:"يوم 3", v:280 },
-    { label:"يوم 4", v:340 }, { label:"يوم 5", v:390 }, { label:"يوم 6", v:280 },
-    { label:"يوم 7", v:120 },
-  ];
+  const timeSeries = [240, 320, 280, 340, 390, 280, 120].map((v, i) => ({ label: tt("يوم {n}", { n: i + 1 }), v }));
 
   return (
     <Page>
-      <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}><span>الحملات</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{c.name}</span></div>
+      <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}><span>{tt("الحملات")}</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{c.name}</span></div>
       <div className="page-head">
         <div>
           <div className="h1" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             {c.name}
-            {c.best && <span className="badge b-green"><I.Sparkle size={12}/>الأفضل أداءً</span>}
-            <span className={"badge " + (status==="جارٍ"?"b-green":status==="مجدول"?"b-blue":status==="مكتمل"?"b-grey":"b-amber")}><span className="dot"></span>{status}</span>
+            {c.best && <span className="badge b-green"><I.Sparkle size={12}/>{tt("الأفضل أداءً")}</span>}
+            <span className={"badge " + campaignBadge(status)}><span className="dot"></span>{tt(status)}</span>
           </div>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>{c.id} · {c.schedule} · template "{c.template}"</div>
         </div>
         <div className="page-actions">
           {status==="جارٍ"
-            ? <button className="btn btn-secondary" onClick={()=>flipStatus("مجدول","تم إيقاف الحملة مؤقتًا")}><I.X size={13}/> إيقاف مؤقت</button>
-            : <button className="btn btn-secondary" onClick={()=>flipStatus("جارٍ","تم استئناف الحملة")}><I.Send size={13}/> استئناف</button>}
-          <button className="btn btn-secondary" onClick={()=>onBack&&onBack()}><I.Edit size={13}/> تعديل</button>
-          <button className="btn btn-blue" onClick={()=>flipStatus("جارٍ","تم تشغيل الحملة الآن")}><I.Send size={13}/> تشغيل الآن</button>
+            ? <button className="btn btn-secondary" onClick={()=>flipStatus("مجدول",tt("تم إيقاف الحملة مؤقتًا"))}><I.X size={13}/> {tt("إيقاف مؤقت")}</button>
+            : <button className="btn btn-secondary" onClick={()=>flipStatus("جارٍ",tt("تم استئناف الحملة"))}><I.Send size={13}/> {tt("استئناف")}</button>}
+          <button className="btn btn-secondary" onClick={()=>onBack&&onBack()}><I.Edit size={13}/> {tt("تعديل")}</button>
+          <button className="btn btn-blue" onClick={()=>flipStatus("جارٍ",tt("تم تشغيل الحملة الآن"))}><I.Send size={13}/> {tt("تشغيل الآن")}</button>
         </div>
       </div>
 
       <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="مُرسلة"        value={c.sent.toLocaleString("en-US")}    accent="#7BBDE8" icon={<I.Send size={15}/>}/>
-        <StatCard label="مقروءة"        value={`${(c.read/c.sent*100).toFixed(0)}%`} accent="#3A7FB5" icon={<I.Eye size={15}/>}/>
-        <StatCard label="ردّ"     value={`${(c.replied/c.sent*100).toFixed(1)}%`} accent="#7E6BD3" icon={<I.WhatsApp size={15}/>}/>
-        <StatCard label="تحويلات" value="42" delta="+12" deltaKind="up" accent="#3FA984" icon={<I.Check size={15}/>}/>
+        <StatCard label={tt("مُرسلة")}        value={fmtNumber(c.sent)}    accent="#7BBDE8" icon={<I.Send size={15}/>}/>
+        <StatCard label={tt("مقروءة")}        value={c.sent ? `${(c.read/c.sent*100).toFixed(0)}%` : "—"} accent="#3A7FB5" icon={<I.Eye size={15}/>}/>
+        <StatCard label={tt("ردّ")}     value={c.sent ? `${(c.replied/c.sent*100).toFixed(1)}%` : "—"} accent="#7E6BD3" icon={<I.WhatsApp size={15}/>}/>
+        <StatCard label={tt("تحويلات")} value="42" delta="+12" deltaKind="up" accent="#3FA984" icon={<I.Check size={15}/>}/>
       </div>
 
       <div className="rgrid c-lg" style={{"--gtc":"1.5fr 1fr",marginBottom:18}}>
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:18}}>الرسائل بمرور الوقت</div>
+          <div className="h2" style={{marginBottom:18}}>{tt("الرسائل بمرور الوقت")}</div>
           <AreaChart data={timeSeries} height={220} formatY={v=>v}/>
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:18}}>القمع</div>
+          <div className="h2" style={{marginBottom:18}}>{tt("القمع")}</div>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {funnelData.map((f,i)=>{
               const w = f.v/funnelData[0].v*100;
@@ -2874,7 +2886,7 @@ function CampaignAnalytics({ c, onBack }) {
                 <div key={f.label}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                     <span style={{fontSize:12.5,fontWeight:500}}>{f.label}</span>
-                    <span className="mono" style={{fontSize:12.5}}>{f.v.toLocaleString("en-US")} <span className="muted">({Math.round(w)}%)</span></span>
+                    <span className="mono" style={{fontSize:12.5}}>{fmtNumber(f.v)} <span className="muted">({Math.round(w)}%)</span></span>
                   </div>
                   <div style={{height:24,background:"var(--ink-100)",borderRadius:6,overflow:"hidden"}}>
                     <div style={{height:"100%",width:`${w}%`,background:f.color,transition:"width .3s"}}/>
@@ -2888,12 +2900,12 @@ function CampaignAnalytics({ c, onBack }) {
 
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr"}}>
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:14}}>أفضل الردود</div>
-          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>ستظهر ردود المرضى هنا بعد ربط واتساب للأعمال.</div>
+          <div className="h2" style={{marginBottom:14}}>{tt("أفضل الردود")}</div>
+          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>{tt("ستظهر ردود المرضى هنا بعد ربط واتساب للأعمال.")}</div>
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:14}}>رسائل فاشلة</div>
-          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>لا رسائل فاشلة — تُعرض التسليمات المرتدة هنا بعد ربط واتساب للأعمال.</div>
+          <div className="h2" style={{marginBottom:14}}>{tt("رسائل فاشلة")}</div>
+          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>{tt("لا رسائل فاشلة — تُعرض التسليمات المرتدة هنا بعد ربط واتساب للأعمال.")}</div>
         </div>
       </div>
     </Page>
@@ -2939,65 +2951,65 @@ function useReportOpts() {
 }
 // Human-readable filter list for the Excel header + on-screen summary.
 function reportActiveFilters(f, show, opts, scopeLabel) {
-  const list = [{ label: "الفترة", value: `${f.from || "—"} ← ${f.to || "—"}` }];
-  if (scopeLabel) list.push({ label: "الفرع", value: scopeLabel });
-  if (show.therapist && f.therapist !== "all") list.push({ label: "الأخصائي", value: f.therapist });
-  if (show.doctor && f.doctor !== "all") list.push({ label: "الطبيب", value: f.doctor });
+  const list = [{ label: tt("الفترة"), value: `${f.from || "—"} ${IS_RTL ? "←" : "→"} ${f.to || "—"}` }];
+  if (scopeLabel) list.push({ label: tt("الفرع"), value: scopeLabel });
+  if (show.therapist && f.therapist !== "all") list.push({ label: tt("الأخصائي"), value: f.therapist });
+  if (show.doctor && f.doctor !== "all") list.push({ label: tt("الطبيب"), value: f.doctor });
   if (show.patient && f.patient !== "all") {
     const p = (opts.patients || []).find(x => x.id === f.patient);
-    list.push({ label: "المريض", value: p ? p.name : f.patient });
+    list.push({ label: tt("المريض"), value: p ? p.name : f.patient });
   }
-  if (f.q) list.push({ label: "بحث", value: f.q });
+  if (f.q) list.push({ label: tt("بحث"), value: f.q });
   return list;
 }
 
 // Date-range + entity filter bar with search + Excel export button.
-function ReportFilterBar({ f, set, opts, show, onExport, searchPlaceholder = "بحث…" }) {
+function ReportFilterBar({ f, set, opts, show, onExport, searchPlaceholder = tt("بحث…") }) {
   const uid = React.useId();
   return (
     <div className="card card-pad" style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ minWidth: 140 }}>
-          <label className="label" htmlFor={uid + "from"} style={{ display: "block" }}>من تاريخ</label>
+          <label className="label" htmlFor={uid + "from"} style={{ display: "block" }}>{tt("من تاريخ")}</label>
           <input id={uid + "from"} type="date" className="input" value={f.from} max={f.to || undefined} onChange={e => set("from", e.target.value)} />
         </div>
         <div style={{ minWidth: 140 }}>
-          <label className="label" htmlFor={uid + "to"} style={{ display: "block" }}>إلى تاريخ</label>
+          <label className="label" htmlFor={uid + "to"} style={{ display: "block" }}>{tt("إلى تاريخ")}</label>
           <input id={uid + "to"} type="date" className="input" value={f.to} min={f.from || undefined} onChange={e => set("to", e.target.value)} />
         </div>
         {show.therapist && (
           <div style={{ minWidth: 150 }}>
-            <label className="label" htmlFor={uid + "therapist"} style={{ display: "block" }}>الأخصائي</label>
+            <label className="label" htmlFor={uid + "therapist"} style={{ display: "block" }}>{tt("الأخصائي")}</label>
             <select id={uid + "therapist"} className="input" value={f.therapist} onChange={e => set("therapist", e.target.value)}>
-              <option value="all">كل الأخصائيين</option>
+              <option value="all">{tt("كل الأخصائيين")}</option>
               {opts.therapists.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         )}
         {show.doctor && (
           <div style={{ minWidth: 150 }}>
-            <label className="label" htmlFor={uid + "doctor"} style={{ display: "block" }}>الطبيب</label>
+            <label className="label" htmlFor={uid + "doctor"} style={{ display: "block" }}>{tt("الطبيب")}</label>
             <select id={uid + "doctor"} className="input" value={f.doctor} onChange={e => set("doctor", e.target.value)}>
-              <option value="all">كل الأطباء</option>
+              <option value="all">{tt("كل الأطباء")}</option>
               {opts.doctors.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
         )}
         {show.patient && (
           <div style={{ minWidth: 170 }}>
-            <label className="label" htmlFor={uid + "patient"} style={{ display: "block" }}>المريض</label>
+            <label className="label" htmlFor={uid + "patient"} style={{ display: "block" }}>{tt("المريض")}</label>
             <select id={uid + "patient"} className="input" value={f.patient} onChange={e => set("patient", e.target.value)}>
-              <option value="all">كل المرضى</option>
+              <option value="all">{tt("كل المرضى")}</option>
               {opts.patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         )}
         <div style={{ flex: 1, minWidth: 170 }}>
-          <label className="label" htmlFor={uid + "q"} style={{ display: "block" }}>بحث</label>
+          <label className="label" htmlFor={uid + "q"} style={{ display: "block" }}>{tt("بحث")}</label>
           <input id={uid + "q"} className="input" placeholder={searchPlaceholder} value={f.q} onChange={e => set("q", e.target.value)} />
         </div>
         <button type="button" className="btn btn-blue" onClick={onExport} style={{ whiteSpace: "nowrap" }}>
-          <I.Download size={14} /> تصدير Excel
+          <I.Download size={14} /> {tt("تصدير Excel")}
         </button>
       </div>
     </div>
@@ -3013,32 +3025,32 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
   return (
     <div className="card card-pad">
       {/* Focusable so a keyboard can scroll the wide table on phones. */}
-      <div className="tbl-scroll" role="region" aria-label="جدول النتائج" tabIndex={0}>
-        <table className="tbl report-rows">
+      <div className="tbl-scroll" role="region" aria-label={tt("جدول النتائج")} tabIndex={0}>
+        <CardTable className="report-rows">
           <thead><tr>{columns.map(c => <th key={c.key} style={c.type === "number" || c.type === "currency" ? { textAlign: "start" } : undefined}>{c.label}</th>)}</tr></thead>
           <tbody>
             {view.length === 0 && (
-              <tr><td colSpan={columns.length}><div className="tbl-empty"><I.Search size={20} /><div>{empty || "لا نتائج ضمن عوامل التصفية الحالية."}</div></div></td></tr>
+              <tr><td colSpan={columns.length}><div className="tbl-empty"><I.Search size={20} /><div>{empty || tt("لا نتائج ضمن عوامل التصفية الحالية.")}</div></div></td></tr>
             )}
             {view.map((r, i) => (
               <tr key={r.id || i} data-branch={r.branch_id || undefined}>
                 {columns.map(c => (
                   <td key={c.key} className={(c.type === "number" || c.type === "currency" || /date$/.test(c.key)) ? "mono tnum" : undefined}
                     style={/date$/.test(c.key) || c.type === "currency" ? { whiteSpace: "nowrap" } : undefined}>
-                    {c.render ? c.render(r) : (c.type === "currency" ? `EGP ${(Number(r[c.key]) || 0).toLocaleString("en-US")}` : (r[c.key] == null || r[c.key] === "" ? "—" : r[c.key]))}
+                    {c.render ? c.render(r) : (c.type === "currency" ? fmtMoney(r[c.key]) : (r[c.key] == null || r[c.key] === "" ? "—" : r[c.key]))}
                   </td>
                 ))}
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
       </div>
       {total > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-          <div className="muted" style={{ fontSize: 12 }}>صفحة <span className="mono">{safe}</span> من <span className="mono">{pages}</span> · النتائج: <span className="mono">{total.toLocaleString("en-US")}</span></div>
+          <div className="muted" style={{ fontSize: 12 }}>{ttx("صفحة {page} من {pages} · النتائج: {total}", { page: <span className="mono">{safe}</span>, pages: <span className="mono">{pages}</span>, total: <span className="mono">{fmtNumber(total)}</span> })}</div>
           <div style={{ display: "flex", gap: 4 }}>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe <= 1} onClick={() => setPage(safe - 1)}>السابق</button>
-            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe >= pages} onClick={() => setPage(safe + 1)}>التالي</button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe <= 1} onClick={() => setPage(safe - 1)}>{tt("السابق")}</button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe >= pages} onClick={() => setPage(safe + 1)}>{tt("التالي")}</button>
           </div>
         </div>
       )}
@@ -3078,13 +3090,13 @@ function useReportScope(scope, version) {
     setState(s => ({ ...s, loading: true, error: "" }));
     window.KineticData.listAllBranches(REPORT_SCOPE_TABLES).then(
       tables => { if (n === reqRef.current) setState({ tables, loading: false, error: "" }); },
-      e => { if (n === reqRef.current) setState(s => ({ ...s, loading: false, error: (e && e.message) || "تعذّر تحميل بيانات الفروع" })); });
+      e => { if (n === reqRef.current) setState(s => ({ ...s, loading: false, error: (e && e.message) || tt("تعذّر تحميل بيانات الفروع") })); });
   }, []);
   // Read again whenever the clinic's data changes (a save, a branch switch).
   React.useEffect(() => { if (wide) fetchAll(); }, [wide, version, fetchAll]);
   return {
     scope, all: wide,
-    label: wide ? `كل الفروع (${(window.BRANCHES || []).length})` : `الفرع: ${activeBranchName()}`,
+    label: wide ? tt("كل الفروع ({n})", { n: (window.BRANCHES || []).length }) : tt("الفرع: {name}", { name: activeBranchName() }),
     rowsOf: (name) => wide ? ((state.tables && state.tables[name]) || []) : ((window.DATA && window.DATA[name]) || []),
     loading: wide && state.loading, waiting: wide && !state.tables, error: wide ? state.error : "", retry: fetchAll,
   };
@@ -3105,33 +3117,41 @@ function ReportBranchBreakdown({ rows, metrics }) {
   });
   return (
     <div className="card card-pad report-branch-breakdown" style={{ marginBottom: 18 }}>
-      <div className="h2" style={{ marginBottom: 12 }}>حسب الفرع</div>
-      <div className="tbl-scroll" role="region" aria-label="حسب الفرع" tabIndex={0}>
-        <table className="tbl">
-          <thead><tr><th>الفرع</th>{metrics.map(m => <th key={m.key} style={{ textAlign: "start" }}>{m.label}</th>)}</tr></thead>
+      <div className="h2" style={{ marginBottom: 12 }}>{tt("حسب الفرع")}</div>
+      <div className="tbl-scroll" role="region" aria-label={tt("حسب الفرع")} tabIndex={0}>
+        <CardTable>
+          <thead><tr><th>{tt("الفرع")}</th>{metrics.map(m => <th key={m.key} style={{ textAlign: "start" }}>{m.label}</th>)}</tr></thead>
           <tbody>
             {ids.map(id => {
               const b = branches.find(x => x.id === id);
               return (
                 <tr key={id} data-branch-row={id}>
-                  <td>{reportBranchName(id)}{b && !reportBranchActive(b) && <span className="badge b-grey" style={{ marginInlineStart: 6 }}>معطّل</span>}</td>
+                  <td>{reportBranchName(id)}{b && !reportBranchActive(b) && <span className="badge b-grey" style={{ marginInlineStart: 6 }}>{tt("معطّل")}</span>}</td>
                   {cells(groups[id] || [])}
                 </tr>
               );
             })}
             <tr data-branch-row="total" style={{ fontWeight: 600, background: "var(--ink-50)" }}>
-              <td>الإجمالي</td>
+              <td>{tt("الإجمالي")}</td>
               {cells(rows)}
             </tr>
           </tbody>
-        </table>
+        </CardTable>
       </div>
     </div>
   );
 }
-const reportFmtCount = (v) => Number(v || 0).toLocaleString("en-US");
-const reportFmtMoney = (v) => `EGP ${Math.round(Number(v) || 0).toLocaleString("en-US")}`;
-const reportBranchColumn = { key: "branch", label: "الفرع", type: "text", width: 16 };
+const reportFmtCount = (v) => fmtNumber(v || 0);
+const reportFmtMoney = (v) => fmtMoney(Math.round(Number(v) || 0));
+const reportBranchColumn = { key: "branch", label: tt("الفرع"), type: "text", width: 16 };
+// Booking types are saved as text: «جلسة علاج طبيعي» or «جلسة + استشارة
+// <department>» (the booking wizard); shown translated where they match.
+function reportApptType(t) {
+  if (!t) return "—";
+  if (t === "جلسة علاج طبيعي") return tt(t);
+  const m = /^جلسة \+ استشارة (.+)$/.exec(t);
+  return m ? tt("جلسة + استشارة {dept}", { dept: m[1] }) : t;
+}
 
 function Reports({ go }) {
   const version = window.useDataVersion ? window.useDataVersion() : 0;
@@ -3141,33 +3161,31 @@ function Reports({ go }) {
   const view = useReportScope(canPick ? scopeChoice : "current", version);
 
   const cats = [
-    { id: "financial",   l: "المالية",     icon: <I.Dollar size={15} /> },
-    { id: "medical",     l: "الطبي",       icon: <I.Heart size={15} /> },
-    { id: "operational", l: "التشغيلية",   icon: <I.Activity size={15} /> },
+    { id: "financial",   l: tt("المالية"),     icon: <I.Dollar size={15} /> },
+    { id: "medical",     l: tt("الطبي"),       icon: <I.Heart size={15} /> },
+    { id: "operational", l: tt("التشغيلية"),   icon: <I.Activity size={15} /> },
   ];
 
   return (
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>التقارير</span></div>
-          <h1 className="h1">التقارير</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>تحليلات مالية وطبية وتشغيلية — بيانات مباشرة من قاعدة البيانات.</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("التقارير")}</span></div>
+          <h1 className="h1">{tt("التقارير")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("تحليلات مالية وطبية وتشغيلية — بيانات مباشرة من قاعدة البيانات.")}</div>
           {window.SB && (
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:8}}>
               <div className="report-branch" data-scope={view.scope}>
                 <span className="pill"><I.MapPin size={12}/> {view.label}</span>
-                {!canPick && <span className="muted" style={{fontSize:12,marginInlineStart:8}}>بدّل الفرع من القائمة الجانبية لعرض تقاريره.</span>}
+                {!canPick && <span className="muted" style={{fontSize:12,marginInlineStart:8}}>{tt("بدّل الفرع من القائمة الجانبية لعرض تقاريره.")}</span>}
               </div>
               {canPick && (
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div className="seg report-scope" role="group" aria-label="نطاق التقرير">
-                    {[["current", "الفرع الحالي"], ["all", "كل الفروع"]].map(([id, l]) => (
-                      <button key={id} type="button" className={view.scope === id ? "on" : ""} aria-pressed={view.scope === id}
-                        data-scope={id} onClick={()=>setScopeChoice(id)}>{l}</button>
-                    ))}
-                  </div>
-                  {view.loading && <span className="spin" role="status" aria-label="جارٍ تحميل بيانات الفروع" style={{width:14,height:14,border:"2px solid var(--blue-500)",borderTopColor:"transparent",borderRadius:"50%"}}/>}
+                  <Segmented className="report-scope" label={tt("نطاق التقرير")} value={view.scope} onChange={setScopeChoice} options={[
+                    { value: "current", label: tt("الفرع الحالي") },
+                    { value: "all", label: tt("كل الفروع") },
+                  ]}/>
+                  {view.loading && <span className="spin" role="status" aria-label={tt("جارٍ تحميل بيانات الفروع")} style={{width:14,height:14,border:"2px solid var(--blue-500)",borderTopColor:"transparent",borderRadius:"50%"}}/>}
                 </div>
               )}
             </div>
@@ -3188,10 +3206,10 @@ function Reports({ go }) {
 
         <div>
           {view.error && (
-            <CaAlert tone="error">{view.error} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={view.retry}>إعادة المحاولة</button></CaAlert>
+            <CaAlert tone="error">{view.error} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={view.retry}>{tt("إعادة المحاولة")}</button></CaAlert>
           )}
           {view.waiting && !view.error && (
-            <div className="card card-pad" aria-busy="true"><div className="muted" style={{fontSize:13,marginBottom:10}}>جارٍ تحميل بيانات الفروع…</div><SkeletonRow count={4}/></div>
+            <div className="card card-pad" aria-busy="true"><div className="muted" style={{fontSize:13,marginBottom:10}}>{tt("جارٍ تحميل بيانات الفروع…")}</div><SkeletonRow count={4}/></div>
           )}
           {/* Hidden, not unmounted, until the branches' rows arrive: the
               tab keeps its filters. */}
@@ -3225,9 +3243,10 @@ function FinancialReport({ view }) {
       date: String(v.date || v.created_at || "").slice(0, 10),
       patient: v.patient || "—",
       patient_id: v.patient_id || null,
-      method: v.method || "—",
+      // Shown, searched and exported as text in the interface language.
+      method: payMethodLabel(v.method) || "—",
       amount, paid, outstanding: Math.max(0, amount - paid),
-      status: v.status || "—",
+      status: v.status ? tt(v.status) : "—",
     };
   }), [base]);
 
@@ -3242,7 +3261,6 @@ function FinancialReport({ view }) {
   const invoiced = filtered.reduce((s, r) => s + r.amount, 0);
   const outstanding = filtered.reduce((s, r) => s + r.outstanding, 0);
   const avg = filtered.length ? invoiced / filtered.length : 0;
-  const fmtK = (v) => v >= 1000 ? `EGP ${(v / 1000).toFixed(1)}K` : `EGP ${Math.round(v).toLocaleString("en-US")}`;
 
   // Monthly collected trend + payment-method split from the filtered set.
   const byMonth = {};
@@ -3254,53 +3272,53 @@ function FinancialReport({ view }) {
   const methodData = Object.keys(byMethod).map((m, i) => ({ label: m, v: Math.round(byMethod[m]), color: methodColors[i % methodColors.length] })).filter(d => d.v > 0);
 
   const columns = [
-    { key: "date", label: "التاريخ", type: "date", width: 12 },
+    { key: "date", label: tt("التاريخ"), type: "date", width: 12 },
     ...(view.all ? [reportBranchColumn] : []),
-    { key: "patient", label: "المريض", type: "text", width: 20 },
-    { key: "method", label: "طريقة الدفع", type: "text", width: 14 },
-    { key: "amount", label: "المبلغ", type: "currency", total: true, width: 14 },
-    { key: "paid", label: "المدفوع", type: "currency", total: true, width: 14 },
-    { key: "outstanding", label: "المتبقي", type: "currency", total: true, width: 14 },
-    { key: "status", label: "الحالة", type: "text", width: 12 },
+    { key: "patient", label: tt("المريض"), type: "text", width: 20 },
+    { key: "method", label: tt("طريقة الدفع"), type: "text", width: 14 },
+    { key: "amount", label: tt("المبلغ"), type: "currency", total: true, width: 14 },
+    { key: "paid", label: tt("المدفوع"), type: "currency", total: true, width: 14 },
+    { key: "outstanding", label: tt("المتبقي"), type: "currency", total: true, width: 14 },
+    { key: "status", label: tt("الحالة"), type: "text", width: 12 },
   ];
   async function doExport() {
     const ok = await exportReportExcel({
-      filename: `تقرير-مالي-${reportToday()}.xlsx`, sheetName: "التقرير المالي",
-      title: "التقرير المالي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
+      filename: tt("تقرير-مالي-{date}.xlsx", { date: reportToday() }), sheetName: tt("التقرير المالي"),
+      title: tt("التقرير المالي"), filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
-    if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
+    if (ok && window.showToast) window.showToast(tt("تم تصدير {n} صفًا إلى Excel", { n: filtered.length }), "success");
   }
 
   return (
     <div>
-      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder="بحث بالمريض أو طريقة الدفع…" />
+      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder={tt("بحث بالمريض أو طريقة الدفع…")} />
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
-        <StatCard label="محصّل" value={fmtK(collected)} accent="#3FA984" icon={<I.Check size={15} />} />
-        <StatCard label="إجمالي مفوتر" value={fmtK(invoiced)} accent="#3A7FB5" icon={<I.Dollar size={15} />} />
-        <StatCard label="متبقٍ" value={fmtK(outstanding)} accent="#D49044" icon={<I.Clock size={15} />} />
-        <StatCard label="عدد الفواتير" value={filtered.length.toLocaleString("en-US")} accent="#7BBDE8" icon={<I.Chart size={15} />} />
+        <StatCard label={tt("محصّل")} value={fmtMoneyShort(collected)} accent="#3FA984" icon={<I.Check size={15} />} />
+        <StatCard label={tt("إجمالي مفوتر")} value={fmtMoneyShort(invoiced)} accent="#3A7FB5" icon={<I.Dollar size={15} />} />
+        <StatCard label={tt("متبقٍ")} value={fmtMoneyShort(outstanding)} accent="#D49044" icon={<I.Clock size={15} />} />
+        <StatCard label={tt("عدد الفواتير")} value={fmtNumber(filtered.length)} accent="#7BBDE8" icon={<I.Chart size={15} />} />
       </div>
 
       {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
-        { key: "count", label: "عدد الفواتير", calc: l => l.length, fmt: reportFmtCount },
-        { key: "invoiced", label: "إجمالي مفوتر", calc: l => l.reduce((s, r) => s + r.amount, 0), fmt: reportFmtMoney },
-        { key: "collected", label: "محصّل", calc: l => l.reduce((s, r) => s + r.paid, 0), fmt: reportFmtMoney },
-        { key: "outstanding", label: "متبقٍ", calc: l => l.reduce((s, r) => s + r.outstanding, 0), fmt: reportFmtMoney },
+        { key: "count", label: tt("عدد الفواتير"), calc: l => l.length, fmt: reportFmtCount },
+        { key: "invoiced", label: tt("إجمالي مفوتر"), calc: l => l.reduce((s, r) => s + r.amount, 0), fmt: reportFmtMoney },
+        { key: "collected", label: tt("محصّل"), calc: l => l.reduce((s, r) => s + r.paid, 0), fmt: reportFmtMoney },
+        { key: "outstanding", label: tt("متبقٍ"), calc: l => l.reduce((s, r) => s + r.outstanding, 0), fmt: reportFmtMoney },
       ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1.5fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 14 }}>اتجاه المبالغ المحصّلة (شهريًا)</div>
-          {monthly.length ? <AreaChart data={monthly} height={240} formatY={v => v >= 1000 ? `${Number((v / 1000).toFixed(1))}K` : v} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا بيانات ضمن الفترة المحددة.</div>}
+          <div className="h2" style={{ marginBottom: 14 }}>{tt("اتجاه المبالغ المحصّلة (شهريًا)")}</div>
+          {monthly.length ? <AreaChart data={monthly} height={240} formatY={v => v >= 1000 ? `${Number((v / 1000).toFixed(1))}K` : v} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا بيانات ضمن الفترة المحددة.")}</div>}
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 14 }}>توزيع طرق الدفع</div>
-          {methodData.length ? <DonutChart data={methodData} size={180} centerLabel="محصّل" centerValue={fmtK(collected)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا بيانات.</div>}
+          <div className="h2" style={{ marginBottom: 14 }}>{tt("توزيع طرق الدفع")}</div>
+          {methodData.length ? <DonutChart data={methodData} size={180} centerLabel={tt("محصّل")} centerValue={fmtMoneyShort(collected)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا بيانات.")}</div>}
         </div>
       </div>
 
-      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty="لا فواتير ضمن عوامل التصفية الحالية." />
+      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty={tt("لا فواتير ضمن عوامل التصفية الحالية.")} />
     </div>
   );
 }
@@ -3355,10 +3373,10 @@ function MedicalReport({ view }) {
 
   // Diagnosis mix (from the patients touched in the filtered sessions).
   const buckets = [
-    { label: "أسفل الظهر / القطنية", re: /ظهر|قطن|غضروف|نسا/, color: "#7BBDE8" },
-    { label: "الركبة", re: /ركبة|رباط|رضف/, color: "#3A7FB5" },
-    { label: "الكتف", re: /كتف/, color: "#7E6BD3" },
-    { label: "الرقبة / العنقية", re: /رقبة|عنق/, color: "#3FA984" },
+    { label: tt("أسفل الظهر / القطنية"), re: /ظهر|قطن|غضروف|نسا/, color: "#7BBDE8" },
+    { label: tt("الركبة"), re: /ركبة|رباط|رضف/, color: "#3A7FB5" },
+    { label: tt("الكتف"), re: /كتف/, color: "#7E6BD3" },
+    { label: tt("الرقبة / العنقية"), re: /رقبة|عنق/, color: "#3FA984" },
   ];
   const counts = buckets.map(b => ({ ...b, v: 0 })); let other = 0;
   const seen = new Set();
@@ -3369,61 +3387,61 @@ function MedicalReport({ view }) {
     if (hit) hit.v += 1; else other += 1;
   });
   const diagData = counts.filter(b => b.v > 0).map(({ label, v, color }) => ({ label, v, color }));
-  if (other > 0) diagData.push({ label: "أخرى", v: other, color: "#BDD8E9" });
+  if (other > 0) diagData.push({ label: tt("أخرى"), v: other, color: "#BDD8E9" });
 
   // Cohort pain trend: average pain per session number across filtered rows.
   const byNum = {};
   filtered.forEach(s => { const n = s.session; if (!n) return; (byNum[n] = byNum[n] || []).push(Number(s.pain) || 0); });
   const cohort = Object.keys(byNum).map(Number).sort((a, b) => a - b).slice(0, 12)
-    .map(n => ({ label: `ج${n}`, v: byNum[n].reduce((s, v) => s + v, 0) / byNum[n].length }));
+    .map(n => ({ label: tt("ج{n}", { n }), v: byNum[n].reduce((s, v) => s + v, 0) / byNum[n].length }));
 
   const columns = [
-    { key: "date", label: "التاريخ", type: "date", width: 12 },
+    { key: "date", label: tt("التاريخ"), type: "date", width: 12 },
     ...(view.all ? [reportBranchColumn] : []),
-    { key: "patient", label: "المريض", type: "text", width: 20 },
-    { key: "therapist", label: "الأخصائي", type: "text", width: 18 },
-    { key: "doctor", label: "الطبيب", type: "text", width: 16 },
-    { key: "session", label: "رقم الجلسة", type: "number", width: 10 },
-    { key: "pain", label: "مستوى الألم", type: "number", width: 10 },
-    { key: "notes", label: "ملاحظات", type: "text", width: 30 },
+    { key: "patient", label: tt("المريض"), type: "text", width: 20 },
+    { key: "therapist", label: tt("الأخصائي"), type: "text", width: 18 },
+    { key: "doctor", label: tt("الطبيب"), type: "text", width: 16 },
+    { key: "session", label: tt("رقم الجلسة"), type: "number", width: 10 },
+    { key: "pain", label: tt("مستوى الألم"), type: "number", width: 10 },
+    { key: "notes", label: tt("ملاحظات"), type: "text", width: 30 },
   ];
   async function doExport() {
     const ok = await exportReportExcel({
-      filename: `تقرير-طبي-${reportToday()}.xlsx`, sheetName: "التقرير الطبي",
-      title: "التقرير الطبي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
+      filename: tt("تقرير-طبي-{date}.xlsx", { date: reportToday() }), sheetName: tt("التقرير الطبي"),
+      title: tt("التقرير الطبي"), filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
-    if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
+    if (ok && window.showToast) window.showToast(tt("تم تصدير {n} صفًا إلى Excel", { n: filtered.length }), "success");
   }
 
   return (
     <div>
-      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder="بحث بالمريض أو التشخيص…" />
+      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder={tt("بحث بالمريض أو التشخيص…")} />
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
-        <StatCard label="مرضى تحت العلاج" value={String(distinctPatients)} accent="#7BBDE8" icon={<I.Users size={15} />} />
-        <StatCard label="عدد الجلسات" value={totalSessions.toLocaleString("en-US")} accent="#3A7FB5" icon={<I.Activity size={15} />} />
-        <StatCard label="متوسط الجلسات لكل مريض" value={avgPer} accent="#7E6BD3" icon={<I.Chart size={15} />} />
-        <StatCard label="متوسط مستوى الألم" value={avgPain} accent="#D49044" icon={<I.Heart size={15} />} />
+        <StatCard label={tt("مرضى تحت العلاج")} value={String(distinctPatients)} accent="#7BBDE8" icon={<I.Users size={15} />} />
+        <StatCard label={tt("عدد الجلسات")} value={fmtNumber(totalSessions)} accent="#3A7FB5" icon={<I.Activity size={15} />} />
+        <StatCard label={tt("متوسط الجلسات لكل مريض")} value={avgPer} accent="#7E6BD3" icon={<I.Chart size={15} />} />
+        <StatCard label={tt("متوسط مستوى الألم")} value={avgPain} accent="#D49044" icon={<I.Heart size={15} />} />
       </div>
 
       {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
-        { key: "sessions", label: "عدد الجلسات", calc: l => l.length, fmt: reportFmtCount },
-        { key: "patients", label: "مرضى تحت العلاج", calc: l => new Set(l.map(r => r.patient_id).filter(Boolean)).size, fmt: reportFmtCount },
+        { key: "sessions", label: tt("عدد الجلسات"), calc: l => l.length, fmt: reportFmtCount },
+        { key: "patients", label: tt("مرضى تحت العلاج"), calc: l => new Set(l.map(r => r.patient_id).filter(Boolean)).size, fmt: reportFmtCount },
       ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 18 }}>توزيع التشخيصات</div>
-          {diagData.length ? <DonutChart data={diagData} size={180} centerLabel="مريض" centerValue={String(distinctPatients)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا بيانات ضمن الفترة المحددة.</div>}
+          <div className="h2" style={{ marginBottom: 18 }}>{tt("توزيع التشخيصات")}</div>
+          {diagData.length ? <DonutChart data={diagData} size={180} centerLabel={tt("مريض")} centerValue={String(distinctPatients)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا بيانات ضمن الفترة المحددة.")}</div>}
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 6 }}>تقدّم العلاج · متوسط الألم</div>
-          <div className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>متوسط مستوى الألم حسب رقم الجلسة</div>
-          {cohort.length ? <AreaChart data={cohort} height={200} color="#3FA984" fill="rgba(63,169,132,.16)" formatY={v => Number(v).toFixed(1)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا جلسات ضمن الفترة المحددة.</div>}
+          <div className="h2" style={{ marginBottom: 6 }}>{tt("تقدّم العلاج · متوسط الألم")}</div>
+          <div className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>{tt("متوسط مستوى الألم حسب رقم الجلسة")}</div>
+          {cohort.length ? <AreaChart data={cohort} height={200} color="#3FA984" fill="rgba(63,169,132,.16)" formatY={v => Number(v).toFixed(1)} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا جلسات ضمن الفترة المحددة.")}</div>}
         </div>
       </div>
 
-      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty="لا جلسات ضمن عوامل التصفية الحالية." />
+      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty={tt("لا جلسات ضمن عوامل التصفية الحالية.")} />
     </div>
   );
 }
@@ -3451,8 +3469,9 @@ function OperationalReport({ view }) {
       therapist: a.th || "—",
       doctor: a.dr || "—",
       room: a.room || "—",
-      type: a.type || "—",
-      status: a.status || "—",
+      type: reportApptType(a.type),
+      status: a.status || "—",                     // stored value, compared below
+      status_text: a.status ? tt(a.status) : "—",   // shown, searched and exported
     })), [base]);
 
   const q = f.q.trim().toLowerCase();
@@ -3461,7 +3480,7 @@ function OperationalReport({ view }) {
     (f.therapist === "all" || r.therapist === f.therapist) &&
     (f.doctor === "all" || r.doctor === f.doctor) &&
     (f.patient === "all" || r.patient_id === f.patient) &&
-    (!q || [r.patient, r.therapist, r.doctor, r.room, r.type, r.status, view.all ? r.branch : ""].some(x => String(x || "").toLowerCase().includes(q)))
+    (!q || [r.patient, r.therapist, r.doctor, r.room, r.type, r.status, r.status_text, view.all ? r.branch : ""].some(x => String(x || "").toLowerCase().includes(q)))
   ).sort((a, b) => (String(b.date) + b.time).localeCompare(String(a.date) + a.time)), [rows, f.from, f.to, f.therapist, f.doctor, f.patient, q]);
 
   const booked = filtered.length;
@@ -3472,7 +3491,7 @@ function OperationalReport({ view }) {
   const noShowRate = booked ? (noShow / booked * 100).toFixed(1) : "0";
   const completedRate = booked ? Math.round(completed / booked * 100) : 0;
 
-  const wd = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const wd = weekdayNames(IS_RTL ? "long" : "short");
   const byDay = wd.map(l => ({ label: l, v: 0, color: "#7BBDE8" }));
   filtered.forEach(a => { if (a.date) { const d = new Date(a.date); if (!isNaN(d)) byDay[d.getDay()].v += 1; } });
   const byHourMap = {};
@@ -3480,54 +3499,54 @@ function OperationalReport({ view }) {
   const byHour = Object.keys(byHourMap).map(Number).sort((a, b) => a - b).map(h => ({ label: `${h}:00`, v: byHourMap[h] }));
 
   const columns = [
-    { key: "date", label: "التاريخ", type: "date", width: 12 },
-    { key: "time", label: "الوقت", type: "text", width: 8 },
+    { key: "date", label: tt("التاريخ"), type: "date", width: 12 },
+    { key: "time", label: tt("الوقت"), type: "text", width: 8 },
     ...(view.all ? [reportBranchColumn] : []),
-    { key: "patient", label: "المريض", type: "text", width: 20 },
-    { key: "therapist", label: "الأخصائي", type: "text", width: 18 },
-    { key: "doctor", label: "الطبيب", type: "text", width: 16 },
-    { key: "room", label: "الغرفة", type: "text", width: 10 },
-    { key: "type", label: "النوع", type: "text", width: 14 },
-    { key: "status", label: "الحالة", type: "text", width: 12 },
+    { key: "patient", label: tt("المريض"), type: "text", width: 20 },
+    { key: "therapist", label: tt("الأخصائي"), type: "text", width: 18 },
+    { key: "doctor", label: tt("الطبيب"), type: "text", width: 16 },
+    { key: "room", label: tt("الغرفة"), type: "text", width: 10 },
+    { key: "type", label: tt("النوع"), type: "text", width: 14 },
+    { key: "status_text", label: tt("الحالة"), type: "text", width: 12 },
   ];
   async function doExport() {
     const ok = await exportReportExcel({
-      filename: `تقرير-تشغيلي-${reportToday()}.xlsx`, sheetName: "التقرير التشغيلي",
-      title: "التقرير التشغيلي", filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
+      filename: tt("تقرير-تشغيلي-{date}.xlsx", { date: reportToday() }), sheetName: tt("التقرير التشغيلي"),
+      title: tt("التقرير التشغيلي"), filters: reportActiveFilters(f, show, opts, view.label), columns, rows: filtered,
     });
-    if (ok && window.showToast) window.showToast(`تم تصدير ${filtered.length} صفًا إلى Excel`, "success");
+    if (ok && window.showToast) window.showToast(tt("تم تصدير {n} صفًا إلى Excel", { n: filtered.length }), "success");
   }
 
   return (
     <div>
-      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder="بحث بالمريض أو الغرفة…" />
+      <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder={tt("بحث بالمريض أو الغرفة…")} />
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
-        <StatCard label="مواعيد مسجلة" value={booked.toLocaleString("en-US")} accent="#7BBDE8" icon={<I.Calendar size={15} />} />
-        <StatCard label="معدّل الحضور" value={`${attendRate}%`} accent="#3FA984" icon={<I.Check size={15} />} />
-        <StatCard label="معدل عدم الحضور" value={`${noShowRate}%`} accent="#D49044" icon={<I.X size={15} />} />
-        <StatCard label="نسبة الإكمال" value={`${completedRate}%`} accent="#7E6BD3" icon={<I.Activity size={15} />} />
+        <StatCard label={tt("مواعيد مسجلة")} value={fmtNumber(booked)} accent="#7BBDE8" icon={<I.Calendar size={15} />} />
+        <StatCard label={tt("معدّل الحضور")} value={`${attendRate}%`} accent="#3FA984" icon={<I.Check size={15} />} />
+        <StatCard label={tt("معدل عدم الحضور")} value={`${noShowRate}%`} accent="#D49044" icon={<I.X size={15} />} />
+        <StatCard label={tt("نسبة الإكمال")} value={`${completedRate}%`} accent="#7E6BD3" icon={<I.Activity size={15} />} />
       </div>
 
       {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
-        { key: "booked", label: "مواعيد مسجلة", calc: l => l.length, fmt: reportFmtCount },
-        { key: "completed", label: "مكتملة", calc: l => l.filter(a => a.status === "مكتمل").length, fmt: reportFmtCount },
-        { key: "noshow", label: "لم يحضر", calc: l => l.filter(a => a.status === "لم يحضر").length, fmt: reportFmtCount },
-        { key: "attend", label: "معدّل الحضور", calc: l => l.length ? Math.round(l.filter(a => a.status === "مكتمل" || a.status === "قيد التنفيذ").length / l.length * 100) : 0, fmt: v => `${v}%` },
+        { key: "booked", label: tt("مواعيد مسجلة"), calc: l => l.length, fmt: reportFmtCount },
+        { key: "completed", label: tt("مكتملة"), calc: l => l.filter(a => a.status === "مكتمل").length, fmt: reportFmtCount },
+        { key: "noshow", label: tt("لم يحضر"), calc: l => l.filter(a => a.status === "لم يحضر").length, fmt: reportFmtCount },
+        { key: "attend", label: tt("معدّل الحضور"), calc: l => l.length ? Math.round(l.filter(a => a.status === "مكتمل" || a.status === "قيد التنفيذ").length / l.length * 100) : 0, fmt: v => `${v}%` },
       ]}/>}
 
       <div className="rgrid c-lg" style={{ "--gtc": "1fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 14 }}>المواعيد حسب يوم الأسبوع</div>
-          {byDay.some(d => d.v > 0) ? <BarChart data={byDay} height={220} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا مواعيد ضمن الفترة المحددة.</div>}
+          <div className="h2" style={{ marginBottom: 14 }}>{tt("المواعيد حسب يوم الأسبوع")}</div>
+          {byDay.some(d => d.v > 0) ? <BarChart data={byDay} height={220} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا مواعيد ضمن الفترة المحددة.")}</div>}
         </div>
         <div className="card card-pad">
-          <div className="h2" style={{ marginBottom: 14 }}>المواعيد حسب الساعة</div>
-          {byHour.length ? <AreaChart data={byHour} height={220} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا مواعيد ضمن الفترة المحددة.</div>}
+          <div className="h2" style={{ marginBottom: 14 }}>{tt("المواعيد حسب الساعة")}</div>
+          {byHour.length ? <AreaChart data={byHour} height={220} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>{tt("لا مواعيد ضمن الفترة المحددة.")}</div>}
         </div>
       </div>
 
-      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty="لا مواعيد ضمن عوامل التصفية الحالية." />
+      <ReportTable columns={columns} rows={filtered} page={page} setPage={setPage} empty={tt("لا مواعيد ضمن عوامل التصفية الحالية.")} />
     </div>
   );
 }

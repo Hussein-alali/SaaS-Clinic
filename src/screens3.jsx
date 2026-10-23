@@ -19,12 +19,12 @@ function SettingsPage({ go }) {
   if (!isAdmin) {
     return (
       <Page>
-        <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الإعدادات</span></div>
+        <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("الإعدادات")}</span></div>
         <div className="card card-pad" style={{textAlign:"center",padding:"60px 20px",maxWidth:520,margin:"40px auto"}}>
           <I.Lock size={36} style={{color:"var(--ink-400)",marginBottom:12}}/>
-          <div className="h2" style={{marginBottom:8}}>الوصول مقيّد</div>
-          <div className="muted" style={{fontSize:13.5,marginBottom:20}}>الإعدادات متاحة للمديرين فقط. تواصل مع مدير النظام إذا كنت تحتاج تعديلًا هنا.</div>
-          <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>go && go("dashboard")}><I.ArrowLeft size={13}/> العودة</button>
+          <div className="h2" style={{marginBottom:8}}>{tt("الوصول مقيّد")}</div>
+          <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("الإعدادات متاحة للمديرين فقط. تواصل مع مدير النظام إذا كنت تحتاج تعديلًا هنا.")}</div>
+          <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>go && go("dashboard")}><I.ArrowLeft size={13}/> {tt("العودة")}</button>
         </div>
       </Page>
     );
@@ -41,11 +41,11 @@ function SettingsPage({ go }) {
 
   return (
     <Page>
-      <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الإعدادات</span></div>
-      <h1 className="h1" style={{marginBottom:18}}>الإعدادات</h1>
+      <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("الإعدادات")}</span></div>
+      <h1 className="h1" style={{marginBottom:18}}>{tt("الإعدادات")}</h1>
 
       <div className="rgrid c-lg" style={{"--gtc":"220px 1fr"}}>
-        <div className="card side-tabs" role="tablist" aria-label="أقسام الإعدادات" style={{padding:8,height:"fit-content"}}>
+        <div className="card side-tabs" role="tablist" aria-label={tt("أقسام الإعدادات")} style={{padding:8,height:"fit-content"}}>
           {items.map(s=>(
             <div key={s.id} data-settings-tab={s.id} role="tab" tabIndex={0} aria-selected={tab===s.id ? "true" : "false"}
               className={"nav-item" + (tab===s.id?" active":"")} style={{margin:0}} onClick={()=>setTab(s.id)}
@@ -108,7 +108,7 @@ function RosterToolbar({ title, subtitle, search, setSearch, onAdd, addLabel, ad
         {subtitle && <div className="muted" style={{fontSize:12.5,marginTop:2}}>{subtitle}</div>}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <input className="input" style={{height:34,minWidth:200,fontSize:12.5}} placeholder="بحث…"
+        <input className="input" style={{height:34,minWidth:200,fontSize:12.5}} placeholder={tt("بحث…")}
           value={search} onChange={e=>setSearch(e.target.value)}/>
         {onAdd && <button className="btn btn-blue" onClick={onAdd} disabled={addDisabled}><I.Plus size={14}/> {addLabel}</button>}
       </div>
@@ -122,8 +122,8 @@ function RosterPager({ page, pages, total, onPage }) {
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:8,flexWrap:"wrap"}}>
       <div className="muted" style={{fontSize:12}}>{ttx("الإجمالي {total} · صفحة {page} من {pages}", { total: <span className="mono">{total}</span>, page: <span className="mono">{page}</span>, pages: <span className="mono">{pages}</span> })}</div>
       <div style={{display:"flex",gap:4}}>
-        <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page<=1} onClick={()=>onPage(page-1)}>السابق</button>
-        <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page>=pages} onClick={()=>onPage(page+1)}>التالي</button>
+        <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page<=1} onClick={()=>onPage(page-1)}>{tt("السابق")}</button>
+        <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page>=pages} onClick={()=>onPage(page+1)}>{tt("التالي")}</button>
       </div>
     </div>
   );
@@ -193,14 +193,14 @@ function DeptDoctorsPanel() {
     <div>
       {/* ── Departments ────────────────────────────────────────── */}
       <RosterToolbar
-        title="الأقسام" subtitle="تظهر في صفحة الحجز تلقائيًا فور إضافتها."
+        title={tt("الأقسام")} subtitle={tt("تظهر في صفحة الحجز تلقائيًا فور إضافتها.")}
         search="" setSearch={()=>{}}
-        onAdd={()=>setDeptModal({})} addLabel="إضافة قسم"/>
+        onAdd={()=>setDeptModal({})} addLabel={tt("إضافة قسم")}/>
       <div className="tbl-scroll" style={{marginBottom:26}}>
         <CardTable>
-          <thead><tr><th>القسم</th><th>بالإنجليزية</th><th>الأطباء</th><th>الأخصائيون</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("القسم")}</th><th>{tt("بالإنجليزية")}</th><th>{tt("الأطباء")}</th><th>{tt("الأخصائيون")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
-            {depts.length===0 && <tr><td colSpan={6}><EmptyState icon={<I.Layers size={22}/>} title="لا أقسام بعد" body="أضف أول قسم من زر «إضافة قسم»."/></td></tr>}
+            {depts.length===0 && <tr><td colSpan={6}><EmptyState icon={<I.Layers size={22}/>} title={tt("لا أقسام بعد")} body={tt("أضف أول قسم من زر «إضافة قسم».")}/></td></tr>}
             {depts.map(d=>(
               <tr key={d.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -227,14 +227,14 @@ function DeptDoctorsPanel() {
 
       {/* ── Doctors ───────────────────────────────────────────── */}
       <RosterToolbar
-        title="الأطباء" subtitle="يظهرون في الحجز ضمن أقسامهم عند تفعيلهم."
+        title={tt("الأطباء")} subtitle={tt("يظهرون في الحجز ضمن أقسامهم عند تفعيلهم.")}
         search={doctorsRoster.search} setSearch={doctorsRoster.setSearch}
-        onAdd={()=>setDocModal({})} addLabel="إضافة طبيب"/>
+        onAdd={()=>setDocModal({})} addLabel={tt("إضافة طبيب")}/>
       <div className="tbl-scroll">
         <CardTable>
-          <thead><tr><th>الطبيب</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>التوفر</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("الطبيب")}</th><th>{tt("القسم")}</th><th>{tt("التخصص")}</th><th>{tt("الهاتف")}</th><th>{tt("البريد")}</th><th>{tt("التوفر")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
-            {doctorsRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Stethoscope size={22}/>} title="لا أطباء" body={depts.length? tt("أضف أول طبيب من زر «إضافة طبيب»."):tt("أضف قسمًا أولاً ثم أضف الأطباء.")}/></td></tr>}
+            {doctorsRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Stethoscope size={22}/>} title={tt("لا أطباء")} body={depts.length? tt("أضف أول طبيب من زر «إضافة طبيب»."):tt("أضف قسمًا أولاً ثم أضف الأطباء.")}/></td></tr>}
             {doctorsRoster.view.map(d=>(
               <tr key={d.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -266,14 +266,14 @@ function DeptDoctorsPanel() {
       {/* ── Specialists (أخصائي) — persisted in `therapists` table ── */}
       <div style={{height:26}}/>
       <RosterToolbar
-        title="الأخصائيون" subtitle="فريق العلاج الطبيعي المعيّن للحالات."
+        title={tt("الأخصائيون")} subtitle={tt("فريق العلاج الطبيعي المعيّن للحالات.")}
         search={specRoster.search} setSearch={specRoster.setSearch}
-        onAdd={()=>setSpecModal({})} addLabel="إضافة أخصائي"/>
+        onAdd={()=>setSpecModal({})} addLabel={tt("إضافة أخصائي")}/>
       <div className="tbl-scroll">
         <CardTable>
-          <thead><tr><th>الأخصائي</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>رقم الترخيص</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("الأخصائي")}</th><th>{tt("القسم")}</th><th>{tt("التخصص")}</th><th>{tt("الهاتف")}</th><th>{tt("البريد")}</th><th>{tt("رقم الترخيص")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
-            {specRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Activity size={22}/>} title="لا أخصائيين" body={depts.length? tt("أضف أول أخصائي من زر «إضافة أخصائي»."):tt("أضف قسمًا أولاً ثم أضف الأخصائيين.")}/></td></tr>}
+            {specRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Activity size={22}/>} title={tt("لا أخصائيين")} body={depts.length? tt("أضف أول أخصائي من زر «إضافة أخصائي»."):tt("أضف قسمًا أولاً ثم أضف الأخصائيين.")}/></td></tr>}
             {specRoster.view.map(s=>(
               <tr key={s.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -305,14 +305,14 @@ function DeptDoctorsPanel() {
       {/* ── Receptionists ─────────────────────────────────────── */}
       <div style={{height:26}}/>
       <RosterToolbar
-        title="موظفو الاستقبال" subtitle="يديرون الحجوزات والدفع من الواجهة الأمامية."
+        title={tt("موظفو الاستقبال")} subtitle={tt("يديرون الحجوزات والدفع من الواجهة الأمامية.")}
         search={rcpRoster.search} setSearch={rcpRoster.setSearch}
-        onAdd={()=>setRcpModal({})} addLabel="إضافة موظف استقبال"/>
+        onAdd={()=>setRcpModal({})} addLabel={tt("إضافة موظف استقبال")}/>
       <div className="tbl-scroll">
         <CardTable>
-          <thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>ملاحظات</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("الاسم")}</th><th>{tt("الهاتف")}</th><th>{tt("البريد")}</th><th>{tt("ملاحظات")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
-            {rcpRoster.total===0 && <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title="لا موظفي استقبال" body="أضف أول موظف من زر «إضافة موظف استقبال»."/></td></tr>}
+            {rcpRoster.total===0 && <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title={tt("لا موظفي استقبال")} body={tt("أضف أول موظف من زر «إضافة موظف استقبال».")}/></td></tr>}
             {rcpRoster.view.map(r=>(
               <tr key={r.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -371,22 +371,22 @@ function DeptModal({ row, onClose }) {
   }
   return (
     <Modal title={isNew?tt("قسم جديد"):tt("تعديل قسم")} onClose={onClose} width={520}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="الاسم بالعربية" required><input className="input" value={f.name_ar} onChange={e=>set("name_ar",e.target.value)}/></Field>
-        <Field label="الاسم بالإنجليزية"><input className="input" value={f.name_en} onChange={e=>set("name_en",e.target.value)} dir="ltr"/></Field>
+        <Field label={tt("الاسم بالعربية")} required><input className="input" value={f.name_ar} onChange={e=>set("name_ar",e.target.value)}/></Field>
+        <Field label={tt("الاسم بالإنجليزية")}><input className="input" value={f.name_en} onChange={e=>set("name_en",e.target.value)} dir="ltr"/></Field>
       </div>
       <div style={{height:12}}/>
-      <Field label="الوصف"><input className="input" value={f.description} onChange={e=>set("description",e.target.value)}/></Field>
+      <Field label={tt("الوصف")}><input className="input" value={f.description} onChange={e=>set("description",e.target.value)}/></Field>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr 1fr",gap:12}}>
-        <Field label="الأيقونة"><select className="input" value={f.icon} onChange={e=>set("icon",e.target.value)}>{DEPT_ICONS.filter(n=>window.I[n]).map(n=><option key={n} value={n}>{n}</option>)}</select></Field>
-        <Field label="اللون"><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
-        <Field label="الترتيب"><input className="input" type="number" value={f.sort_order} onChange={e=>set("sort_order",e.target.value)}/></Field>
+        <Field label={tt("الأيقونة")}><select className="input" value={f.icon} onChange={e=>set("icon",e.target.value)}>{DEPT_ICONS.filter(n=>window.I[n]).map(n=><option key={n} value={n}>{n}</option>)}</select></Field>
+        <Field label={tt("اللون")}><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
+        <Field label={tt("الترتيب")}><input className="input" type="number" value={f.sort_order} onChange={e=>set("sort_order",e.target.value)}/></Field>
       </div>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginTop:14,cursor:"pointer"}}>
-        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> قسم نشط (يظهر في الحجز)
+        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> {tt("قسم نشط (يظهر في الحجز)")}
       </label>
     </Modal>
   );
@@ -435,7 +435,7 @@ function AuthUserPicker({ roleSlug, linkedRows, value, onChange, disabled }) {
     : options;
   return (
     <div>
-      <input className="input" style={{marginBottom:6,fontSize:12.5}} placeholder="بحث بالاسم أو البريد…"
+      <input className="input" style={{marginBottom:6,fontSize:12.5}} placeholder={tt("بحث بالاسم أو البريد…")}
         value={search} onChange={e=>setSearch(e.target.value)}/>
       <select className="input" value={(value && value.auth_uid) || ""}
         onChange={e => {
@@ -443,7 +443,7 @@ function AuthUserPicker({ roleSlug, linkedRows, value, onChange, disabled }) {
           const picked = options.find(o => o.auth_uid === uid) || null;
           onChange(picked);
         }}>
-        <option value="">— اختر حسابًا مرتبطًا —</option>
+        <option value="">{tt("— اختر حسابًا مرتبطًا —")}</option>
         {filtered.map(o => (
           <option key={o.auth_uid} value={o.auth_uid}>
             {(o.name || o.email || o.auth_uid)} — {o.email || "—"} — {roleLabelAr(o.role)}
@@ -452,7 +452,7 @@ function AuthUserPicker({ roleSlug, linkedRows, value, onChange, disabled }) {
       </select>
       {options.length === 0 && (
         <div className="muted" style={{fontSize:11.5,marginTop:6,lineHeight:1.6,padding:"8px 10px",background:"var(--ink-50)",borderRadius:8}}>
-          لا توجد حسابات متاحة بهذا الدور غير مرتبطة بسجل بعد. أنشئ حسابًا من «المستخدمون والأدوار» → «إنشاء مستخدم» أولاً.
+          {tt("لا توجد حسابات متاحة بهذا الدور غير مرتبطة بسجل بعد. أنشئ حسابًا من «المستخدمون والأدوار» → «إنشاء مستخدم» أولاً.")}
         </div>
       )}
     </div>
@@ -542,49 +542,49 @@ function DoctorModal({ row, depts, onClose }) {
   }
   return (
     <Modal title={isNew?tt("طبيب جديد"):tt("تعديل طبيب")} onClose={onClose} width={600}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «طبيب» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
+      <Field label={tt("الحساب المرتبط")} required hint={isNew ? tt("يظهر فقط حسابات دور «طبيب» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="doctor" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
       {(account || !isNew) && (
         <>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-            <Field label="الاسم"><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
-            <Field label="البريد الإلكتروني"><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
+            <Field label={tt("الاسم")}><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
+            <Field label={tt("البريد الإلكتروني")}><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
           </div>
           <div style={{height:12}}/>
         </>
       )}
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="القسم" required>
+        <Field label={tt("القسم")} required>
           <select className="input" value={f.department_id} onChange={e=>set("department_id",e.target.value)}>
-            <option value="">— اختر —</option>
+            <option value="">{tt("— اختر —")}</option>
             {depts.map(d=><option key={d.id} value={d.id}>{d.name_ar}</option>)}
           </select>
         </Field>
-        <Field label="التخصص"><input className="input" value={f.specialization} onChange={e=>set("specialization",e.target.value)}/></Field>
+        <Field label={tt("التخصص")}><input className="input" value={f.specialization} onChange={e=>set("specialization",e.target.value)}/></Field>
       </div>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="الهاتف"><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
-        <Field label="سنوات الخبرة"><input className="input" type="number" value={f.experience_years} onChange={e=>set("experience_years",e.target.value)}/></Field>
+        <Field label={tt("الهاتف")}><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
+        <Field label={tt("سنوات الخبرة")}><input className="input" type="number" value={f.experience_years} onChange={e=>set("experience_years",e.target.value)}/></Field>
       </div>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="رقم الترخيص"><input className="input" value={f.license_number} onChange={e=>set("license_number",e.target.value)}/></Field>
-        <Field label="أوقات العمل"><input className="input" value={f.schedule} onChange={e=>set("schedule",e.target.value)} placeholder="الأحد–الخميس 09:00–17:00"/></Field>
+        <Field label={tt("رقم الترخيص")}><input className="input" value={f.license_number} onChange={e=>set("license_number",e.target.value)}/></Field>
+        <Field label={tt("أوقات العمل")}><input className="input" value={f.schedule} onChange={e=>set("schedule",e.target.value)} placeholder={tt("الأحد–الخميس 09:00–17:00")}/></Field>
       </div>
       <div style={{height:12}}/>
-      <Field label="ملاحظات"><textarea className="input" rows={2} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
+      <Field label={tt("ملاحظات")}><textarea className="input" rows={2} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="التوفر"><select className="input" value={f.status} onChange={e=>set("status",e.target.value)}>{DOC_STATUS_OPTS.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}</select></Field>
-        <Field label="اللون"><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
+        <Field label={tt("التوفر")}><select className="input" value={f.status} onChange={e=>set("status",e.target.value)}>{DOC_STATUS_OPTS.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}</select></Field>
+        <Field label={tt("اللون")}><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
       </div>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginTop:14,cursor:"pointer"}}>
-        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> طبيب مفعّل (متاح للحجز)
+        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> {tt("طبيب مفعّل (متاح للحجز)")}
       </label>
     </Modal>
   );
@@ -644,44 +644,44 @@ function SpecialistModal({ row, depts, onClose }) {
   }
   return (
     <Modal title={isNew?tt("أخصائي جديد"):tt("تعديل أخصائي")} onClose={onClose} width={600}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «الأخصائي» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
+      <Field label={tt("الحساب المرتبط")} required hint={isNew ? tt("يظهر فقط حسابات دور «الأخصائي» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="therapist" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
       {(account || !isNew) && (
         <>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-            <Field label="الاسم"><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
-            <Field label="البريد الإلكتروني"><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
+            <Field label={tt("الاسم")}><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
+            <Field label={tt("البريد الإلكتروني")}><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
           </div>
           <div style={{height:12}}/>
         </>
       )}
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="القسم" required>
+        <Field label={tt("القسم")} required>
           <select className="input" value={f.department_id} onChange={e=>set("department_id",e.target.value)}>
-            <option value="">— اختر —</option>
+            <option value="">{tt("— اختر —")}</option>
             {depts.map(d=><option key={d.id} value={d.id}>{d.name_ar}</option>)}
           </select>
         </Field>
-        <Field label="التخصص"><input className="input" value={f.spec} onChange={e=>set("spec",e.target.value)}/></Field>
+        <Field label={tt("التخصص")}><input className="input" value={f.spec} onChange={e=>set("spec",e.target.value)}/></Field>
       </div>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="الهاتف"><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
-        <Field label="الحد الأقصى للجلسات/يوم"><input className="input" type="number" min="0" max="60" value={f.max} onChange={e=>set("max",e.target.value)}/></Field>
+        <Field label={tt("الهاتف")}><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
+        <Field label={tt("الحد الأقصى للجلسات/يوم")}><input className="input" type="number" min="0" max="60" value={f.max} onChange={e=>set("max",e.target.value)}/></Field>
       </div>
       <div style={{height:12}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="رقم الترخيص (اختياري)"><input className="input" value={f.license_number} onChange={e=>set("license_number",e.target.value)}/></Field>
-        <Field label="اللون"><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
+        <Field label={tt("رقم الترخيص (اختياري)")}><input className="input" value={f.license_number} onChange={e=>set("license_number",e.target.value)}/></Field>
+        <Field label={tt("اللون")}><input className="input" type="color" value={f.color} onChange={e=>set("color",e.target.value)} style={{padding:4,height:40}}/></Field>
       </div>
       <div style={{height:12}}/>
-      <Field label="ملاحظات"><textarea className="input" rows={2} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
+      <Field label={tt("ملاحظات")}><textarea className="input" rows={2} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginTop:14,cursor:"pointer"}}>
-        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> أخصائي مفعّل (متاح للتعيين)
+        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> {tt("أخصائي مفعّل (متاح للتعيين)")}
       </label>
     </Modal>
   );
@@ -730,26 +730,26 @@ function ReceptionistModal({ row, onClose }) {
   }
   return (
     <Modal title={isNew?tt("موظف استقبال جديد"):tt("تعديل موظف استقبال")} onClose={onClose} width={520}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «موظف الاستقبال» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
+      <Field label={tt("الحساب المرتبط")} required hint={isNew ? tt("يظهر فقط حسابات دور «موظف الاستقبال» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="receptionist" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
       {(account || !isNew) && (
         <>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-            <Field label="الاسم"><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
-            <Field label="البريد الإلكتروني"><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
+            <Field label={tt("الاسم")}><input className="input" value={(account && account.name) || row.name || ""} disabled style={{opacity:.75}}/></Field>
+            <Field label={tt("البريد الإلكتروني")}><input className="input" value={(account && account.email) || row.email || ""} disabled dir="ltr" style={{opacity:.75}}/></Field>
           </div>
           <div style={{height:12}}/>
         </>
       )}
-      <Field label="الهاتف"><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
+      <Field label={tt("الهاتف")}><input className="input" value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="+20 …"/></Field>
       <div style={{height:12}}/>
-      <Field label="ملاحظات"><textarea className="input" rows={3} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
+      <Field label={tt("ملاحظات")}><textarea className="input" rows={3} value={f.notes} onChange={e=>set("notes",e.target.value)}/></Field>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginTop:14,cursor:"pointer"}}>
-        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> موظف استقبال مفعّل
+        <input type="checkbox" checked={f.active} onChange={e=>set("active",e.target.checked)}/> {tt("موظف استقبال مفعّل")}
       </label>
     </Modal>
   );
@@ -915,13 +915,13 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
 
   if (later) {
     return (
-      <section className="card onboarding onboarding-folded" aria-label="ابدأ الإعداد" data-onboarding="folded"
+      <section className="card onboarding onboarding-folded" aria-label={tt("ابدأ الإعداد")} data-onboarding="folded"
         style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",marginBottom:18,flexWrap:"wrap",borderColor:"var(--blue-100)",background:"var(--blue-50)"}}>
         <I.Sparkle size={16} style={{color:"var(--blue-700)",flexShrink:0}}/>
         <div style={{flex:1,minWidth:180,fontSize:13.5}}>
-          <strong>ابدأ الإعداد</strong> <span className="muted" data-onboarding-progress="">— {progressText}</span>
+          <strong>{tt("ابدأ الإعداد")}</strong> <span className="muted" data-onboarding-progress="">— {progressText}</span>
         </div>
-        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={() => fold(false)}>متابعة الإعداد</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={() => fold(false)}>{tt("متابعة الإعداد")}</button>
       </section>
     );
   }
@@ -932,17 +932,17 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap",marginBottom:12}}>
         <div style={{minWidth:0}}>
           <h2 id="onboarding-title" className="h2" style={{display:"flex",alignItems:"center",gap:8,margin:0}}>
-            <I.Sparkle size={17} style={{color:"var(--blue-700)"}}/> ابدأ الإعداد
+            <I.Sparkle size={17} style={{color:"var(--blue-700)"}}/> {tt("ابدأ الإعداد")}
           </h2>
-          <div className="muted" style={{fontSize:12.5,marginTop:4}}>خطوات قليلة لتجهيز عيادتك لأول حجز.</div>
+          <div className="muted" style={{fontSize:12.5,marginTop:4}}>{tt("خطوات قليلة لتجهيز عيادتك لأول حجز.")}</div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={() => fold(true)}>لاحقًا</button>
-          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={onHide}>إخفاء</button>
+          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={() => fold(true)}>{tt("لاحقًا")}</button>
+          <button type="button" className="btn btn-ghost" style={{fontSize:12.5}} onClick={onHide}>{tt("إخفاء")}</button>
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-        <div role="progressbar" aria-label="تقدم الإعداد" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount}
+        <div role="progressbar" aria-label={tt("تقدم الإعداد")} aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount}
           style={{flex:1,height:6,background:"var(--ink-100)",borderRadius:999,overflow:"hidden"}}>
           <div style={{width:`${pct}%`,height:"100%",background:"var(--green)",borderRadius:999,transition:"width .2s"}}/>
         </div>
@@ -964,7 +964,7 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
               <div className="muted" style={{fontSize:12,marginTop:2}}>{st.hint}</div>
             </div>
             {st.done
-              ? <span className="badge b-green"><I.Check size={11}/> تم</span>
+              ? <span className="badge b-green"><I.Check size={11}/> {tt("تم")}</span>
               : <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={() => open(st)}>{st.action}</button>}
           </li>
         ))}
@@ -986,7 +986,7 @@ function CaAlert({ tone = "warn", children, onClose, id }) {
     <div id={id} role={tone === "error" ? "alert" : "status"} className={"ca-alert ca-alert-" + tone}
       style={{display:"flex",gap:10,alignItems:"flex-start",padding:"10px 14px",borderRadius:12,background:t.bg,color:t.fg,fontSize:13,lineHeight:1.65,marginBottom:14}}>
       <span style={{flex:1}}>{children}</span>
-      {onClose && <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق التنبيه" onClick={onClose} style={{padding:2,color:"inherit"}}><I.X size={13}/></button>}
+      {onClose && <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("إغلاق التنبيه")} onClick={onClose} style={{padding:2,color:"inherit"}}><I.X size={13}/></button>}
     </div>
   );
 }
@@ -1024,7 +1024,7 @@ function caBranchNames(ids) {
 function CaBranchChecks({ value, onChange, idPrefix, invalid, describedBy }) {
   const list = (window.BRANCHES || []).filter(b => !window.branchIsActive || window.branchIsActive(b));
   const toggle = (id, on) => onChange(on ? Array.from(new Set([...(value || []), id])) : (value || []).filter(x => x !== id));
-  if (!list.length) return <div className="muted" style={{fontSize:12.5}}>لا توجد فروع نشطة — أضف فرعًا من صفحة «الفروع» أولًا.</div>;
+  if (!list.length) return <div className="muted" style={{fontSize:12.5}}>{tt("لا توجد فروع نشطة — أضف فرعًا من صفحة «الفروع» أولًا.")}</div>;
   return (
     <div role="group" aria-describedby={describedBy} aria-invalid={invalid ? "true" : undefined}
       style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -1091,15 +1091,15 @@ function BranchCard({ b, current, staffCount, canDeactivate, onEdit, onToggle })
           <div className="h3 branch-card-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.name}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
             <span className={"badge " + (on ? "b-green" : "b-grey")}><span className="dot"></span>{on ? tt("نشط") : tt("معطّل")}</span>
-            {current && <span className="badge b-blue">الفرع الحالي</span>}
+            {current && <span className="badge b-blue">{tt("الفرع الحالي")}</span>}
           </div>
         </div>
       </div>
-      <div style={row}><I.MapPin size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.address || <span className="muted">لا يوجد عنوان</span>}</span></div>
-      <div style={row}><I.Phone size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.phone ? <bdi dir="ltr" className="mono">{b.phone}</bdi> : <span className="muted">لا يوجد هاتف</span>}</span></div>
+      <div style={row}><I.MapPin size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.address || <span className="muted">{tt("لا يوجد عنوان")}</span>}</span></div>
+      <div style={row}><I.Phone size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/><span>{b.phone ? <bdi dir="ltr" className="mono">{b.phone}</bdi> : <span className="muted">{tt("لا يوجد هاتف")}</span>}</span></div>
       <div style={{...row,gap:16,flexWrap:"wrap"}}>
-        <span className="branch-card-rooms"><I.Layers size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>الغرف: <span className="mono">{Number(b.rooms) || 0}</span></span>
-        <span className="branch-card-staff"><I.Users size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>الموظفون: <span className="mono">{staffCount == null ? "—" : staffCount}</span></span>
+        <span className="branch-card-rooms"><I.Layers size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>{tt("الغرف:")} <span className="mono">{Number(b.rooms) || 0}</span></span>
+        <span className="branch-card-staff"><I.Users size={13} style={{verticalAlign:"-2px",marginInlineEnd:6,color:"var(--ink-400)"}}/>{tt("الموظفون:")} <span className="mono">{staffCount == null ? "—" : staffCount}</span></span>
       </div>
       <div style={row}>
         <I.Clock size={13} style={{marginTop:3,color:"var(--ink-400)",flexShrink:0}}/>
@@ -1108,26 +1108,26 @@ function BranchCard({ b, current, staffCount, canDeactivate, onEdit, onToggle })
             {hours.groups.map(g => (
               <span key={g.key}>{g.days.join(CA_LIST_SEP)}: <bdi dir="ltr" className="mono">{g.from}–{g.to}</bdi></span>
             ))}
-            {hours.closed > 0 && <span className="muted">باقي الأيام: مغلق</span>}
+            {hours.closed > 0 && <span className="muted">{tt("باقي الأيام: مغلق")}</span>}
           </div>
-        ) : <span className="muted">لم تُحدد ساعات العمل</span>}
+        ) : <span className="muted">{tt("لم تُحدد ساعات العمل")}</span>}
       </div>
       <div style={{display:"flex",gap:8,marginTop:"auto",paddingTop:6,borderTop:"1px solid var(--ink-100)",flexWrap:"wrap"}}>
-        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onEdit} aria-label={tt("تعديل {name}", { name: b.name })}><I.Edit size={13}/> تعديل</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onEdit} aria-label={tt("تعديل {name}", { name: b.name })}><I.Edit size={13}/> {tt("تعديل")}</button>
         {on ? (
           <button type="button" className="btn btn-secondary" style={{fontSize:12.5,color:canDeactivate?"var(--red)":undefined}}
             disabled={!canDeactivate} aria-disabled={!canDeactivate ? "true" : undefined}
             title={canDeactivate ? undefined : tt("لا يمكن تعطيل آخر فرع نشط")}
             onClick={onToggle} aria-label={tt("تعطيل {name}", { name: b.name })}>
-            <I.Lock size={13}/> تعطيل
+            <I.Lock size={13}/> {tt("تعطيل")}
           </button>
         ) : (
           <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onToggle} aria-label={tt("إعادة تفعيل {name}", { name: b.name })}>
-            <I.Check size={13}/> إعادة تفعيل
+            <I.Check size={13}/> {tt("إعادة تفعيل")}
           </button>
         )}
       </div>
-      {on && !canDeactivate && <div className="muted" style={{fontSize:11.5}}>آخر فرع نشط لا يمكن تعطيله.</div>}
+      {on && !canDeactivate && <div className="muted" style={{fontSize:11.5}}>{tt("آخر فرع نشط لا يمكن تعطيله.")}</div>}
     </div>
   );
 }
@@ -1185,15 +1185,15 @@ function BranchesPage({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الفروع</span></div>
-          <h1 className="h1">الفروع</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>فروع عيادتك وساعات عملها وغرفها. الفرع المعطّل تبقى سجلاته محفوظة ولا يقبل حجوزات جديدة.</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("الفروع")}</span></div>
+          <h1 className="h1">{tt("الفروع")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("فروع عيادتك وساعات عملها وغرفها. الفرع المعطّل تبقى سجلاته محفوظة ولا يقبل حجوزات جديدة.")}</div>
         </div>
         <div className="page-actions">
           <span className={"pill branch-counter" + (atLimit ? " tag-amber" : "")} data-testid="branch-counter"
             style={atLimit ? {background:"var(--amber-bg)",color:"#9B6321"} : undefined}>{counter}</span>
           <button type="button" className="btn btn-blue" onClick={()=>setForm("new")} aria-describedby={atLimit ? "branch-limit-note" : undefined}>
-            <I.Plus size={14}/> إضافة فرع
+            <I.Plus size={14}/> {tt("إضافة فرع")}
           </button>
         </div>
       </div>
@@ -1207,8 +1207,8 @@ function BranchesPage({ go }) {
 
       {branches.length === 0 ? (
         <div className="card">
-          <EmptyState icon={<I.MapPin size={22}/>} title="لا فروع بعد" body="أضف أول فرع لبدء الحجز — الحجز معطّل حتى يوجد فرع نشط."
-            action={<button type="button" className="btn btn-blue" onClick={()=>setForm("new")}><I.Plus size={14}/> أضف أول فرع</button>}/>
+          <EmptyState icon={<I.MapPin size={22}/>} title={tt("لا فروع بعد")} body={tt("أضف أول فرع لبدء الحجز — الحجز معطّل حتى يوجد فرع نشط.")}
+            action={<button type="button" className="btn btn-blue" onClick={()=>setForm("new")}><I.Plus size={14}/> {tt("أضف أول فرع")}</button>}/>
         </div>
       ) : (
         <div className="rgrid branch-grid" style={{"--gtc":"repeat(auto-fill, minmax(min(100%, 290px), 1fr))"}}>
@@ -1222,7 +1222,7 @@ function BranchesPage({ go }) {
 
       {inactiveList.length > 0 && (
         <>
-          <div className="h2" style={{margin:"26px 0 12px"}}>الفروع المعطّلة</div>
+          <div className="h2" style={{margin:"26px 0 12px"}}>{tt("الفروع المعطّلة")}</div>
           <div className="rgrid branch-grid" style={{"--gtc":"repeat(auto-fill, minmax(min(100%, 290px), 1fr))"}}>
             {inactiveList.map(b => (
               <BranchCard key={b.id} b={b} current={b.id === activeId} staffCount={staffOf(b.id)} canDeactivate={false}
@@ -1238,7 +1238,7 @@ function BranchesPage({ go }) {
           title={confirm.target === "inactive" ? tt("تعطيل {name}", { name: confirm.branch.name }) : tt("إعادة تفعيل {name}", { name: confirm.branch.name })}
           danger={confirm.target === "inactive"}
           busy={busy}
-          cancelLabel="رجوع"
+          cancelLabel={tt("رجوع")}
           confirmLabel={confirm.target === "inactive" ? tt("تعطيل الفرع") : tt("إعادة التفعيل")}
           onConfirm={applyStatus}
           onClose={()=>setConfirm(null)}
@@ -1306,8 +1306,8 @@ function caEmailStatus(inv) {
 }
 function CaEmailBadge({ inv }) {
   const st = caEmailStatus(inv);
-  if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>لم يُرسل البريد</span>;
-  if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>البريد قيد الإرسال</span>;
+  if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>{tt("لم يُرسل البريد")}</span>;
+  if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending" style={{whiteSpace:"nowrap"}}><I.Mail size={11}/>{tt("البريد قيد الإرسال")}</span>;
   return null;
 }
 // Replaces (or adds) one invitation in a list, as the server returned it.
@@ -1430,8 +1430,8 @@ function StaffInvitesPanel() {
       `}</style>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,gap:12,flexWrap:"wrap"}}>
         <div>
-          <div className="h2">المستخدمون والأدوار</div>
-          <div className="muted" style={{fontSize:12.5,marginTop:2}}>ادعُ فريقك بالبريد وحدد الدور والفروع، وفعّل أو عطّل الحسابات. لا يُحذف أي حساب.</div>
+          <div className="h2">{tt("المستخدمون والأدوار")}</div>
+          <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("ادعُ فريقك بالبريد وحدد الدور والفروع، وفعّل أو عطّل الحسابات. لا يُحذف أي حساب.")}</div>
           {usage && usage.users && (
             <div className="users-counter" data-testid="users-counter" style={{marginTop:8,fontSize:12.5,color:atLimit?"#9B6321":"var(--ink-700)"}}>
               {/* The pending invitations belong to the count, before the plan's note. */}
@@ -1444,8 +1444,8 @@ function StaffInvitesPanel() {
           )}
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button type="button" className="btn btn-secondary" onClick={()=>setCreateOpen(true)}><I.User size={14}/> إنشاء مستخدم</button>
-          <button type="button" className="btn btn-blue" onClick={()=>setInviteOpen(true)}><I.Mail size={14}/> دعوة موظف</button>
+          <button type="button" className="btn btn-secondary" onClick={()=>setCreateOpen(true)}><I.User size={14}/> {tt("إنشاء مستخدم")}</button>
+          <button type="button" className="btn btn-blue" onClick={()=>setInviteOpen(true)}><I.Mail size={14}/> {tt("دعوة موظف")}</button>
         </div>
       </div>
 
@@ -1455,7 +1455,7 @@ function StaffInvitesPanel() {
         </CaAlert>
       )}
       {loadError && (
-        <CaAlert tone="error">{loadError} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={load}>إعادة المحاولة</button></CaAlert>
+        <CaAlert tone="error">{loadError} <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"2px 8px",marginInlineStart:6}} onClick={load}>{tt("إعادة المحاولة")}</button></CaAlert>
       )}
 
       {/* My account */}
@@ -1465,22 +1465,22 @@ function StaffInvitesPanel() {
           <div style={{fontWeight:600,fontSize:13.5}}>{me.name || tt("حسابي")} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{tt(me.role || "مدير")}</span></div>
           <div className="mono muted" style={{fontSize:12}}><bdi dir="ltr">{me.email || "—"}</bdi></div>
         </div>
-        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> تعديل اسمي</button>
-        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> تغيير كلمة المرور</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> {tt("تعديل اسمي")}</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> {tt("تغيير كلمة المرور")}</button>
       </div>
 
       {/* Members — name with the e-mail under it, so the table fits the
           card without sideways scrolling on a desktop screen. */}
-      <div className="h3" style={{marginBottom:8}}>أعضاء العيادة</div>
+      <div className="h3" style={{marginBottom:8}}>{tt("أعضاء العيادة")}</div>
       <div className="tbl-scroll" style={{marginBottom:22}}>
         <CardTable className="members-table">
-          <thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("الموظف")}</th><th>{tt("الدور")}</th><th>{tt("الفروع")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
             {members === null && !loadError && (
               <tr><td colSpan={5} style={{padding:0}}><SkeletonRow count={3}/></td></tr>
             )}
             {members && members.length === 0 && (
-              <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title="لا أعضاء بعد" body="ادعُ أول موظف بالبريد من زر «دعوة موظف»."/></td></tr>
+              <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title={tt("لا أعضاء بعد")} body={tt("ادعُ أول موظف بالبريد من زر «دعوة موظف».")}/></td></tr>
             )}
             {(members || []).map(m => {
               const st = CA_MEMBER_STATUS[m.status] || CA_MEMBER_STATUS.active;
@@ -1506,7 +1506,7 @@ function StaffInvitesPanel() {
                   <td><div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
                     <div className="av sm" style={{flexShrink:0}}>{initials(m.name)}</div>
                     <div style={{minWidth:0}}>
-                      <div style={{fontWeight:500}}>{m.name}{m.is_self && <span className="muted" style={{fontSize:11,fontWeight:400,marginInlineStart:6}}>(أنا)</span>}</div>
+                      <div style={{fontWeight:500}}>{m.name}{m.is_self && <span className="muted" style={{fontSize:11,fontWeight:400,marginInlineStart:6}}>{tt("(أنا)")}</span>}</div>
                       <div className="mono muted" style={{fontSize:11.5,overflowWrap:"break-word"}}>{caEmail(m.email)}</div>
                     </div>
                   </div></td>
@@ -1523,7 +1523,7 @@ function StaffInvitesPanel() {
 
       {/* Invitations — e-mail with the role and branches under it. */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:8}}>
-        <div className="h3">الدعوات</div>
+        <div className="h3">{tt("الدعوات")}</div>
         <Segmented label={tt("تصفية الدعوات")} value={filter} onChange={setFilter} options={[
           { value: "open", label: ttx("بانتظار القبول ({n})", { n: <span className="mono">{openInvites.length}</span> }) },
           { value: "all", label: ttx("كل الدعوات ({n})", { n: <span className="mono">{allInvites.length}</span> }) },
@@ -1531,7 +1531,7 @@ function StaffInvitesPanel() {
       </div>
       <div className="tbl-scroll">
         <CardTable className="invitations-table">
-          <thead><tr><th>المدعو</th><th>الحالة</th><th>تنتهي في</th><th>إجراءات</th></tr></thead>
+          <thead><tr><th>{tt("المدعو")}</th><th>{tt("الحالة")}</th><th>{tt("تنتهي في")}</th><th>{tt("إجراءات")}</th></tr></thead>
           <tbody>
             {invites === null && !loadError && (
               <tr><td colSpan={4} style={{padding:0}}><SkeletonRow count={2}/></td></tr>
@@ -1571,7 +1571,7 @@ function StaffInvitesPanel() {
                         </button>
                         <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"#A8443A",whiteSpace:"nowrap"}}
                           aria-label={tt("إلغاء دعوة {email}", { email: inv.email })} onClick={()=>setRevokeRow(inv)}>
-                          <I.X size={12}/> إلغاء
+                          <I.X size={12}/> {tt("إلغاء")}
                         </button>
                       </div>
                     ) : <span className="muted" style={{fontSize:12}}>—</span>}
@@ -1592,11 +1592,11 @@ function StaffInvitesPanel() {
       {resetRow && <AdminResetPasswordModal row={resetRow} onClose={()=>setResetRow(null)}/>}
       {revokeRow && (
         <ConfirmModal
-          title="إلغاء الدعوة"
+          title={tt("إلغاء الدعوة")}
           danger
           busy={revokeBusy}
-          cancelLabel="رجوع"
-          confirmLabel="إلغاء الدعوة"
+          cancelLabel={tt("رجوع")}
+          confirmLabel={tt("إلغاء الدعوة")}
           onConfirm={revoke}
           onClose={()=>setRevokeRow(null)}
           message={<>{ttx("لن يعمل رابط الدعوة المرسل إلى {email} بعد الآن، ويتحرر مقعده في الخطة. يمكنك إرسال دعوة جديدة لاحقًا.", { email: <b><bdi dir="ltr">{revokeRow.email}</bdi></b> })}</>}
@@ -1607,7 +1607,7 @@ function StaffInvitesPanel() {
           title={statusRow.active ? tt("إعادة تفعيل الحساب") : tt("تعطيل الحساب")}
           danger={!statusRow.active}
           busy={statusBusy}
-          cancelLabel="رجوع"
+          cancelLabel={tt("رجوع")}
           confirmLabel={statusRow.active ? tt("تفعيل") : tt("تعطيل")}
           onConfirm={applyStatus}
           onClose={()=>setStatusRow(null)}
@@ -1654,8 +1654,8 @@ function InviteStaffModal({ onClose, onDone }) {
 
   const errStyle = { fontSize:11.5, color:"#A8443A", marginTop:4 };
   return (
-    <Modal title="دعوة موظف" onClose={busy ? undefined : onClose} width={560} footer={<>
-      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
+    <Modal title={tt("دعوة موظف")} onClose={busy ? undefined : onClose} width={560} footer={<>
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>{tt("إلغاء")}</button>
       <button type="button" className="btn btn-blue" disabled={busy} onClick={submit} aria-busy={busy ? "true" : undefined}>
         {busy ? <span className="spin" aria-hidden="true" style={{width:13,height:13,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <I.Send size={13}/>}
         {tt("إرسال الدعوة")}
@@ -1663,26 +1663,26 @@ function InviteStaffModal({ onClose, onDone }) {
     </>}>
       <form onSubmit={(e)=>{ e.preventDefault(); submit(); }} noValidate>
         {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
-        <label className="label" htmlFor="staff-invite-email">البريد الإلكتروني <span style={{color:"#A8443A"}}>*</span></label>
+        <label className="label" htmlFor="staff-invite-email">{tt("البريد الإلكتروني")} <span style={{color:"#A8443A"}}>*</span></label>
         <input id="staff-invite-email" className="input" type="email" dir="ltr" autoFocus placeholder="name@clinic.eg" value={email}
           style={{textAlign:IS_RTL ? "right" : "left", ...(errors.email ? {borderColor:"var(--red)"} : {})}}
           aria-invalid={errors.email ? "true" : undefined} aria-describedby={errors.email ? "staff-invite-email-err" : undefined}
           onChange={e=>{ setEmail(e.target.value); setErrors(x=>({...x,email:undefined})); setServerError(""); }}/>
         {errors.email && <div id="staff-invite-email-err" style={errStyle}>{errors.email}</div>}
         <div style={{height:12}}/>
-        <label className="label" htmlFor="staff-invite-role">الدور <span style={{color:"#A8443A"}}>*</span></label>
+        <label className="label" htmlFor="staff-invite-role">{tt("الدور")} <span style={{color:"#A8443A"}}>*</span></label>
         <select id="staff-invite-role" className="input" value={role} onChange={e=>{ setRole(e.target.value); setServerError(""); }}>
           {CA_INVITE_ROLES.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
         </select>
         <div style={{height:14}}/>
         <div className="label" id="staff-invite-branches-label">{tt("الفروع")} {role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
         {role === "admin"
-          ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+          ? <div className="muted" style={{fontSize:12.5}}>{tt("مدير العيادة يعمل في كل الفروع.")}</div>
           : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setErrors(x=>({...x,branches:undefined})); }} idPrefix="staff-invite-branch"
               invalid={!!errors.branches} describedBy={errors.branches ? "staff-invite-branches-err" : "staff-invite-branches-label"}/>}
         {errors.branches && <div id="staff-invite-branches-err" style={errStyle}>{errors.branches}</div>}
         <div className="muted" style={{fontSize:11.5,marginTop:14,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-          <I.Mail size={11} style={{marginInlineEnd:4}}/> يصل للموظف رابط صالح لمدة 7 أيام ليعيّن كلمة مروره بنفسه. الدعوة المعلّقة تحجز مقعدًا في خطتك حتى تُقبل أو تُلغى.
+          <I.Mail size={11} style={{marginInlineEnd:4}}/> {tt("يصل للموظف رابط صالح لمدة 7 أيام ليعيّن كلمة مروره بنفسه. الدعوة المعلّقة تحجز مقعدًا في خطتك حتى تُقبل أو تُلغى.")}
         </div>
       </form>
     </Modal>
@@ -1711,24 +1711,24 @@ function EditMemberModal({ member, onClose, onDone }) {
   }
   return (
     <Modal title={tt("تعديل {name}", { name: member.name })} onClose={busy ? undefined : onClose} footer={<>
-      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
-      <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>{tt("إلغاء")}</button>
+      <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>
     </>}>
       {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
       <div className="muted mono" style={{fontSize:12,marginBottom:12}}><bdi dir="ltr">{member.email}</bdi></div>
-      <label className="label" htmlFor="member-role">الدور</label>
+      <label className="label" htmlFor="member-role">{tt("الدور")}</label>
       <select id="member-role" className="input" value={role} onChange={e=>{ setRole(e.target.value); setError(""); }}>
         {roles.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
       </select>
       <div style={{height:14}}/>
-      <div className="label">الفروع</div>
+      <div className="label">{tt("الفروع")}</div>
       {role === "admin"
-        ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+        ? <div className="muted" style={{fontSize:12.5}}>{tt("مدير العيادة يعمل في كل الفروع.")}</div>
         : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setError(""); }} idPrefix="member-branch" invalid={!!error}/>}
       {error && <div style={{fontSize:11.5,color:"#A8443A",marginTop:4}}>{error}</div>}
       {role !== member.role && (
         <div className="muted" style={{fontSize:11.5,marginTop:12,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-          تغيير الدور يُنهي جلسات الموظف المفتوحة، فيسجّل الدخول من جديد بصلاحيات الدور الجديد.
+          {tt("تغيير الدور يُنهي جلسات الموظف المفتوحة، فيسجّل الدخول من جديد بصلاحيات الدور الجديد.")}
         </div>
       )}
     </Modal>
@@ -1773,10 +1773,10 @@ function StaffRosterPanel() {
       {/* My account */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,gap:12,flexWrap:"wrap"}}>
         <div>
-          <div className="h2">المستخدمون والأدوار</div>
-          <div className="muted" style={{fontSize:12.5,marginTop:2}}>أنشئ حسابات الدخول، عيّن الأدوار، أعد تعيين كلمات المرور، وفعّل أو عطّل الحسابات.</div>
+          <div className="h2">{tt("المستخدمون والأدوار")}</div>
+          <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("أنشئ حسابات الدخول، عيّن الأدوار، أعد تعيين كلمات المرور، وفعّل أو عطّل الحسابات.")}</div>
         </div>
-        <button className="btn btn-blue" onClick={()=>setCreateOpen(true)}><I.Plus size={14}/> إنشاء مستخدم</button>
+        <button className="btn btn-blue" onClick={()=>setCreateOpen(true)}><I.Plus size={14}/> {tt("إنشاء مستخدم")}</button>
       </div>
 
       <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
@@ -1785,17 +1785,17 @@ function StaffRosterPanel() {
           <div style={{fontWeight:600,fontSize:13.5}}>{me.name || tt("حسابي")} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{tt(me.role || "مدير")}</span></div>
           <div className="mono muted" style={{fontSize:12}}>{me.email || "—"}</div>
         </div>
-        <button className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> تعديل اسمي</button>
-        <button className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> تغيير كلمة المرور</button>
+        <button className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> {tt("تعديل اسمي")}</button>
+        <button className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setPwOpen(true)}><I.Lock size={13}/> {tt("تغيير كلمة المرور")}</button>
       </div>
 
       {/* Team table */}
       <div className="tbl-scroll">
       <CardTable>
-        <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>حالة الحساب</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+        <thead><tr><th>{tt("الاسم")}</th><th>{tt("البريد الإلكتروني")}</th><th>{tt("الدور")}</th><th>{tt("حالة الحساب")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
         <tbody>
           {staff.length===0 && (
-            <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title="لا مستخدمين بعد" body="أنشئ أول حساب دخول من زر «إنشاء مستخدم»."/></td></tr>
+            <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title={tt("لا مستخدمين بعد")} body={tt("أنشئ أول حساب دخول من زر «إنشاء مستخدم».")}/></td></tr>
           )}
           {staff.map((s,i)=>{
             const st = staffStatusMeta(s);
@@ -1804,7 +1804,7 @@ function StaffRosterPanel() {
             <tr key={s.staff_id||s.id||i} data-selected={st.active?undefined:"true"} style={st.active?undefined:{opacity:.85}}>
               <td><div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div className="av sm">{(s.name||"?").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</div>
-                {s.name}{mine && <span className="muted" style={{fontSize:11}}>(أنا)</span>}
+                {s.name}{mine && <span className="muted" style={{fontSize:11}}>{tt("(أنا)")}</span>}
               </div></td>
               <td className="mono" style={{fontSize:12}}>{s.email || "—"}</td>
               <td><span className={"badge " + roleBadgeClass(s.role)}><span className="dot"></span>{ROLE_AR[s.role] || s.role || "—"}</span></td>
@@ -1878,9 +1878,9 @@ function AdminResetPasswordModal({ row, onClose }) {
   if (confirming) {
     return (
       <ConfirmModal
-        title="تأكيد إعادة التعيين"
+        title={tt("تأكيد إعادة التعيين")}
         busy={busy}
-        confirmLabel="تأكيد وتغيير"
+        confirmLabel={tt("تأكيد وتغيير")}
         onConfirm={submit}
         onClose={()=>setConfirming(false)}
         message={<>{ttx("سيتم تعيين كلمة مرور جديدة للموظف {name} ({email}). سيستخدم كلمة المرور الجديدة في تسجيل الدخول القادم. لا يلزم إدخال كلمة المرور الحالية.", { name: <b>{row.name}</b>, email: row.email || "—" })}</>}
@@ -1891,20 +1891,20 @@ function AdminResetPasswordModal({ row, onClose }) {
   return (
     <Modal title={tt("إعادة تعيين كلمة مرور — {name}", { name: row.name })} onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" onClick={proceed}><I.Lock size={13}/> متابعة</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" onClick={proceed}><I.Lock size={13}/> {tt("متابعة")}</button>
       </>}>
       <div className="muted" style={{fontSize:12,marginBottom:14,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8,lineHeight:1.6}}>
-        <I.Lock size={11} style={{marginInlineEnd:4}}/> بصفتك مديرًا، يمكنك تعيين كلمة مرور جديدة لهذا الموظف دون معرفة كلمته الحالية. تُنهى جلساته المفتوحة، ويستخدم الكلمة الجديدة في دخوله القادم.
+        <I.Lock size={11} style={{marginInlineEnd:4}}/> {tt("بصفتك مديرًا، يمكنك تعيين كلمة مرور جديدة لهذا الموظف دون معرفة كلمته الحالية. تُنهى جلساته المفتوحة، ويستخدم الكلمة الجديدة في دخوله القادم.")}
       </div>
-      <Field label="كلمة المرور الجديدة" required hint="6 أحرف على الأقل">
+      <Field label={tt("كلمة المرور الجديدة")} required hint={tt("6 أحرف على الأقل")}>
         <div style={{position:"relative"}}>
           <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingInlineStart:38}} autoFocus/>
           <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
-      <Field label="تأكيد كلمة المرور" required>
+      <Field label={tt("تأكيد كلمة المرور")} required>
         <input className="input" type={showPw?"text":"password"} value={pw2} onChange={e=>setPw2(e.target.value)}/>
       </Field>
     </Modal>
@@ -1937,31 +1937,31 @@ function CreateUserModal({ onClose, onDone }) {
     if (onDone) onDone(res);
   }
   return (
-    <Modal title="إنشاء مستخدم جديد" onClose={busy ? undefined : onClose}
+    <Modal title={tt("إنشاء مستخدم جديد")} onClose={busy ? undefined : onClose}
       footer={<>
-        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>{tt("إلغاء")}</button>
         <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}>
-          {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> إنشاء الحساب</>}
+          {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> {tt("إنشاء الحساب")}</>}
         </button>
       </>}>
       {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
-      <Field label="الاسم الكامل" required>
-        <input className="input" aria-label="الاسم الكامل" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="مثال: دينا فؤاد"/>
+      <Field label={tt("الاسم الكامل")} required>
+        <input className="input" aria-label={tt("الاسم الكامل")} value={form.name} onChange={e=>set("name",e.target.value)} placeholder={tt("مثال: دينا فؤاد")}/>
       </Field>
       <div style={{height:12}}/>
-      <Field label="البريد الإلكتروني" required>
-        <input className="input" aria-label="البريد الإلكتروني" type="email" dir="ltr" style={{textAlign:IS_RTL ? "right" : "left"}} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
+      <Field label={tt("البريد الإلكتروني")} required>
+        <input className="input" aria-label={tt("البريد الإلكتروني")} type="email" dir="ltr" style={{textAlign:IS_RTL ? "right" : "left"}} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
       </Field>
       <div style={{height:12}}/>
-      <Field label="كلمة المرور" required hint="6 أحرف على الأقل">
+      <Field label={tt("كلمة المرور")} required hint={tt("6 أحرف على الأقل")}>
         <div style={{position:"relative"}}>
           <input className="input" aria-label={tt("كلمة المرور")} type={showPw?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} style={{paddingInlineStart:38}}/>
           <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
-      <Field label="الدور" required>
-        <select className="input" aria-label="الدور" value={form.role} onChange={e=>set("role",e.target.value)}>
+      <Field label={tt("الدور")} required>
+        <select className="input" aria-label={tt("الدور")} value={form.role} onChange={e=>set("role",e.target.value)}>
           {ROLE_OPTIONS.map(r=><option key={r.slug} value={r.slug}>{r.label}</option>)}
         </select>
       </Field>
@@ -1970,12 +1970,12 @@ function CreateUserModal({ onClose, onDone }) {
           <div style={{height:12}}/>
           <div className="label">{tt("الفروع")} {form.role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
           {form.role === "admin"
-            ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
+            ? <div className="muted" style={{fontSize:12.5}}>{tt("مدير العيادة يعمل في كل الفروع.")}</div>
             : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setServerError(""); }} idPrefix="create-user-branch"/>}
         </>
       )}
       <div className="muted" style={{fontSize:11.5,marginTop:14,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-        <I.Lock size={11} style={{marginInlineEnd:4}}/> يستطيع الموظف الدخول فورًا بهذا البريد وكلمة المرور. الأفضل إرسال «دعوة موظف» ليعيّن كلمة مروره بنفسه؛ والحساب الموجود في عيادة أخرى ينضم بدعوة فقط.
+        <I.Lock size={11} style={{marginInlineEnd:4}}/> {tt("يستطيع الموظف الدخول فورًا بهذا البريد وكلمة المرور. الأفضل إرسال «دعوة موظف» ليعيّن كلمة مروره بنفسه؛ والحساب الموجود في عيادة أخرى ينضم بدعوة فقط.")}
       </div>
     </Modal>
   );
@@ -2001,18 +2001,18 @@ function EditUserModal({ row, onClose, nameOnly }) {
   return (
     <Modal title={tt("تعديل {name}", { name: row.name || tt("المستخدم") })} onClose={onClose}
       footer={<>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+        <button type="button" className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>
       </>}>
-      <Field label="الاسم"><input className="input" aria-label="الاسم" value={name} onChange={e=>setName(e.target.value)}/></Field>
+      <Field label={tt("الاسم")}><input className="input" aria-label={tt("الاسم")} value={name} onChange={e=>setName(e.target.value)}/></Field>
       <div style={{height:12}}/>
-      <Field label="البريد الإلكتروني" hint="لا يمكن تغييره من هنا">
+      <Field label={tt("البريد الإلكتروني")} hint={tt("لا يمكن تغييره من هنا")}>
         <input className="input" dir="ltr" style={{opacity:.7,textAlign:IS_RTL ? "right" : "left"}} value={row.email || "—"} disabled/>
       </Field>
       {!nameOnly && (
         <>
           <div style={{height:12}}/>
-          <Field label="الدور">
+          <Field label={tt("الدور")}>
             <select className="input" value={role} onChange={e=>setRole(e.target.value)}>
               {ROLE_OPTIONS.map(r=><option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
@@ -2021,7 +2021,7 @@ function EditUserModal({ row, onClose, nameOnly }) {
       )}
       {roleChanged && (
         <div className="muted" style={{fontSize:11.5,marginTop:12,lineHeight:1.6,padding:"10px 12px",background:"var(--ink-50)",borderRadius:8}}>
-          يتغير الدور في قائمة الموظفين المحلية فقط (وضع العرض).
+          {tt("يتغير الدور في قائمة الموظفين المحلية فقط (وضع العرض).")}
         </div>
       )}
     </Modal>
@@ -2042,19 +2042,19 @@ function ChangePasswordModal({ onClose }) {
     else window.showToast && window.showToast(res.error || tt("تعذّر التغيير"), "error");
   }
   return (
-    <Modal title="تغيير كلمة المرور" onClose={onClose}
+    <Modal title={tt("تغيير كلمة المرور")} onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>
       </>}>
-      <Field label="كلمة المرور الجديدة" required hint="6 أحرف على الأقل">
+      <Field label={tt("كلمة المرور الجديدة")} required hint={tt("6 أحرف على الأقل")}>
         <div style={{position:"relative"}}>
           <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingInlineStart:38}}/>
           <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
-      <Field label="تأكيد كلمة المرور" required>
+      <Field label={tt("تأكيد كلمة المرور")} required>
         <input className="input" type={showPw?"text":"password"} value={pw2} onChange={e=>setPw2(e.target.value)}/>
       </Field>
     </Modal>
@@ -2072,12 +2072,12 @@ function EditProfileModal({ onClose }) {
     else window.showToast && window.showToast(res.error || tt("تعذّر الحفظ"), "error");
   }
   return (
-    <Modal title="تعديل ملفي" onClose={onClose}
+    <Modal title={tt("تعديل ملفي")} onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>
       </>}>
-      <Field label="الاسم"><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field>
+      <Field label={tt("الاسم")}><input className="input" value={name} onChange={e=>setName(e.target.value)}/></Field>
     </Modal>
   );
 }
@@ -2159,43 +2159,43 @@ function ClinicDetailsPanel() {
   }
   return (
     <div>
-      <div className="h2" style={{marginBottom:18}}>بيانات العيادة</div>
-      {loading && <div className="muted" style={{fontSize:12,marginBottom:10}}>جاري تحميل البيانات…</div>}
+      <div className="h2" style={{marginBottom:18}}>{tt("بيانات العيادة")}</div>
+      {loading && <div className="muted" style={{fontSize:12,marginBottom:10}}>{tt("جاري تحميل البيانات…")}</div>}
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14,maxWidth:720}}>
-        <Field label="اسم العيادة" span={2}><input className="input" value={form.name} onChange={e=>set("name", e.target.value)}/></Field>
-        <Field label="الفرع" span={2}><input className="input" value={form.branch} onChange={e=>set("branch", e.target.value)}/></Field>
-        <Field label="الهاتف"><input className="input" value={form.phone} onChange={e=>set("phone", e.target.value)}/></Field>
-        <Field label="البريد الإلكتروني"><input className="input" value={form.email} onChange={e=>set("email", e.target.value)}/></Field>
-        <Field label="العنوان" span={2}><input className="input" value={form.address} onChange={e=>set("address", e.target.value)}/></Field>
-        <Field label="الرقم الضريبي"><input className="input" value={form.tax_id} onChange={e=>set("tax_id", e.target.value)}/></Field>
-        <Field label="ساعات العمل"><input className="input" value={form.hours} onChange={e=>set("hours", e.target.value)}/></Field>
-        <Field label="الموقع الإلكتروني" span={2}><input className="input" value={form.website} onChange={e=>set("website", e.target.value)} placeholder="https://…"/></Field>
-        <Field label="العملة">
+        <Field label={tt("اسم العيادة")} span={2}><input className="input" value={form.name} onChange={e=>set("name", e.target.value)}/></Field>
+        <Field label={tt("الفرع")} span={2}><input className="input" value={form.branch} onChange={e=>set("branch", e.target.value)}/></Field>
+        <Field label={tt("الهاتف")}><input className="input" value={form.phone} onChange={e=>set("phone", e.target.value)}/></Field>
+        <Field label={tt("البريد الإلكتروني")}><input className="input" value={form.email} onChange={e=>set("email", e.target.value)}/></Field>
+        <Field label={tt("العنوان")} span={2}><input className="input" value={form.address} onChange={e=>set("address", e.target.value)}/></Field>
+        <Field label={tt("الرقم الضريبي")}><input className="input" value={form.tax_id} onChange={e=>set("tax_id", e.target.value)}/></Field>
+        <Field label={tt("ساعات العمل")}><input className="input" value={form.hours} onChange={e=>set("hours", e.target.value)}/></Field>
+        <Field label={tt("الموقع الإلكتروني")} span={2}><input className="input" value={form.website} onChange={e=>set("website", e.target.value)} placeholder="https://…"/></Field>
+        <Field label={tt("العملة")}>
           <select className="input" value={form.currency} onChange={e=>set("currency", e.target.value)}>
-            <option value="EGP">جنيه مصري (EGP)</option>
-            <option value="SAR">ريال سعودي (SAR)</option>
-            <option value="AED">درهم إماراتي (AED)</option>
-            <option value="USD">دولار أمريكي (USD)</option>
-            <option value="EUR">يورو (EUR)</option>
+            <option value="EGP">{tt("جنيه مصري (EGP)")}</option>
+            <option value="SAR">{tt("ريال سعودي (SAR)")}</option>
+            <option value="AED">{tt("درهم إماراتي (AED)")}</option>
+            <option value="USD">{tt("دولار أمريكي (USD)")}</option>
+            <option value="EUR">{tt("يورو (EUR)")}</option>
           </select>
         </Field>
-        <Field label="المنطقة الزمنية">
+        <Field label={tt("المنطقة الزمنية")}>
           <select className="input" value={form.timezone} onChange={e=>set("timezone", e.target.value)}>
-            <option value="Africa/Cairo">القاهرة (Africa/Cairo)</option>
-            <option value="Asia/Riyadh">الرياض (Asia/Riyadh)</option>
-            <option value="Asia/Dubai">دبي (Asia/Dubai)</option>
-            <option value="Asia/Amman">عمّان (Asia/Amman)</option>
+            <option value="Africa/Cairo">{tt("القاهرة (Africa/Cairo)")}</option>
+            <option value="Asia/Riyadh">{tt("الرياض (Asia/Riyadh)")}</option>
+            <option value="Asia/Dubai">{tt("دبي (Asia/Dubai)")}</option>
+            <option value="Asia/Amman">{tt("عمّان (Asia/Amman)")}</option>
           </select>
         </Field>
-        <Field label="بداية دوام التقويم" hint="أول موعد يظهر في التقويم">
+        <Field label={tt("بداية دوام التقويم")} hint={tt("أول موعد يظهر في التقويم")}>
           <input className="input" type="time" value={form.calendar_start}
                  onChange={e=>set("calendar_start", e.target.value)}/>
         </Field>
-        <Field label="نهاية دوام التقويم" hint="آخر موعد يظهر في التقويم">
+        <Field label={tt("نهاية دوام التقويم")} hint={tt("آخر موعد يظهر في التقويم")}>
           <input className="input" type="time" value={form.calendar_end}
                  onChange={e=>set("calendar_end", e.target.value)}/>
         </Field>
-        <Field label="مدة الجلسة (دقيقة)" span={2} hint="تُستخدم كمدة الخانة في التقويم وكل شاشات اختيار الوقت">
+        <Field label={tt("مدة الجلسة (دقيقة)")} span={2} hint={tt("تُستخدم كمدة الخانة في التقويم وكل شاشات اختيار الوقت")}>
           <input className="input" type="number" min="5" max="240" step="5"
                  value={form.appointment_duration}
                  onChange={e=>set("appointment_duration", e.target.value)}/>
@@ -2266,8 +2266,8 @@ function BrandingPanel() {
 
   return (
     <div>
-      <div className="h2" style={{marginBottom:6}}>الهوية البصرية</div>
-      <div className="muted" style={{fontSize:13,marginBottom:18}}>خصّص شعار العيادة واسمها الظاهر في كل الشاشات.</div>
+      <div className="h2" style={{marginBottom:6}}>{tt("الهوية البصرية")}</div>
+      <div className="muted" style={{fontSize:13,marginBottom:18}}>{tt("خصّص شعار العيادة واسمها الظاهر في كل الشاشات.")}</div>
 
       <div className="rgrid c-sm" style={{"--gtc":"180px 1fr",gap:24,alignItems:"start",maxWidth:720}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
@@ -2279,25 +2279,25 @@ function BrandingPanel() {
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={onPickFile}/>
           <div style={{display:"flex",gap:6}}>
             <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>fileRef.current && fileRef.current.click()}>
-              <I.Upload size={12}/> رفع شعار
+              <I.Upload size={12}/> {tt("رفع شعار")}
             </button>
             {clinic.logo && (
               <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setClinic(c=>({...c,logo:null}))}>
-                <I.Trash size={12}/> إزالة
+                <I.Trash size={12}/> {tt("إزالة")}
               </button>
             )}
           </div>
-          <div className="muted" style={{fontSize:11,textAlign:"center"}}>PNG/JPG · حتى 512KB</div>
+          <div className="muted" style={{fontSize:11,textAlign:"center"}}>{tt("PNG/JPG · حتى 512KB")}</div>
         </div>
 
         <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14}}>
-          <Field label="اسم العيادة" span={2}>
+          <Field label={tt("اسم العيادة")} span={2}>
             <input className="input" value={clinic.name||""} onChange={e=>setClinic(c=>({...c,name:e.target.value}))}/>
           </Field>
-          <Field label="العنوان الفرعي" span={2}>
+          <Field label={tt("العنوان الفرعي")} span={2}>
             <input className="input" value={clinic.subtitle||""} onChange={e=>setClinic(c=>({...c,subtitle:e.target.value}))}/>
           </Field>
-          <Field label="اللون الأساسي">
+          <Field label={tt("اللون الأساسي")}>
             <input className="input" type="color" value={clinic.primary||"#7BBDE8"} onChange={e=>setClinic(c=>({...c,primary:e.target.value}))}/>
           </Field>
         </div>
@@ -2335,18 +2335,18 @@ function CustomSectionsPanel() {
     <div>
       <div className="page-head" style={{marginBottom:12}}>
         <div>
-          <div className="h2" style={{marginBottom:4}}>أقسام مخصصة</div>
-          <div className="muted" style={{fontSize:13}}>أضف أقسامًا تظهر في الشريط الجانبي للمدير وعدّل محتواها.</div>
+          <div className="h2" style={{marginBottom:4}}>{tt("أقسام مخصصة")}</div>
+          <div className="muted" style={{fontSize:13}}>{tt("أضف أقسامًا تظهر في الشريط الجانبي للمدير وعدّل محتواها.")}</div>
         </div>
-        <button className="btn btn-blue" onClick={startNew}><I.Plus size={13}/> قسم جديد</button>
+        <button className="btn btn-blue" onClick={startNew}><I.Plus size={13}/> {tt("قسم جديد")}</button>
       </div>
 
       {sections.length === 0 ? (
-        <EmptyState icon={<I.Layers size={22}/>} title="لا توجد أقسام مخصصة بعد" body="اضغط «قسم جديد» لإضافة قسم يظهر في القائمة الجانبية."/>
+        <EmptyState icon={<I.Layers size={22}/>} title={tt("لا توجد أقسام مخصصة بعد")} body={tt("اضغط «قسم جديد» لإضافة قسم يظهر في القائمة الجانبية.")}/>
       ) : (
         <div className="tbl-scroll">
         <CardTable>
-          <thead><tr><th>القسم</th><th>المجموعة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("القسم")}</th><th>{tt("المجموعة")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
             {sections.map(s=>{
               const Ico = I[s.icon] || I.Layers;
@@ -2366,8 +2366,8 @@ function CustomSectionsPanel() {
                   <td>{s.group}</td>
                   <td><span className={"badge " + (s.visible!==false?"b-green":"b-grey")}><span className="dot"></span>{s.visible!==false?tt("ظاهر"):tt("مخفي")}</span></td>
                   <td style={{textAlign:"end"}}>
-                    <button className="btn btn-ghost btn-icon" title="تعديل" onClick={()=>setEditing({...s})}><I.Edit size={13}/></button>
-                    <button className="btn btn-ghost btn-icon" title="حذف" onClick={()=>onDelete(s)}><I.Trash size={13}/></button>
+                    <button className="btn btn-ghost btn-icon" title={tt("تعديل")} onClick={()=>setEditing({...s})}><I.Edit size={13}/></button>
+                    <button className="btn btn-ghost btn-icon" title={tt("حذف")} onClick={()=>onDelete(s)}><I.Trash size={13}/></button>
                   </td>
                 </tr>
               );
@@ -2408,36 +2408,36 @@ function SectionEditorModal({ draft, onClose }) {
   return (
     <Modal title={d.id ? tt("تعديل قسم") : tt("قسم جديد")} onClose={onClose}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button className="btn btn-blue" disabled={saving} onClick={onSave}>
           <I.Check size={13}/> {saving ? tt("جاري الحفظ…") : tt("حفظ")}
         </button>
       </>}>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12}}>
-        <Field label="اسم القسم" required span={2}>
-          <input className="input" value={d.label||""} onChange={e=>set("label",e.target.value)} placeholder="مثال: العلاج المائي"/>
+        <Field label={tt("اسم القسم")} required span={2}>
+          <input className="input" value={d.label||""} onChange={e=>set("label",e.target.value)} placeholder={tt("مثال: العلاج المائي")}/>
         </Field>
-        <Field label="المعرف (slug)" span={2}>
+        <Field label={tt("المعرف (slug)")} span={2}>
           <input className="input" value={d.slug||""} onChange={e=>set("slug",e.target.value)} placeholder="hydrotherapy"/>
         </Field>
-        <Field label="المجموعة">
-          <input className="input" value={d.group||""} onChange={e=>set("group",e.target.value)} placeholder="مخصص"/>
+        <Field label={tt("المجموعة")}>
+          <input className="input" value={d.group||""} onChange={e=>set("group",e.target.value)} placeholder={tt("مخصص")}/>
         </Field>
-        <Field label="الأيقونة">
+        <Field label={tt("الأيقونة")}>
           <select className="input" value={d.icon||"Layers"} onChange={e=>set("icon",e.target.value)}>
             {CUSTOM_SECTION_ICONS.map(n=><option key={n} value={n}>{n}</option>)}
           </select>
         </Field>
-        <Field label="الوصف" span={2}>
+        <Field label={tt("الوصف")} span={2}>
           <input className="input" value={d.description||""} onChange={e=>set("description",e.target.value)}/>
         </Field>
-        <Field label="المحتوى" span={2} hint="نص حر يظهر داخل الصفحة">
+        <Field label={tt("المحتوى")} span={2} hint={tt("نص حر يظهر داخل الصفحة")}>
           <textarea className="input" style={{height:120,padding:10}} value={d.content||""} onChange={e=>set("content",e.target.value)}/>
         </Field>
-        <Field label="الحالة" span={2}>
+        <Field label={tt("الحالة")} span={2}>
           <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}>
             <input type="checkbox" checked={d.visible!==false} onChange={e=>set("visible",e.target.checked)}/>
-            ظاهر في القائمة الجانبية
+            {tt("ظاهر في القائمة الجانبية")}
           </label>
         </Field>
       </div>
@@ -2453,7 +2453,7 @@ function CustomSectionPage({ id }) {
   const Ico = I[s.icon] || I.Layers;
   return (
     <Page>
-      <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>{s.group||tt("مخصص")}</span><I.Chevron size={11}/><span>{s.label}</span></div>
+      <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{s.group||tt("مخصص")}</span><I.Chevron size={11}/><span>{s.label}</span></div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
         <div style={{width:44,height:44,borderRadius:12,background:"var(--blue-100)",color:"var(--blue-700)",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <Ico size={22}/>
@@ -2475,9 +2475,9 @@ function NotFound({ go }) {
     <Page>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"80px 0"}}>
         <div className="serif" style={{fontSize:120,lineHeight:1,color:"var(--blue-300)"}}>404</div>
-        <h1 className="h1" style={{marginTop:18}}>هذه الصفحة في يوم تعافي.</h1>
-        <div className="muted" style={{marginTop:8,maxWidth:480,textAlign:"center"}}>الصفحة التي تبحث عنها غير موجودة أو تم نقلها. عُد إلى لوحة التحكم.</div>
-        <button className="btn btn-blue" style={{marginTop:20}} onClick={()=>go("dashboard")}><I.ArrowLeft size={13}/> العودة إلى لوحة التحكم</button>
+        <h1 className="h1" style={{marginTop:18}}>{tt("هذه الصفحة في يوم تعافي.")}</h1>
+        <div className="muted" style={{marginTop:8,maxWidth:480,textAlign:"center"}}>{tt("الصفحة التي تبحث عنها غير موجودة أو تم نقلها. عُد إلى لوحة التحكم.")}</div>
+        <button className="btn btn-blue" style={{marginTop:20}} onClick={()=>go("dashboard")}><I.ArrowLeft size={13}/> {tt("العودة إلى لوحة التحكم")}</button>
       </div>
     </Page>
   );
@@ -2512,22 +2512,10 @@ function ClinicNoPermission({ go, role, reason }) {
 const CLINIC_PAGES = ["dashboard","patients","appointments","treatments","sessions","payments","packages","campaigns","reports","branches","settings"];
 const clinicIsPage = (r) => typeof r === "string" && (CLINIC_PAGES.includes(r) || r.startsWith("custom:"));
 
-// The language switch of the top bars: «EN» / «ع» on phones.
-function useCaMedia(query) {
-  const read = () => !!(window.matchMedia && window.matchMedia(query).matches);
-  const [on, setOn] = React.useState(read);
-  React.useEffect(() => {
-    if (!window.matchMedia) return;
-    const mq = window.matchMedia(query);
-    const h = () => setOn(mq.matches);
-    h();
-    if (mq.addEventListener) mq.addEventListener("change", h); else mq.addListener(h);
-    return () => { if (mq.removeEventListener) mq.removeEventListener("change", h); else mq.removeListener(h); };
-  }, [query]);
-  return on;
-}
+// The language switch of the top bars: «EN» / «ع» on phones
+// (useMediaQuery: src/ui.jsx).
 function CaLangSwitch() {
-  const phone = useCaMedia("(max-width: 640px)");
+  const phone = useMediaQuery("(max-width: 640px)");
   return <LangSwitch compact={phone} className="btn btn-ghost" style={{fontSize:12.5,padding:"6px 10px",flexShrink:0}}/>;
 }
 
@@ -2836,7 +2824,7 @@ function ClinicApp({ ctx }) {
     return <>{Gate ? <Gate/> : null}{toast && <Toast msg={toast.msg} kind={toast.kind}/>}</>;
   }
 
-  if (gated && gate.phase === "resolving") return <TenantLoading text="جارٍ تحميل العيادة…"/>;
+  if (gated && gate.phase === "resolving") return <TenantLoading text={tt("جارٍ تحميل العيادة…")}/>;
   if (gated && gate.phase === "status") {
     const session = gate.session || null;
     return <TenantStatusScreen status={gate.status}
@@ -2902,43 +2890,45 @@ function ClinicApp({ ctx }) {
   return (
     <div style={{display:"flex",minHeight:"100vh",background:"var(--ink-50)"}}>
       {/* First Tab stop: past the menu and the top bar to the page (like the platform's). */}
-      <a className="skip-link" href="#clinic-main" onClick={(e)=>{ e.preventDefault(); const m = document.getElementById("clinic-main"); if (m) m.focus(); }}>تخطَّ إلى المحتوى</a>
+      <a className="skip-link" href="#clinic-main" onClick={(e)=>{ e.preventDefault(); const m = document.getElementById("clinic-main"); if (m) m.focus(); }}>{tt("تخطَّ إلى المحتوى")}</a>
       <div className={"sidebar-backdrop" + (mobileNavOpen ? " open" : "")} onClick={()=>setMobileNavOpen(false)}/>
-      <Sidebar active={route} onNav={(id)=>{ setMobileNavOpen(false); go(id); }} role={acct.role} user={acct} isOpen={mobileNavOpen}/>
+      <Sidebar active={route} onNav={(id)=>{ setMobileNavOpen(false); go(id); }} role={acct.role} user={acct} isOpen={mobileNavOpen} onClose={()=>setMobileNavOpen(false)}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         {/* Inline topbar replaced — pages own their own headers for richer context */}
         <div className="topbar">
-          <button type="button" className="mobile-menu-btn" aria-label="فتح القائمة" onClick={()=>setMobileNavOpen(o=>!o)}>
+          <button type="button" className="mobile-menu-btn" aria-label={tt("فتح القائمة")} onClick={()=>setMobileNavOpen(o=>!o)}>
             <I.Menu size={18}/>
           </button>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:12,minWidth:0}}>
             <span style={{fontSize:12,color:"var(--ink-500)",whiteSpace:"nowrap"}}>{tt(acct.role)}</span>
             <span aria-hidden="true" style={{color:"var(--ink-300)"}}>·</span>
             <span style={{fontSize:13,color:"var(--ink-700)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeBranchName()}</span>
-            <span className="badge b-green topbar-online"><span className="dot" aria-hidden="true"></span>متصل</span>
+            <span className="badge b-green topbar-online"><span className="dot" aria-hidden="true"></span>{tt("متصل")}</span>
           </div>
           {/* Its name is its visible text (WCAG 2.5.3); ⌘K is a hint only. */}
           <button type="button" className="search-wrap" onClick={()=>setPaletteOpen(true)} aria-haspopup="dialog"
             style={{position:"relative",width:"min(340px, 32vw)",height:36,padding:"0 34px",borderRadius:10,
               border:"1px solid var(--ink-200)",background:"var(--ink-50)",cursor:"pointer",
               alignItems:"center",gap:8,color:"var(--ink-500)",fontSize:13,fontFamily:"inherit"}}>
-            <I.Search size={15} style={{position:"absolute",insetInlineEnd:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-500)"}}/>
-            <span style={{flex:1,textAlign:"start"}}>ابحث عن مرضى، مواعيد، فواتير…</span>
-            <kbd className="mono" aria-hidden="true" style={{position:"absolute",insetInlineStart:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-500)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</kbd>
+            {/* Physical on purpose: the icon on the left and ⌘K on the right in
+                both languages (the usual places for an English search box). */}
+            <I.Search size={15} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-500)"}}/>
+            <span style={{flex:1,textAlign:"start"}}>{tt("ابحث عن مرضى، مواعيد، فواتير…")}</span>
+            <kbd className="mono" aria-hidden="true" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-500)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</kbd>
           </button>
           {/* Phone: the full search bar collapses to this icon (opens the same palette) */}
-          <button type="button" className="btn btn-ghost btn-icon mobile-search-btn" title="بحث" aria-label="فتح البحث الشامل" aria-haspopup="dialog" onClick={()=>setPaletteOpen(true)}>
+          <button type="button" className="btn btn-ghost btn-icon mobile-search-btn" title={tt("بحث")} aria-label={tt("فتح البحث الشامل")} aria-haspopup="dialog" onClick={()=>setPaletteOpen(true)}>
             <I.Search size={17}/>
           </button>
           <div style={{position:"relative"}}>
-            <button type="button" className="btn btn-ghost btn-icon" title="الإشعارات" aria-label={notifs.length ? tt("الإشعارات ({n})", { n: notifs.length }) : tt("الإشعارات")} aria-expanded={notifsOpen ? "true" : "false"} style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
+            <button type="button" className="btn btn-ghost btn-icon" title={tt("الإشعارات")} aria-label={notifs.length ? tt("الإشعارات ({n})", { n: notifs.length }) : tt("الإشعارات")} aria-expanded={notifsOpen ? "true" : "false"} style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
               <I.Bell size={17}/>
               {notifs.length>0 && <span style={{position:"absolute",top:6,insetInlineStart:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>}
             </button>
             {notifsOpen && (
               <div style={{position:"fixed",top:60,insetInlineEnd:"max(8px, min(56px, 4vw))",width:"min(320px, calc(100vw - 16px))",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:999,padding:"12px 0"}}>
-                <div style={{padding:"4px 16px 10px",fontWeight:600,fontSize:13,borderBottom:"1px solid var(--ink-100)"}}>الإشعارات</div>
-                {notifs.length===0 && <div className="muted" style={{padding:"14px 16px",fontSize:12.5}}>لا إشعارات جديدة.</div>}
+                <div style={{padding:"4px 16px 10px",fontWeight:600,fontSize:13,borderBottom:"1px solid var(--ink-100)"}}>{tt("الإشعارات")}</div>
+                {notifs.length===0 && <div className="muted" style={{padding:"14px 16px",fontSize:12.5}}>{tt("لا إشعارات جديدة.")}</div>}
                 {notifs.map((n,i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 16px",cursor:"pointer",borderBottom:"1px solid var(--ink-50)"}}
                     onClick={()=>setNotifsOpen(false)}>
@@ -2950,12 +2940,12 @@ function ClinicApp({ ctx }) {
                   </div>
                 ))}
                 <div style={{padding:"8px 16px 2px",textAlign:"center"}}>
-                  <button className="btn btn-ghost" style={{fontSize:12,width:"100%"}} onClick={()=>setNotifsOpen(false)}>عرض كل الإشعارات</button>
+                  <button className="btn btn-ghost" style={{fontSize:12,width:"100%"}} onClick={()=>setNotifsOpen(false)}>{tt("عرض كل الإشعارات")}</button>
                 </div>
               </div>
             )}
           </div>
-          <button type="button" className="btn btn-ghost btn-icon" title="مساعدة" aria-label="مساعدة" onClick={()=>window.showToast&&window.showToast(tt("المساعدة قريبًا"),"info")}>
+          <button type="button" className="btn btn-ghost btn-icon" title={tt("مساعدة")} aria-label={tt("مساعدة")} onClick={()=>window.showToast&&window.showToast(tt("المساعدة قريبًا"),"info")}>
             <I.Sparkle size={17}/>
           </button>
           <CaLangSwitch/>
@@ -3140,7 +3130,7 @@ function PatientTopbar({ onNav, active }) {
           <I.Logo size={30}/>
           <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
             <span style={{fontWeight:600,fontSize:15,letterSpacing:"-.01em"}}>Kinetic</span>
-            <span style={{fontSize:10,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>بوابة المريض</span>
+            <span style={{fontSize:10,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>{tt("بوابة المريض")}</span>
           </div>
         </div>
         <nav className="pt-nav" style={{marginInlineEnd:12}}>
@@ -3267,34 +3257,34 @@ function PatientHome({ onBook, go }) {
           </div>
         </div>
         <div style={{padding:"14px 26px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> احجز موعدًا آخر</button>
-          <button className="btn btn-secondary" onClick={()=>{setReTime(nextTime);setRescheduling(true);}}><I.Calendar size={13}/> إعادة جدولة</button>
-          <button className="btn btn-secondary" onClick={cancelNext}><I.X size={13}/> إلغاء</button>
+          <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> {tt("احجز موعدًا آخر")}</button>
+          <button className="btn btn-secondary" onClick={()=>{setReTime(nextTime);setRescheduling(true);}}><I.Calendar size={13}/> {tt("إعادة جدولة")}</button>
+          <button className="btn btn-secondary" onClick={cancelNext}><I.X size={13}/> {tt("إلغاء")}</button>
           <div style={{flex:1}}/>
           <button className="btn btn-ghost" style={{fontSize:12.5}} onClick={()=>{
             const ics=`BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${tt("جلسة كينيتك - {name}", { name: PATIENT_ME.next.with })}\nDTSTART:20260601T100000Z\nDTEND:20260601T110000Z\nLOCATION:${PATIENT_ME.next.room}\nEND:VEVENT\nEND:VCALENDAR`;
             const blob=new Blob([ics],{type:"text/calendar"});
             const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="appointment.ics";a.click();URL.revokeObjectURL(url);
             if(window.showToast)window.showToast(tt("تم تنزيل الموعد للتقويم"),"success");
-          }}><I.Download size={13}/> أضف إلى التقويم</button>
+          }}><I.Download size={13}/> {tt("أضف إلى التقويم")}</button>
         </div>
       </div>}
       {nextCancelled && (
         <div className="card card-pad" style={{marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
           <div>
-            <div style={{fontWeight:600,fontSize:14}}>لا يوجد موعد قادم</div>
-            <div className="muted" style={{fontSize:12,marginTop:4}}>احجزي زيارتك القادمة عند جاهزيتك.</div>
+            <div style={{fontWeight:600,fontSize:14}}>{tt("لا يوجد موعد قادم")}</div>
+            <div className="muted" style={{fontSize:12,marginTop:4}}>{tt("احجزي زيارتك القادمة عند جاهزيتك.")}</div>
           </div>
-          <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> احجز زيارة</button>
+          <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> {tt("احجز زيارة")}</button>
         </div>
       )}
       {rescheduling && (
-        <Modal title="إعادة جدولة الموعد" onClose={()=>setRescheduling(false)}
+        <Modal title={tt("إعادة جدولة الموعد")} onClose={()=>setRescheduling(false)}
           footer={<>
-            <button className="btn btn-ghost" onClick={()=>setRescheduling(false)}>إلغاء</button>
-            <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> تأكيد</button>
+            <button className="btn btn-ghost" onClick={()=>setRescheduling(false)}>{tt("إلغاء")}</button>
+            <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> {tt("تأكيد")}</button>
           </>}>
-          <Field label="الوقت الجديد"><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
+          <Field label={tt("الوقت الجديد")}><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
           <div className="muted" style={{fontSize:12,marginTop:10}}>{tt("سيتم إبلاغ {name}.", { name: PATIENT_ME.next.with })}</div>
         </Modal>
       )}
@@ -3332,10 +3322,10 @@ function PatientHome({ onBook, go }) {
         <div className="card card-pad">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
-              <div className="h2">تعافيك</div>
+              <div className="h2">{tt("تعافيك")}</div>
               <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("تطوّر الألم والجلسات منذ بداية خطتك.")}</div>
             </div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("plan")}>افتح الخطة <I.ArrowRight size={11}/></button>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("plan")}>{tt("افتح الخطة")} <I.ArrowRight size={11}/></button>
           </div>
 
           <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
@@ -3359,23 +3349,23 @@ function PatientHome({ onBook, go }) {
             const painOf = (s) => s ? (s.pain ?? s.pain_score ?? "—") : "—";
             return (
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5}}>
-                <div><div className="muted">البداية</div><div>{painOf(first)}/10</div></div>
-                <div><div className="muted">اليوم</div><div className="mono" style={{color:"var(--green)",fontWeight:600}}>{painOf(last)}/10</div></div>
-                <div><div className="muted">الهدف</div><div>≤ 2/10</div></div>
+                <div><div className="muted">{tt("البداية")}</div><div>{painOf(first)}/10</div></div>
+                <div><div className="muted">{tt("اليوم")}</div><div className="mono" style={{color:"var(--green)",fontWeight:600}}>{painOf(last)}/10</div></div>
+                <div><div className="muted">{tt("الهدف")}</div><div>≤ 2/10</div></div>
               </div>
             );
           })()}
         </div>
 
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:14}}>تمارين اليوم</div>
-          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>لا تمارين منزلية مسندة بعد — سيضيفها أخصائيك بعد الجلسة.</div>
+          <div className="h2" style={{marginBottom:14}}>{tt("تمارين اليوم")}</div>
+          <div className="muted" style={{fontSize:13,padding:"14px 0"}}>{tt("لا تمارين منزلية مسندة بعد — سيضيفها أخصائيك بعد الجلسة.")}</div>
         </div>
       </div>
 
       {/* فريق الرعاية */}
       <div className="card card-pad" style={{marginBottom:24}}>
-        <div className="h2" style={{marginBottom:14}}>فريق الرعاية</div>
+        <div className="h2" style={{marginBottom:14}}>{tt("فريق الرعاية")}</div>
         <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:14}}>
           {[
             { name:PATIENT_ME.doctor, role:tt("الطبيب المسؤول"), color:"#7E6BD3" },
@@ -3390,8 +3380,8 @@ function PatientHome({ onBook, go }) {
                 <div style={{fontWeight:600,fontSize:14}}>{c.name || "—"}</div>
                 <div className="muted" style={{fontSize:12}}>{c.role}{c.spec ? ` · ${c.spec}` : ""}</div>
               </div>
-              <button className="btn btn-ghost btn-icon" title="الرسالة" onClick={()=>window.open(`https://wa.me/${clinicPhone.replace(/[^\d]/g,"")}`,"_blank")}><I.WhatsApp size={15}/></button>
-              <button className="btn btn-ghost btn-icon" title="اتصال" onClick={()=>window.open(`tel:${clinicPhone.replace(/[^\d+]/g,"")}`)}><I.Phone size={15}/></button>
+              <button className="btn btn-ghost btn-icon" title={tt("الرسالة")} onClick={()=>window.open(`https://wa.me/${clinicPhone.replace(/[^\d]/g,"")}`,"_blank")}><I.WhatsApp size={15}/></button>
+              <button className="btn btn-ghost btn-icon" title={tt("اتصال")} onClick={()=>window.open(`tel:${clinicPhone.replace(/[^\d+]/g,"")}`)}><I.Phone size={15}/></button>
             </div>
           );})}
         </div>
@@ -3464,15 +3454,15 @@ function PatientAppointments({ onBook }) {
     <div>
       <div className="page-head" style={{alignItems:"flex-end"}}>
         <div>
-          <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:0}}>زياراتي</h1>
+          <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:0}}>{tt("زياراتي")}</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("{up} قادمة · {done} مكتملة", { up: upcoming.length, done: past.length })}</div>
         </div>
-        <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> احجز زيارة</button>
+        <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> {tt("احجز زيارة")}</button>
       </div>
 
-      <div className="h3" style={{marginBottom:10,marginTop:8}}>قادمة</div>
+      <div className="h3" style={{marginBottom:10,marginTop:8}}>{tt("قادمة")}</div>
       <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:30}}>
-        {upcoming.length===0 && <div className="card" style={{padding:20,textAlign:"center",color:"var(--ink-500)",fontSize:13}}>لا زيارات قادمة — احجز زيارتك الأولى.</div>}
+        {upcoming.length===0 && <div className="card" style={{padding:20,textAlign:"center",color:"var(--ink-500)",fontSize:13}}>{tt("لا زيارات قادمة — احجز زيارتك الأولى.")}</div>}
         {upcoming.map((a,i)=>(
           <div key={i} className="card" style={{padding:16,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
             <div style={{
@@ -3495,14 +3485,14 @@ function PatientAppointments({ onBook }) {
               </div>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>{setRescheduling(a);setReTime(a.time);}}> إعادة جدولة</button>
-              <button className="btn btn-ghost btn-icon" title="إلغاء الموعد" onClick={()=>cancelAppt(a)}><I.X size={14}/></button>
+              <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>{setRescheduling(a);setReTime(a.time);}}> {tt("إعادة جدولة")}</button>
+              <button className="btn btn-ghost btn-icon" title={tt("إلغاء الموعد")} onClick={()=>cancelAppt(a)}><I.X size={14}/></button>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="h3" style={{marginBottom:10}}>سابقة</div>
+      <div className="h3" style={{marginBottom:10}}>{tt("سابقة")}</div>
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         {past.map((a,i)=>(
           <div key={i} className="rgrid pvisit-row" style={{padding:"14px 18px","--gtc":"140px 1fr 100px 110px 90px",alignItems:"center",gap:12,borderBottom:i<past.length-1?"1px solid var(--ink-100)":"none"}}>
@@ -3515,11 +3505,11 @@ function PatientAppointments({ onBook }) {
               <div className="muted" style={{fontSize:11.5}}>{tt("مع {name}", { name: a.th })}</div>
             </div>
             <div style={{textAlign:"center"}}>
-              <div className="muted" style={{fontSize:11}}>الألم</div>
+              <div className="muted" style={{fontSize:11}}>{tt("الألم")}</div>
               <div className="mono" style={{fontSize:13,fontWeight:600,color:"var(--green)"}}>{a.pain}</div>
             </div>
             <ApptBadge s={a.status}/>
-            <button className="btn btn-ghost" style={{fontSize:12,justifyContent:"flex-end"}} onClick={()=>setNotesModal(a)}>عرض الملاحظات <I.ArrowRight size={11}/></button>
+            <button className="btn btn-ghost" style={{fontSize:12,justifyContent:"flex-end"}} onClick={()=>setNotesModal(a)}>{tt("عرض الملاحظات")} <I.ArrowRight size={11}/></button>
           </div>
         ))}
       </div>
@@ -3537,10 +3527,10 @@ function PatientAppointments({ onBook }) {
       {rescheduling && (
         <Modal title={tt("إعادة جدولة موعد {date}", { date: ptDate(rescheduling.date) })} onClose={()=>{setRescheduling(null);setReTime("");}}
           footer={<>
-            <button className="btn btn-ghost" onClick={()=>{setRescheduling(null);setReTime("");}}>إلغاء</button>
-            <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> تأكيد</button>
+            <button className="btn btn-ghost" onClick={()=>{setRescheduling(null);setReTime("");}}>{tt("إلغاء")}</button>
+            <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> {tt("تأكيد")}</button>
           </>}>
-          <Field label="الوقت الجديد"><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
+          <Field label={tt("الوقت الجديد")}><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
           <div className="muted" style={{fontSize:12,marginTop:10}}>{tt("سيتم إشعار الأخصائي {name}.", { name: rescheduling.th })}</div>
         </Modal>
       )}
@@ -3553,7 +3543,7 @@ function PatientPlanView() {
   const row = ((window.DATA && window.DATA.patients) || []).find(p => (p.patient_id||p.id) === me.file || p.name === me.name);
   return (
     <div>
-      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>خطة علاجك</h1>
+      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>{tt("خطة علاجك")}</h1>
       <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{me.diag}{row && row.registered ? " · " + tt("بدأت {date}", { date: row.registered }) : ""}</div>
       <PatientTreatmentPlan p={row}/>
     </div>
@@ -3565,11 +3555,11 @@ function PatientMessages() {
   // instead of a fabricated conversation.
   return (
     <div>
-      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>الرسائل</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>تحدّث مع فريق الرعاية.</div>
-      <EmptyState icon={<I.WhatsApp size={22}/>} title="لا رسائل بعد"
-        body="المراسلة داخل البوابة قادمة قريبًا — تواصل مع العيادة مباشرة عبر واتساب أو الهاتف."
-        action={<button className="btn btn-blue" onClick={()=>window.open("https://wa.me/","_blank")}><I.WhatsApp size={13}/> تواصل عبر واتساب</button>}/>
+      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>{tt("الرسائل")}</h1>
+      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("تحدّث مع فريق الرعاية.")}</div>
+      <EmptyState icon={<I.WhatsApp size={22}/>} title={tt("لا رسائل بعد")}
+        body={tt("المراسلة داخل البوابة قادمة قريبًا — تواصل مع العيادة مباشرة عبر واتساب أو الهاتف.")}
+        action={<button className="btn btn-blue" onClick={()=>window.open("https://wa.me/","_blank")}><I.WhatsApp size={13}/> {tt("تواصل عبر واتساب")}</button>}/>
     </div>
   );
 }
@@ -3586,20 +3576,20 @@ function PatientBills() {
   const pending = bills.reduce((s,b)=>s+Math.max(0,b.amount-b.paid),0);
   return (
     <div>
-      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>الفواتير</h1>
+      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>{tt("الفواتير")}</h1>
       <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("سجل مدفوعاتك الكامل في العيادة.")}</div>
 
       <div className="rgrid c-sm" style={{"--gtc":"repeat(3,1fr)",gap:14,marginBottom:24}}>
         <div className="card card-pad">
-          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>مدفوع هذه السنة</div>
+          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>{tt("مدفوع هذه السنة")}</div>
           <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>{fmtMoney(paidThisYear)}</div>
         </div>
         <div className="card card-pad">
-          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>معلّق</div>
+          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>{tt("معلّق")}</div>
           <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4,color:pending>0?"var(--red)":"var(--green)"}}>{fmtMoney(pending)}</div>
         </div>
         <div className="card card-pad">
-          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>جلسات متبقية</div>
+          <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>{tt("جلسات متبقية")}</div>
           <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>{PATIENT_ME.remaining} <span style={{fontSize:14,color:"var(--ink-500)"}}>/ {PATIENT_ME.total}</span></div>
         </div>
       </div>
@@ -3607,10 +3597,10 @@ function PatientBills() {
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
         <CardTable>
-          <thead><tr><th>فاتورة</th><th>التاريخ</th><th>البند</th><th>المبلغ</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+          <thead><tr><th>{tt("فاتورة")}</th><th>{tt("التاريخ")}</th><th>{tt("البند")}</th><th>{tt("المبلغ")}</th><th>{tt("الطريقة")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
             {bills.length===0 && (
-              <tr><td colSpan={7}><EmptyState icon={<I.FileText size={22}/>} title="لا فواتير بعد" body="ستظهر فواتيرك هنا بعد أول عملية دفع."/></td></tr>
+              <tr><td colSpan={7}><EmptyState icon={<I.FileText size={22}/>} title={tt("لا فواتير بعد")} body={tt("ستظهر فواتيرك هنا بعد أول عملية دفع.")}/></td></tr>
             )}
             {bills.map(b=>(
               <tr key={b.id}>
@@ -3643,24 +3633,24 @@ function PatientProfile() {
   });
   return (
     <div>
-      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>ملفي الشخصي</h1>
+      <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>{tt("ملفي الشخصي")}</h1>
       <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("بياناتك المسجلة لدى العيادة.")}</div>
 
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr"}}>
         <div className="card card-pad">
-          <div className="h3" style={{marginBottom:14}}>البيانات الشخصية</div>
-          <InfoRow k="رقم الملف" v={<span className="mono">{PATIENT_ME.file}</span>}/>
-          <InfoRow k="الاسم الكامل" v={form.name}/>
-          <InfoRow k="الهاتف" v={form.phone}/>
-          <InfoRow k="البريد" v={form.email}/>
+          <div className="h3" style={{marginBottom:14}}>{tt("البيانات الشخصية")}</div>
+          <InfoRow k={tt("رقم الملف")} v={<span className="mono">{PATIENT_ME.file}</span>}/>
+          <InfoRow k={tt("الاسم الكامل")} v={form.name}/>
+          <InfoRow k={tt("الهاتف")} v={form.phone}/>
+          <InfoRow k={tt("البريد")} v={form.email}/>
           <InfoRow k={tt("تاريخ الميلاد")} v={form.dob ? fmtDate(String(form.dob).slice(0,10)) : "—"}/>
-          <InfoRow k="العنوان" v={form.address}/>
+          <InfoRow k={tt("العنوان")} v={form.address}/>
           <button className="btn btn-secondary" style={{marginTop:14}} onClick={()=>setEditOpen(true)}><I.Edit size={13}/> {tt("تعديل البيانات")}</button>
         </div>
       {editOpen && (
-        <Modal title="تعديل البيانات الشخصية" onClose={()=>setEditOpen(false)}
+        <Modal title={tt("تعديل البيانات الشخصية")} onClose={()=>setEditOpen(false)}
           footer={<>
-            <button className="btn btn-ghost" onClick={()=>setEditOpen(false)}>إلغاء</button>
+            <button className="btn btn-ghost" onClick={()=>setEditOpen(false)}>{tt("إلغاء")}</button>
             <button className="btn btn-blue" onClick={async ()=>{
               if (!form.name.trim()) { if (window.showToast) window.showToast(tt("أدخل الاسم"),"error"); return; }
               try {
@@ -3678,20 +3668,20 @@ function PatientProfile() {
                 if (window.showToast) window.showToast(tt("تعذّر حفظ التغييرات"),"error");
               }
             }}>
-              <I.Check size={13}/> حفظ
+              <I.Check size={13}/> {tt("حفظ")}
             </button>
           </>}>
-          <Field label="الاسم الكامل"><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field>
+          <Field label={tt("الاسم الكامل")}><input className="input" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></Field>
           <div style={{height:10}}/>
-          <Field label="الهاتف"><input className="input" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></Field>
+          <Field label={tt("الهاتف")}><input className="input" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></Field>
           <div style={{height:10}}/>
-          <Field label="البريد الإلكتروني"><input className="input" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></Field>
+          <Field label={tt("البريد الإلكتروني")}><input className="input" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></Field>
           <div style={{height:10}}/>
-          <Field label="العنوان"><input className="input" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></Field>
+          <Field label={tt("العنوان")}><input className="input" value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></Field>
         </Modal>
       )}
         <div className="card card-pad">
-          <div className="h3" style={{marginBottom:14}}>التفضيلات</div>
+          <div className="h3" style={{marginBottom:14}}>{tt("التفضيلات")}</div>
           {[
             { l:tt("تذكير المواعيد"), sub:tt("رسالة واتساب قبل 24 ساعة"), on:true },
             { l:tt("رسائل الأخصائي"), sub:tt("بريد + إشعار عندما يراسلك الأخصائي"), on:true },
@@ -3853,10 +3843,10 @@ function PatientBookingFlow({ onClose, onDone }) {
             <I.Calendar size={17}/>
           </div>
           <div style={{flex:1}}>
-            <h2 className="h3" id={titleId}>احجز زيارة</h2>
+            <h2 className="h3" id={titleId}>{tt("احجز زيارة")}</h2>
             <div className="muted" style={{fontSize:12}}>{tt("خطوة {step} من 4 — تستغرق عادةً 30 ثانية", { step })}</div>
           </div>
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={onClose} disabled={confirming}><I.X size={16}/></button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("إغلاق")} onClick={onClose} disabled={confirming}><I.X size={16}/></button>
         </div>
 
         {/* Stepper */}
@@ -3877,13 +3867,13 @@ function PatientBookingFlow({ onClose, onDone }) {
               <div style={{width:60,height:60,borderRadius:999,background:"var(--green-bg)",color:"var(--green)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px"}}>
                 <I.Check size={28}/>
               </div>
-              <div className="serif" style={{fontSize:30,marginBottom:6}}>تم حجزك!</div>
+              <div className="serif" style={{fontSize:30,marginBottom:6}}>{tt("تم حجزك!")}</div>
               <div className="muted" role="status">{ttx("سيصلك التأكيد عبر واتساب على {phone}.", { phone: <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi> })}</div>
             </div>
           ) : step===1 ? (
             <div>
-              <div className="serif" style={{fontSize:26,marginBottom:6}}>ما الذي يحضرك إلينا؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>يساعدنا ذلك على اختيار الأخصائي المناسب لك.</div>
+              <div className="serif" style={{fontSize:26,marginBottom:6}}>{tt("ما الذي يحضرك إلينا؟")}</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("يساعدنا ذلك على اختيار الأخصائي المناسب لك.")}</div>
 
               <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                 {[
@@ -3912,8 +3902,8 @@ function PatientBookingFlow({ onClose, onDone }) {
             </div>
           ) : step===2 ? (
             <div>
-              <div className="serif" style={{fontSize:26,marginBottom:6}}>من تود زيارته؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>أخصائيك المعتاد أو شخص جديد — الخيار لك.</div>
+              <div className="serif" style={{fontSize:26,marginBottom:6}}>{tt("من تود زيارته؟")}</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("أخصائيك المعتاد أو شخص جديد — الخيار لك.")}</div>
 
               <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                 {[
@@ -3946,7 +3936,7 @@ function PatientBookingFlow({ onClose, onDone }) {
             </div>
           ) : step===3 ? (
             <div>
-              <div className="serif" style={{fontSize:26,marginBottom:6}}>ما الوقت المناسب لك؟</div>
+              <div className="serif" style={{fontSize:26,marginBottom:6}}>{tt("ما الوقت المناسب لك؟")}</div>
               <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("المواعيد المتاحة الآن مع {name}.", { name: bkTherapistLabel(picks.therapist) })}</div>
 
               {(() => {
@@ -3956,7 +3946,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                 const takenTimes  = dayInfo ? dayInfo.takenTimes : new Set();
                 return (
                   <>
-                    <div className="label">اختيار سريع</div>
+                    <div className="label">{tt("اختيار سريع")}</div>
                     <div className="rgrid quarter-sm" style={{"--gtc":"repeat(4,1fr)",gap:8,marginBottom:18}}>
                       {bookingDays.map(d => {
                         const sel = picks.date === d.iso;
@@ -3979,7 +3969,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                       })}
                     </div>
 
-                    <div className="label">وقت</div>
+                    <div className="label">{tt("وقت")}</div>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       {__bkSlots().map(t => {
                         const isPast  = picks.date === todayInfo.todayIso && t <= todayInfo.nowHM;
@@ -4006,8 +3996,8 @@ function PatientBookingFlow({ onClose, onDone }) {
             </div>
           ) : (
             <div>
-              <div className="serif" style={{fontSize:26,marginBottom:6}}>هل يبدو جيدًا؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>راجع التفاصيل ثم أكّد. يمكنك إعادة الجدولة أو الإلغاء حتى 4 ساعات قبل الموعد.</div>
+              <div className="serif" style={{fontSize:26,marginBottom:6}}>{tt("هل يبدو جيدًا؟")}</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("راجع التفاصيل ثم أكّد. يمكنك إعادة الجدولة أو الإلغاء حتى 4 ساعات قبل الموعد.")}</div>
 
               <div style={{
                 padding:20,
@@ -4016,7 +4006,7 @@ function PatientBookingFlow({ onClose, onDone }) {
               }}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
                   <div>
-                    <div style={{fontSize:11,color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
+                    <div style={{fontSize:11,color:"var(--ink-500)",marginBottom:4}}>{tt("موعدك")}</div>
                     <div className="mono" style={{fontSize:26,lineHeight:1.1}}>{ptDate(picks.date)}</div>
                     <div style={{fontSize:18,marginTop:4,color:"var(--blue-900)",fontWeight:600}}><span className="mono">{picks.time}</span> · {tt("{n} دقيقة", { n: (window.calendarConfig ? window.calendarConfig().slotMinutes : 45) })}</div>
                   </div>
@@ -4025,19 +4015,19 @@ function PatientBookingFlow({ onClose, onDone }) {
                 <hr className="sep" style={{margin:"14px 0"}}/>
                 <div className="rgrid half-sm" style={{"--gtc":"1fr 1fr",gap:12,fontSize:13}}>
                   <div>
-                    <div className="muted" style={{fontSize:11}}>الأخصائي</div>
+                    <div className="muted" style={{fontSize:11}}>{tt("الأخصائي")}</div>
                     <div style={{fontWeight:500}}>{bkTherapistLabel(picks.therapist)}</div>
                   </div>
                   <div>
-                    <div className="muted" style={{fontSize:11}}>النوع</div>
+                    <div className="muted" style={{fontSize:11}}>{tt("النوع")}</div>
                     <div style={{fontWeight:500}}>{picks.reason==="new"?tt("تقييم مشكلة جديدة"):picks.reason==="followup"?tt("متابعة مع الطبيب"):picks.reason==="assess"?tt("تقييم أولي"):tt("متابعة خطة العلاج")}</div>
                   </div>
                   <div>
-                    <div className="muted" style={{fontSize:11}}>المكان</div>
+                    <div className="muted" style={{fontSize:11}}>{tt("المكان")}</div>
                     <div style={{fontWeight:500}}>{(typeof activeBranchName === "function" && activeBranchName()) || (window.CLINIC && window.CLINIC.name) || "—"}</div>
                   </div>
                   <div>
-                    <div className="muted" style={{fontSize:11}}>التكلفة</div>
+                    <div className="muted" style={{fontSize:11}}>{tt("التكلفة")}</div>
                     <div style={{fontWeight:500}}>{picks.reason==="continue" ? tt("من الباقة") : fmtMoney(850)}</div>
                   </div>
                 </div>
@@ -4150,12 +4140,12 @@ function PublicBookingScreen({ onBack, onDone }) {
           <I.Logo size={30}/>
           <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
             <span style={{fontWeight:600,fontSize:15,letterSpacing:"-.01em"}}>BeActive</span>
-            <span style={{fontSize:10,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>العلاج الطبيعي</span>
+            <span style={{fontSize:10,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>{tt("العلاج الطبيعي")}</span>
           </div>
         </div>
         <div style={{flex:1}}/>
-        {(window.CLINIC && window.CLINIC.phone) && <span className="muted" style={{fontSize:13}}>تحتاج مساعدة؟ <a href={`tel:${String(window.CLINIC.phone).replace(/[^\d+]/g,"")}`} style={{color:"var(--blue-700)",fontWeight:500}}>{window.CLINIC.phone}</a></span>}
-        <button className="btn btn-ghost" onClick={onBack}><I.X size={14}/> إغلاق</button>
+        {(window.CLINIC && window.CLINIC.phone) && <span className="muted" style={{fontSize:13}}>{tt("تحتاج مساعدة؟")} <a href={`tel:${String(window.CLINIC.phone).replace(/[^\d+]/g,"")}`} style={{color:"var(--blue-700)",fontWeight:500}}>{window.CLINIC.phone}</a></span>}
+        <button className="btn btn-ghost" onClick={onBack}><I.X size={14}/> {tt("إغلاق")}</button>
       </header>
 
       <div style={{flex:1,display:"flex",justifyContent:"center",alignItems:"flex-start",padding:"32px 20px 60px"}}>
@@ -4163,13 +4153,13 @@ function PublicBookingScreen({ onBack, onDone }) {
           {/* Hero copy */}
           {!confirming && (
             <div style={{textAlign:"center",marginBottom:28}}>
-              <div className="muted" style={{fontSize:13,letterSpacing:".06em",textTransform:"uppercase",marginBottom:8}}>احجز زيارة</div>
+              <div className="muted" style={{fontSize:13,letterSpacing:".06em",textTransform:"uppercase",marginBottom:8}}>{tt("احجز زيارة")}</div>
               <div className="serif" style={{fontSize:"clamp(28px, 6.5vw, 44px)",lineHeight:1.05,letterSpacing:"-.01em",color:"var(--ink-900)",maxWidth:560,margin:"0 auto"}}>
                 {step===1 && <>{ttx("هيا بنا نعيدك إلى {move} من جديد.", { move: <em>{tt("الحركة")}</em> })}</>}
-                {step===2 && <>اختر من تود زيارته.</>}
-                {step===3 && <>ما الوقت المناسب لك؟</>}
-                {step===4 && <>آخر خطوة — كيف نتواصل معك؟</>}
-                {step===5 && <>جاهز للتأكيد.</>}
+                {step===2 && <>{tt("اختر من تود زيارته.")}</>}
+                {step===3 && <>{tt("ما الوقت المناسب لك؟")}</>}
+                {step===4 && <>{tt("آخر خطوة — كيف نتواصل معك؟")}</>}
+                {step===5 && <>{tt("جاهز للتأكيد.")}</>}
               </div>
             </div>
           )}
@@ -4205,7 +4195,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                   <div style={{width:64,height:64,borderRadius:999,background:"var(--green-bg)",color:"var(--green)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 22px"}}>
                     <I.Check size={30}/>
                   </div>
-                  <div className="serif" style={{fontSize:38,lineHeight:1.1,marginBottom:8}}>تم حجزك!</div>
+                  <div className="serif" style={{fontSize:38,lineHeight:1.1,marginBottom:8}}>{tt("تم حجزك!")}</div>
                   <div className="muted" style={{fontSize:14,maxWidth:380,margin:"0 auto"}}>
                     {ttx("أُرسل تأكيد عبر واتساب إلى {phone} بكل التفاصيل.", { phone: <bdi dir="ltr" className="mono">{picks.phone || tt("هاتفك")}</bdi> })}
                   </div>
@@ -4216,7 +4206,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                     border:"1px solid var(--blue-100)",borderRadius:14,
                     maxWidth:380,margin:"30px auto 0",textAlign:"end"
                   }}>
-                    <div className="muted" style={{fontSize:11,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>زيارتك</div>
+                    <div className="muted" style={{fontSize:11,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>{tt("زيارتك")}</div>
                     <div className="serif" style={{fontSize:24,lineHeight:1.1}}>{(() => {
                       const d = new Date(picks.date + "T00:00:00");
                       if (isNaN(d)) return picks.date;
@@ -4237,7 +4227,7 @@ function PublicBookingScreen({ onBack, onDone }) {
               {/* STEP 1 — reason / new vs existing */}
               {!confirming && step===1 && (
                 <div>
-                  <div className="label" style={{marginBottom:10}}>ما الذي يحضرك إلينا؟</div>
+                  <div className="label" style={{marginBottom:10}}>{tt("ما الذي يحضرك إلينا؟")}</div>
                   <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                     {[
                       { id:"existing-pain",  l:tt("ألم أو إصابة موجودة"), sub:tt("ظهر، رقبة، ركبة، كتف، إلخ."),      ic:<I.Heart size={18}/> },
@@ -4269,7 +4259,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                   <div style={{marginTop:22,padding:14,background:"var(--ink-50)",borderRadius:11,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,fontSize:13}}>
                       <I.User size={15} style={{color:"var(--ink-500)"}}/>
-                      <span>هل أنت مريض حالي؟</span>
+                      <span>{tt("هل أنت مريض حالي؟")}</span>
                     </div>
                     <Segmented label={tt("هل أنت مريض حالي؟")} value={picks.isExisting} onChange={(v)=>update("isExisting",v)} options={[
                       { value: true, label: tt("نعم") },
@@ -4282,7 +4272,7 @@ function PublicBookingScreen({ onBack, onDone }) {
               {/* STEP 2 — therapist */}
               {!confirming && step===2 && (
                 <div>
-                  <div className="label" style={{marginBottom:10}}>اختر أخصائيًا</div>
+                  <div className="label" style={{marginBottom:10}}>{tt("اختر أخصائيًا")}</div>
                   <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                     {[
                       { name:BK_ANY,  spec:tt("أقرب موعد"),        color:"#BDD8E9", any:true, recommended:true },
@@ -4322,7 +4312,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                 const takenTimes  = dayInfo ? dayInfo.takenTimes : new Set();
                 return (
                 <div>
-                  <div className="label" style={{marginBottom:10}}>اختر يومًا</div>
+                  <div className="label" style={{marginBottom:10}}>{tt("اختر يومًا")}</div>
                   <div className="rgrid quarter-sm" style={{"--gtc":"repeat(7,1fr)",gap:6,marginBottom:22}}>
                     {bookingDays.map(d => {
                       const sel  = picks.date === d.iso;
@@ -4347,7 +4337,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                     })}
                   </div>
 
-                  <div className="label" style={{marginBottom:10}}>اختر وقتًا</div>
+                  <div className="label" style={{marginBottom:10}}>{tt("اختر وقتًا")}</div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     {__bkSlots().map(t => {
                       const isPast  = picks.date === todayInfo.todayIso && t <= todayInfo.nowHM;
@@ -4376,20 +4366,20 @@ function PublicBookingScreen({ onBack, onDone }) {
               {!confirming && step===4 && (
                 <div style={{maxWidth:480,margin:"0 auto"}}>
                   <div style={{display:"grid",gridTemplateColumns:"1fr",gap:14}}>
-                    <Field label="الاسم الكامل" required>
+                    <Field label={tt("الاسم الكامل")} required>
                       <input className="input" style={{height:44,fontSize:14}}
-                        placeholder="مثال: آية حسن"
+                        placeholder={tt("مثال: آية حسن")}
                         value={picks.name} onChange={e=>update("name",e.target.value)} autoFocus/>
                     </Field>
-                    <Field label="الموبايل (واتساب)" required hint="سنرسل التأكيد والتذكيرات هنا.">
+                    <Field label={tt("الموبايل (واتساب)")} required hint={tt("سنرسل التأكيد والتذكيرات هنا.")}>
                       <input className="input" style={{height:44,fontSize:14}}
                         placeholder="+20 1XX XXX XXXX"
                         value={picks.phone} onChange={e=>update("phone",e.target.value)}/>
                     </Field>
                     {picks.isExisting === false && (
-                      <Field label="باختصار، ما الذي يضايقك؟" hint="اختياري — يساعد الأخصائي على التحضير">
+                      <Field label={tt("باختصار، ما الذي يضايقك؟")} hint={tt("اختياري — يساعد الأخصائي على التحضير")}>
                         <textarea className="input" style={{height:72,padding:10,resize:"vertical"}}
-                          placeholder="مثال: ألم أسفل الظهر منذ رفع أثقال بالجيم الأسبوع الماضي"/>
+                          placeholder={tt("مثال: ألم أسفل الظهر منذ رفع أثقال بالجيم الأسبوع الماضي")}/>
                       </Field>
                     )}
                     <label style={{display:"flex",alignItems:"flex-start",gap:10,padding:12,background:"var(--ink-50)",borderRadius:10,fontSize:12.5,cursor:"pointer"}}>
@@ -4410,7 +4400,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                   }}>
                     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:16}}>
                       <div>
-                        <div className="mono" style={{fontSize:10.5,letterSpacing:".06em",textTransform:"uppercase",color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
+                        <div className="mono" style={{fontSize:10.5,letterSpacing:".06em",textTransform:"uppercase",color:"var(--ink-500)",marginBottom:4}}>{tt("موعدك")}</div>
                         <div className="serif" style={{fontSize:36,lineHeight:1.05}}>{ptDate(picks.date)}</div>
                         <div className="mono" style={{fontSize:20,marginTop:6,color:"var(--blue-700)",fontWeight:600}}>{picks.time} · {tt("{n} دقيقة", { n: 45 })}</div>
                       </div>
@@ -4419,11 +4409,11 @@ function PublicBookingScreen({ onBack, onDone }) {
                     <hr className="sep" style={{margin:"14px 0"}}/>
                     <div className="rgrid half-sm" style={{"--gtc":"1fr 1fr",gap:14,fontSize:13}}>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>الأخصائي</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("الأخصائي")}</div>
                         <div style={{fontWeight:500}}>{picks.therapist || tt("أي متاح")}</div>
                       </div>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>السبب</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("السبب")}</div>
                         <div style={{fontWeight:500}}>{({
                           "existing-pain":tt("ألم أو إصابة موجودة"),
                           "post-op":tt("التعافي بعد جراحة"),
@@ -4432,19 +4422,19 @@ function PublicBookingScreen({ onBack, onDone }) {
                         })[picks.reason] || "—"}</div>
                       </div>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>الاسم</div>
-                        <div style={{fontWeight:500}}>{picks.name || <span className="muted">غير مزوّد</span>}</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("الاسم")}</div>
+                        <div style={{fontWeight:500}}>{picks.name || <span className="muted">{tt("غير مزوّد")}</span>}</div>
                       </div>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>واتساب</div>
-                        <div className="mono" style={{fontWeight:500}}>{picks.phone || <span className="muted">غير مزوّد</span>}</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("واتساب")}</div>
+                        <div className="mono" style={{fontWeight:500}}>{picks.phone || <span className="muted">{tt("غير مزوّد")}</span>}</div>
                       </div>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>المكان</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("المكان")}</div>
                         <div style={{fontWeight:500}}>{place}</div>
                       </div>
                       <div>
-                        <div className="muted" style={{fontSize:11}}>التكلفة</div>
+                        <div className="muted" style={{fontSize:11}}>{tt("التكلفة")}</div>
                         <div style={{fontWeight:500}}>{tt("{amount} — تُدفع بالعيادة", { amount: fmtMoney(850) })}</div>
                       </div>
                     </div>
@@ -4452,7 +4442,7 @@ function PublicBookingScreen({ onBack, onDone }) {
 
                   <div style={{padding:14,background:"var(--green-bg)",border:"1px solid #BCE0D1",borderRadius:11,fontSize:12.5,color:"#2C8067",display:"flex",alignItems:"center",gap:10}}>
                     <I.Check size={15}/>
-                    مجاناً لإعادة الجدولة أو الإلغاء قبل 4 ساعات من الزيارة.
+                    {tt("مجاناً لإعادة الجدولة أو الإلغاء قبل 4 ساعات من الزيارة.")}
                   </div>
                 </div>
               )}

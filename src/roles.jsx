@@ -158,7 +158,7 @@ function HomeHeader({ kicker, title, sub, right }){
         <h1 className="h1">{title}</h1>
         <div className="muted" style={{fontSize:13.5,marginTop:4}}>{sub}</div>
       </div>
-      {right && <div style={{display:"flex",gap:10,alignItems:"center"}}>{right}</div>}
+      {right && <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>{right}</div>}
     </div>
   );
 }

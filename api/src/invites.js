@@ -11,11 +11,14 @@
 // 'pending' when the invitation is created or re-sent, then 'sent' or
 // 'failed' once the SMTP attempt finishes (also after the request has
 // answered); NULL for rows older than 0008. email_status_at = last change.
+//
+// The e-mail is bilingual (src/mailer.js bilingualMessage): Arabic and
+// English, the inviting person's interface language (X-Lang) first.
 
 const crypto = require('crypto');
 const { HttpError, badRequest, notFound } = require('./errors');
 const { sha256 } = require('./auth');
-const { isValidEmail } = require('./mailer');
+const { isValidEmail, bilingualMessage } = require('./mailer');
 const { MEMBER_ROLES, validateBranchIds, assertUserSeat } = require('./members');
 
 const INVITE_TTL_SQL = "interval '7 days'";
@@ -27,6 +30,14 @@ const ROLE_LABELS_AR = {
   doctor: 'طبيب',
   therapist: 'أخصائي',
   staff: 'موظف',
+};
+// The same names as the English interface (src/lang/en-*.jsx).
+const ROLE_LABELS_EN = {
+  admin: 'Clinic admin',
+  receptionist: 'Receptionist',
+  doctor: 'Doctor',
+  therapist: 'Therapist',
+  staff: 'Staff',
 };
 
 const newToken = () => crypto.randomBytes(32).toString('base64url');
@@ -189,10 +200,13 @@ const MAIL_WAIT_MS = 10000;
  * close()/drain() wait for that late write. When it finishes in time,
  * `invitation` is updated in place, so describeInvitation(invitation)
  * shows the stored state.
+ *
+ * lang ('ar' | 'en', src/mailer.js requestLang): the section that comes
+ * first in the bilingual e-mail; Arabic when not given.
  */
-async function sendInvitationEmail(deps, { org, invitation, token }, waitMs = MAIL_WAIT_MS) {
+async function sendInvitationEmail(deps, { org, invitation, token, lang }, waitMs = MAIL_WAIT_MS) {
   const { mailer, config, db, background } = deps;
-  let sending = deliverInvitation({ mailer, config }, { org, invitation, token });
+  let sending = deliverInvitation({ mailer, config }, { org, invitation, token, lang });
   if (db && invitation.id) {
     sending = sending.then(async (sent) => {
       await recordEmailStatus(db, invitation, token, sent);
@@ -232,28 +246,45 @@ async function recordEmailStatus(db, invitation, token, sent) {
   }
 }
 
-async function deliverInvitation({ mailer, config }, { org, invitation, token }) {
-  const link = inviteLink(config, org.slug, token);
-  const roleAr = ROLE_LABELS_AR[invitation.role] || invitation.role;
-  const name = String(org.name || org.slug);
-  try {
-    await mailer.send({
-      to: invitation.email,
-      subject: `دعوة للانضمام إلى ${name} — ClinicSystem EG`,
+/** The invitation e-mail: {subject, text, html}, both languages, `lang` first. */
+function invitationMessage({ name, role, link, lang }) {
+  const roleAr = ROLE_LABELS_AR[role] || role;
+  const roleEn = ROLE_LABELS_EN[role] || role;
+  const n = escapeHtml(name);
+  const a = escapeHtml(link);
+  return bilingualMessage(lang, {
+    ar: {
+      subject: `دعوة للانضمام إلى ${name}`,
       text: [
         `تمت دعوتك للانضمام إلى «${name}» على ClinicSystem EG بدور: ${roleAr}.`,
         `لتفعيل حسابك افتح الرابط التالي خلال 7 أيام: ${link}`,
         'إن لم تكن تتوقع هذه الدعوة فتجاهل هذه الرسالة.',
-        '',
-        `You have been invited to join "${name}" on ClinicSystem EG as ${invitation.role}.`,
+      ],
+      html:
+        `<p>تمت دعوتك للانضمام إلى «${n}» على ClinicSystem EG بدور: ${escapeHtml(roleAr)}.</p>` +
+        `<p><a href="${a}">قبول الدعوة وتفعيل الحساب</a> (صالح لمدة 7 أيام)</p>` +
+        '<p>إن لم تكن تتوقع هذه الدعوة فتجاهل هذه الرسالة.</p>',
+    },
+    en: {
+      subject: `Invitation to join ${name}`,
+      text: [
+        `You have been invited to join "${name}" on ClinicSystem EG as ${roleEn}.`,
         `Open this link within 7 days to activate your account: ${link}`,
         'If you did not expect this invitation, ignore this e-mail.',
-      ].join('\n'),
+      ],
       html:
-        `<div dir="rtl"><p>تمت دعوتك للانضمام إلى «${escapeHtml(name)}» على ClinicSystem EG بدور: ${escapeHtml(roleAr)}.</p>` +
-        `<p><a href="${escapeHtml(link)}">قبول الدعوة وتفعيل الحساب</a> (صالح لمدة 7 أيام)</p>` +
-        '<p>إن لم تكن تتوقع هذه الدعوة فتجاهل هذه الرسالة.</p></div>',
-    });
+        `<p>You have been invited to join “${n}” on ClinicSystem EG as ${escapeHtml(roleEn)}.</p>` +
+        `<p><a href="${a}">Accept the invitation and activate your account</a> (valid for 7 days)</p>` +
+        '<p>If you did not expect this invitation, ignore this e-mail.</p>',
+    },
+  });
+}
+
+async function deliverInvitation({ mailer, config }, { org, invitation, token, lang }) {
+  const link = inviteLink(config, org.slug, token);
+  const name = String(org.name || org.slug);
+  try {
+    await mailer.send({ to: invitation.email, ...invitationMessage({ name, role: invitation.role, link, lang }) });
     return true;
   } catch (err) {
     console.error('[api] invitation e-mail failed:', err && err.message);
@@ -264,6 +295,8 @@ async function deliverInvitation({ mailer, config }, { org, invitation, token })
 module.exports = {
   INVITE_TTL_SQL,
   ROLE_LABELS_AR,
+  ROLE_LABELS_EN,
+  invitationMessage,
   isTokenShaped,
   inviteLink,
   effectiveStatus,

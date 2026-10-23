@@ -35,8 +35,8 @@ const sidebar = (page) => page.locator("aside.sidebar");
 const picker = (page) => page.locator("button.branch-switcher");
 const paToast = (page, text) => page.locator(".pa-toast", { hasText: text }).last();
 const sw = (page, name) => page.getByRole("switch", { name, exact: true });
-const pad = (n) => String(n).padStart(2, "0");
-const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// A day as the panel shows it (fmtDate in src/i18n.jsx, Arabic): «23 أبريل 2027».
+const arDay = (d) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", { day: "numeric", month: "long", year: "numeric" }).format(d);
 
 // ── helpers ─────────────────────────────────────────────────────────────
 async function waitForMailLink(to, re, after = 0) {
@@ -564,7 +564,7 @@ test("AT-10 a clinic suspended by the Super Admin gets no working sessions for i
     await expect(paToast(page, "أُوقفت العيادة")).toBeVisible();
     const until = new Date();
     until.setMonth(until.getMonth() + 6);
-    await expect(page.locator("[data-retention]")).toContainText(`البيانات محفوظة حتى ${isoDay(until)}`);
+    await expect(page.locator("[data-retention]")).toContainText(`البيانات محفوظة حتى ${arDay(until)}`);
 
     // The open session's next request is refused by the server …
     expect(await current()).toEqual([403, "org_inactive"]);

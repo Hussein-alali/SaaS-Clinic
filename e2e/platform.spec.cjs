@@ -356,7 +356,7 @@ test("A04 details: modules toggle with dependency errors, general edit, subscrip
   await page.getByRole("button", { name: "حفظ الاشتراك" }).click();
   await expect(toast(page, "تم حفظ الاشتراك")).toBeVisible();
   await expect(page.locator("[data-sub-status]")).toHaveText("تجريبي");
-  await expect(page.locator("[data-sub-period]")).toHaveText("من 2026-10-01 إلى 2026-12-31");
+  await expect(page.locator("[data-sub-period]")).toHaveText("من 1 أكتوبر 2026 إلى 31 ديسمبر 2026");
 });
 
 test("A04 invitations: list, resend, invite (branch required), revoke", async ({ page }) => {
@@ -435,8 +435,8 @@ test("A04 status: activate, suspend with a required reason (retention shown), re
   await expect(page.locator(".page-head .badge", { hasText: "موقوفة" })).toBeVisible();
   const detail = await page.evaluate((id) => window.ClinicApi.request("GET", `/platform/organizations/${id}`), clinicId);
   const until = new Date(detail.data.organization.retention_until);
-  const pad = (n) => String(n).padStart(2, "0");
-  const untilText = `${until.getFullYear()}-${pad(until.getMonth() + 1)}-${pad(until.getDate())}`;
+  // As fmtDate (src/i18n.jsx) shows it in Arabic: «23 أبريل 2027».
+  const untilText = new Intl.DateTimeFormat("ar-EG-u-nu-latn", { day: "numeric", month: "long", year: "numeric" }).format(until);
   await expect(page.locator("[data-retention]")).toContainText(`البيانات محفوظة حتى ${untilText}`);
   await expect(page.getByRole("alert").filter({ hasText: "السبب: تأخر السداد — اختبار" })).toBeVisible();
   // A02 shows the retention date under the status of a suspended clinic.

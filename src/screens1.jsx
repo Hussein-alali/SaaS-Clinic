@@ -12,8 +12,8 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-// The message is for the patient, so it stays as written (Arabic) whatever
-// the interface language is.
+// The message is pre-filled in the interface language (like the reminder in
+// src/ui.jsx); the receptionist reviews it in WhatsApp before sending.
 function buildWhatsAppUrl(phone, msg) {
   return `https://wa.me/${(phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(msg || "")}`;
 }
@@ -1164,7 +1164,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
             </div>
             <div style={{display:"flex",gap:8,position:"relative",flexWrap:"wrap"}}>
               <button className="btn btn-secondary" onClick={()=>window.open(buildTelUrl(p.phone))}><I.Phone size={13}/> {tt("اتصال")}</button>
-              <button className="btn btn-secondary" onClick={()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank")}><I.WhatsApp size={13}/> {tt("واتساب")}</button>
+              <button className="btn btn-secondary" onClick={()=>window.open(buildWhatsAppUrl(p.phone, tt("مرحبًا+{name}", { name: p.name })),"_blank")}><I.WhatsApp size={13}/> {tt("واتساب")}</button>
               <WaReminderButton patient={p}/>
               <button className="btn btn-secondary" onClick={()=>setSchedOpen(true)}><I.Calendar size={13}/> {tt("الجدول الثابت")}</button>
               <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={13}/> {tt("حجز")}</button>
@@ -1178,7 +1178,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
                   const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`${p.id}.csv`;a.click();URL.revokeObjectURL(url);
                   if(window.showToast)window.showToast(tt("تم تصدير الملف"),"success");
                 }},
-                { label:tt("إرسال واتساب"), icon:<I.WhatsApp size={13}/>, onClick:()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank") },
+                { label:tt("إرسال واتساب"), icon:<I.WhatsApp size={13}/>, onClick:()=>window.open(buildWhatsAppUrl(p.phone, tt("مرحبًا+{name}", { name: p.name })),"_blank") },
                 { label:tt("حذف المريض"), icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
                   if (!window.confirm(tt("حذف ملف {name}؟ لا يمكن التراجع.", { name: p.name }))) return;
                   try {
@@ -1257,7 +1257,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
             <div className="h3" style={{marginBottom:12}}>{tt("إجراءات سريعة")}</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.print()}><I.FileText size={14}/> {tt("إنشاء تقرير تقدّم")}</button>
-              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.open(buildWhatsAppUrl(p.phone, `تذكير+موعدك+غدًا+الساعة+09:00`),"_blank")}><I.Send size={14}/> {tt("إرسال تذكير")}</button>
+              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.open(buildWhatsAppUrl(p.phone, tt("تذكير+موعدك+غدًا+الساعة+09:00")),"_blank")}><I.Send size={14}/> {tt("إرسال تذكير")}</button>
               <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>{
                 const rows = [[tt("الاسم"),tt("رقم الملف"),tt("التشخيص"),tt("الطبيب"),tt("الأخصائي")].join(","), `${p.name},${p.id},${p.diag},${p.dr},${p.th}`];
                 downloadCsv(rows, `patient-${p.id}.csv`);
@@ -2838,11 +2838,11 @@ function CalendarView({ dateOffset, setDateOffset }) {
   const parentIso   = todayIso();
   const viewIso     = offsetIso(parentIso, dateOffset || 0);
   const viewDate    = new Date(viewIso + "T00:00:00");
-  const dm          = viewDate.toLocaleDateString("ar-EG-u-nu-latn", { day: "numeric", month: "long" });
-  const dateLabel   = dateOffset === 0 ? `اليوم، ${dm}`
-                    : dateOffset === 1 ? `غدًا، ${dm}`
-                    : dateOffset === -1 ? `أمس، ${dm}`
-                    : viewDate.toLocaleDateString("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" });
+  const dm          = fmtDate(viewDate, { day: "numeric", month: "long" });
+  const dateLabel   = dateOffset === 0 ? tt("اليوم، {date}", { date: dm })
+                    : dateOffset === 1 ? tt("غدًا، {date}", { date: dm })
+                    : dateOffset === -1 ? tt("أمس، {date}", { date: dm })
+                    : fmtDate(viewDate, "weekdayDate");
 
   // Direct absolute-date picker: convert user's chosen date back into
   // an offset from today so the parent state stays valid.
@@ -2866,7 +2866,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
   const therapistCols = React.useMemo(() => therapists.map(t => ({
     key:       t.staff_id || t.id || t.name,
     name:      t.name,
-    role:      "الأخصائي",
+    role:      tt("الأخصائي"),
     subtitle:  t.spec || "",
     hours:     t.schedule || t.hours || `${calCfg.start} - ${calCfg.end}`,
     load:      (t.load != null && t.max != null) ? `${t.load}/${t.max}` : "",
@@ -2877,7 +2877,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
   const doctorCols = React.useMemo(() => doctors.map(d => ({
     key:       "dr:" + (d.id || d.name),
     name:      d.name,
-    role:      "طبيب",
+    role:      tt("طبيب"),
     subtitle:  d.specialization || "",
     hours:     d.schedule || d.hours || `${calCfg.start} - ${calCfg.end}`,
     load:      "",
@@ -2957,7 +2957,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
       out.push({
         iso:   d.toISOString().slice(0,10),
-        label: d.toLocaleDateString("ar-EG-u-nu-latn", { weekday: "short", day: "numeric" }),
+        label: fmtDate(d, { weekday: "short", day: "numeric" }),
       });
     }
     return out;
@@ -3002,7 +3002,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       });
     } catch (e) {
       console.warn("appointment persist failed", e);
-      if (window.showToast) window.showToast("تعذّر حفظ التعديل", "error");
+      if (window.showToast) window.showToast(tt("تعذّر حفظ التعديل"), "error");
     }
   }
 
@@ -3019,8 +3019,8 @@ function CalendarView({ dateOffset, setDateOffset }) {
   }
 
   if (staffCols.length === 0) {
-    return <EmptyState icon={<I.Calendar size={22}/>} title="لا أخصائيين بعد"
-      body="أضف الأخصائيين والأطباء من الإعدادات ليظهر تقويم الحجوزات هنا."/>;
+    return <EmptyState icon={<I.Calendar size={22}/>} title={tt("لا أخصائيين بعد")}
+      body={tt("أضف الأخصائيين والأطباء من الإعدادات ليظهر تقويم الحجوزات هنا.")}/>;
   }
 
   // Tab visibility follows the current user's role. Reception/admin see
@@ -3034,31 +3034,29 @@ function CalendarView({ dateOffset, setDateOffset }) {
   // ── Toolbar (shared by all views) ──
   const toolbar = (
     <div style={{padding:"14px 18px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid var(--ink-200)",flexWrap:"wrap"}}>
-      <button className="btn btn-secondary btn-icon" onClick={()=>setDateOffset(dateOffset-1)} aria-label="السابق"><I.ArrowLeft size={14}/></button>
+      {/* LTR icon names: index.html mirrors them inside .btn in RTL. */}
+      <button className="btn btn-secondary btn-icon" onClick={()=>setDateOffset(dateOffset-1)} aria-label={tt("السابق")}><I.ArrowLeft size={14}/></button>
       <div className="h3" style={{minWidth:"min(220px, 45vw)"}}>{dateLabel}</div>
-      <button className="btn btn-secondary btn-icon" onClick={()=>setDateOffset(dateOffset+1)} aria-label="التالي"><I.ArrowRight size={14}/></button>
-      <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setDateOffset(0)}>اليوم</button>
+      <button className="btn btn-secondary btn-icon" onClick={()=>setDateOffset(dateOffset+1)} aria-label={tt("التالي")}><I.ArrowRight size={14}/></button>
+      <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setDateOffset(0)}>{tt("اليوم")}</button>
       <input
         type="date"
         className="input"
-        aria-label="اذهب إلى تاريخ"
+        aria-label={tt("اذهب إلى تاريخ")}
         value={viewIso}
         onChange={e=>onPickDate(e.target.value)}
         style={{width:150,padding:"6px 10px",fontSize:12}}
       />
-      <div className="seg" style={{marginLeft:12}}>
-        {canSeeTab("day")       && <button className={viewMode==="day"       ? "on" : ""} onClick={()=>setViewMode("day")}>اليوم</button>}
-        {canSeeTab("therapist") && <button className={viewMode==="therapist" ? "on" : ""} onClick={()=>setViewMode("therapist")}>الأخصائي</button>}
-        {canSeeTab("doctor")    && <button className={viewMode==="doctor"    ? "on" : ""} onClick={()=>setViewMode("doctor")}>الدكتور</button>}
-        {canSeeTab("week")      && <button className={viewMode==="week"      ? "on" : ""} onClick={()=>setViewMode("week")}>الأسبوع</button>}
-      </div>
+      <Segmented label={tt("طريقة عرض التقويم")} value={viewMode} onChange={setViewMode} style={{marginInlineEnd:12}}
+        options={[["day","اليوم"],["therapist","الأخصائي"],["doctor","الدكتور"],["week","الأسبوع"]]
+          .filter(([m]) => canSeeTab(m)).map(([m, l]) => ({ value: m, label: tt(l) }))}/>
       <div style={{flex:1}}/>
       {unroutedCount > 0 && (
-        <span style={{fontSize:12,color:"#A8443A"}} title="مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة">
-          ⚠ {unroutedCount} موعد خارج الشبكة
+        <span style={{fontSize:12,color:"#A8443A"}} title={tt("مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة")}>
+          ⚠ {tt("{n} موعد خارج الشبكة", { n: unroutedCount })}
         </span>
       )}
-      <span className="muted" style={{fontSize:12}}>محجوز: {dayBooked} · متاح: {dayFree} · بانتظار: {dayPending}</span>
+      <span className="muted" style={{fontSize:12}}>{tt("محجوز: {booked} · متاح: {free} · بانتظار: {pending}", { booked: dayBooked, free: dayFree, pending: dayPending })}</span>
     </div>
   );
 
@@ -3071,17 +3069,17 @@ function CalendarView({ dateOffset, setDateOffset }) {
         <div className="tbl-scroll">
         <div style={{display:"grid",gridTemplateColumns:`80px repeat(${visibleStaffCols.length},1fr)`,minHeight:660,minWidth:Math.max(320, 80 + visibleStaffCols.length*160)}}>
           {/* header */}
-          <div style={{borderRight:"1px solid var(--ink-200)",background:"var(--ink-50)"}}></div>
+          <div style={{borderInlineStart:"1px solid var(--ink-200)",background:"var(--ink-50)"}}></div>
           {visibleStaffCols.map((s,i)=>{
             const cnt = dayAppts.filter(a => a.colIndex === i && a.status !== "متاح").length;
             return (
-            <div key={s.key} style={{padding:"12px 14px",borderRight:i<visibleStaffCols.length-1?"1px solid var(--ink-200)":"none",borderBottom:"1px solid var(--ink-200)",background:"var(--ink-50)"}}>
+            <div key={s.key} style={{padding:"12px 14px",borderInlineStart:i<visibleStaffCols.length-1?"1px solid var(--ink-200)":"none",borderBottom:"1px solid var(--ink-200)",background:"var(--ink-50)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span className="av sm" aria-hidden="true" style={{background:s.color+"33",color:"var(--ink-900)"}}>{(s.name||"").split(" ").map(x=>x[0]).join("").slice(0,2)}</span>
                 <div style={{minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
                   <div className="muted" style={{fontSize:11}}>{s.subtitle || s.role}</div>
-                  <div className="muted mono" style={{fontSize:10.5,marginTop:2}}>{s.hours} · {cnt} موعد</div>
+                  <div className="muted mono" style={{fontSize:10.5,marginTop:2}}>{s.hours} · {tt("{n} موعد", { n: cnt })}</div>
                 </div>
               </div>
             </div>
@@ -3089,7 +3087,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
           })}
 
           {/* hours column */}
-          <div style={{borderRight:"1px solid var(--ink-200)",background:"var(--ink-50)",position:"relative"}}>
+          <div style={{borderInlineStart:"1px solid var(--ink-200)",background:"var(--ink-50)",position:"relative"}}>
             {hours.map((h,i)=>(
               <div key={h} style={{height:54,padding:"4px 10px",borderTop:i?"1px solid var(--ink-100)":"none",fontSize:11,color:"var(--ink-500)"}} className="mono">{h}</div>
             ))}
@@ -3120,7 +3118,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                 if (viewMode === "therapist" && s._kind !== "therapist") return;
                 if (viewMode === "doctor"    && s._kind !== "doctor")    return;
                 if (hasConflict(col, newTime, orig.id)) {
-                  if (window.showToast) window.showToast("يوجد موعد آخر في نفس التوقيت", "error");
+                  if (window.showToast) window.showToast(tt("يوجد موعد آخر في نفس التوقيت"), "error");
                   return;
                 }
                 const patch = { time: newTime, date: viewIso };
@@ -3137,7 +3135,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
               }}
               style={{
                 position:"relative",
-                borderRight:col<visibleStaffCols.length-1?"1px solid var(--ink-200)":"none",
+                borderInlineStart:col<visibleStaffCols.length-1?"1px solid var(--ink-200)":"none",
                 background: col%2===0?"#fff":"#FCFDFE",
                 minHeight: hours.length * 54
               }}>
@@ -3151,7 +3149,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                 if (nowMin < 0 || nowMin > hours.length*60) return null;
                 return (
                   <div style={{position:"absolute",top:(nowMin/60)*54-2,left:0,right:0,height:2,background:"var(--red)",zIndex:5}}>
-                    <div style={{position:"absolute",left:-4,top:-4,width:10,height:10,borderRadius:999,background:"var(--red)"}}/>
+                    <div style={{position:"absolute",insetInlineEnd:-4,top:-4,width:10,height:10,borderRadius:999,background:"var(--red)"}}/>
                   </div>
                 );
               })()}
@@ -3187,7 +3185,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                     onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
                     {isAvail ? (
                       <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",color:c,fontWeight:500}}>
-                        <I.Plus size={12} style={{marginRight:4}}/> موعد متاح
+                        <I.Plus size={12} style={{marginInlineStart:4}}/> {tt("موعد متاح")}
                       </div>
                     ) : (
                       <>
@@ -3195,7 +3193,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                           <span style={{fontWeight:600,fontSize:12,color:"var(--ink-900)"}}>{a.patient}</span>
                           <span className="mono" style={{fontSize:10,color:"var(--ink-500)"}}>{a.time}</span>
                         </div>
-                        <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"normal",wordBreak:"break-word"}}>{a.type}</div>
+                        <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"normal",wordBreak:"break-word"}}>{apptTypeLabel(a.type)}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                           <ApptBadge s={a.status}/>
                         </div>
@@ -3222,14 +3220,14 @@ function CalendarView({ dateOffset, setDateOffset }) {
               <div key={d.iso}
                 onClick={()=>onPickDate(d.iso)}
                 style={{
-                  borderRight: i<6 ? "1px solid var(--ink-200)" : "none",
+                  borderInlineStart: i<6 ? "1px solid var(--ink-200)" : "none",
                   background: isSelected ? "var(--blue-50)" : (i%2===0 ? "#fff" : "#FCFDFE"),
                   cursor:"pointer",
                 }}>
                 <div style={{padding:"10px 12px",borderBottom:"1px solid var(--ink-200)",background:isToday?"var(--blue-50)":"var(--ink-50)"}}>
                   <div style={{fontSize:12,fontWeight:600}}>{d.label}</div>
                   <div className="muted mono" style={{fontSize:10.5}}>{d.iso}</div>
-                  <div className="muted" style={{fontSize:10.5,marginTop:2}}>{dayList.filter(a=>a.status!=="متاح").length} موعد</div>
+                  <div className="muted" style={{fontSize:10.5,marginTop:2}}>{tt("{n} موعد", { n: dayList.filter(a=>a.status!=="متاح").length })}</div>
                 </div>
                 <div style={{padding:"8px",display:"flex",flexDirection:"column",gap:6}}>
                   {dayList.length === 0 && <div className="muted" style={{fontSize:11,textAlign:"center",padding:"12px 0"}}>—</div>}
@@ -3242,7 +3240,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                       <div key={a.id}
                         onClick={(e)=>{ e.stopPropagation(); if(!isAvail) setActionsModal(a); }}
                         style={{
-                          borderRight:`3px solid ${color}`,
+                          borderInlineStart:`3px solid ${color}`,
                           border:"1px solid var(--ink-200)",
                           borderRadius:8, padding:"5px 7px",
                           background: isAvail ? "transparent" : "#fff",
@@ -3250,7 +3248,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                         }}>
                         <div style={{display:"flex",justifyContent:"space-between",gap:4}}>
                           <span className="mono" style={{fontWeight:600}}>{a.time || "—"}</span>
-                          <span className="muted" style={{fontSize:10}}><span className="mono">{a.dur||30}</span> د</span>
+                          <span className="muted" style={{fontSize:10}}><span className="mono">{a.dur||30}</span> {tt("د")}</span>
                         </div>
                         <div style={{fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.patient || "—"}</div>
                         <div className="muted" style={{fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{staffLabel}</div>
@@ -3258,7 +3256,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                     );
                   })}
                   {dayList.length > 8 && (
-                    <div className="muted" style={{fontSize:10.5,textAlign:"center"}}>+{dayList.length-8} إضافية</div>
+                    <div className="muted" style={{fontSize:10.5,textAlign:"center"}}>{tt("+{n} إضافية", { n: dayList.length-8 })}</div>
                   )}
                 </div>
               </div>
@@ -3270,7 +3268,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
         // ── Day view: chronological list for the selected date ──
         <div style={{padding:"14px 18px"}}>
           {dayAppts.length === 0 && (
-            <div className="muted" style={{fontSize:13,padding:"32px 0",textAlign:"center"}}>لا مواعيد في هذا اليوم.</div>
+            <div className="muted" style={{fontSize:13,padding:"32px 0",textAlign:"center"}}>{tt("لا مواعيد في هذا اليوم.")}</div>
           )}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {dayAppts.slice().sort((a,b)=>String(a.time).localeCompare(String(b.time))).map(a=>{
@@ -3284,18 +3282,18 @@ function CalendarView({ dateOffset, setDateOffset }) {
                   style={{
                     display:"flex",alignItems:"center",gap:12,
                     padding:"10px 12px",border:"1px solid var(--ink-200)",
-                    borderRight:`3px solid ${color}`,borderRadius:12,
+                    borderInlineStart:`3px solid ${color}`,borderRadius:12,
                     background: a.status==="قيد التنفيذ" ? "var(--blue-50)" : "#fff",
                     cursor: isAvail ? "default" : "pointer",
                   }}>
                   <div style={{textAlign:"center",minWidth:56}}>
                     <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time || "—"}</div>
-                    <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur || 30}</span> د</div>
+                    <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur || 30}</span> {tt("د")}</div>
                   </div>
                   <div style={{width:1,height:34,background:"var(--ink-200)"}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.patient || "—"}</div>
-                    <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{with_}{a.type ? ` · ${a.type}` : ""}</div>
+                    <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{with_}{a.type ? ` · ${apptTypeLabel(a.type)}` : ""}</div>
                   </div>
                   <ApptBadge s={a.status}/>
                 </div>
@@ -3314,7 +3312,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
         onStatus={async (newStatus) => {
           await persistMove(actionsModal, { status: newStatus });
           setActionsModal(null);
-          if (window.showToast) window.showToast("تم تحديث الحالة", "success");
+          if (window.showToast) window.showToast(tt("تم تحديث الحالة"), "success");
         }}
       />
     )}
@@ -3332,7 +3330,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
           };
           persistMove(rescheduleModal, patch);
           setRescheduleModal(null);
-          if(window.showToast) window.showToast(`تم إعادة جدولة موعد ${rescheduleModal.patient} إلى ${newDateIso} ${newTime}`, "success");
+          if(window.showToast) window.showToast(tt("تم إعادة جدولة موعد {name} إلى {date} {time}", { name: rescheduleModal.patient, date: newDateIso, time: newTime }), "success");
         }}
         therapists={therapists}
       />
@@ -3353,33 +3351,33 @@ function AppointmentActionsModal({ appt, onClose, onEdit, onStatus }) {
     return <RecurringScheduleModal patient={patient} onClose={onClose}/>;
   }
   return (
-    <Modal open onClose={onClose} width={520} title="تفاصيل الموعد">
+    <Modal open onClose={onClose} width={520} title={tt("تفاصيل الموعد")}>
       <div style={{display:"grid",gap:10,fontSize:13}}>
-        <Row k="المريض"  v={appt.patient || "—"}/>
-        {patient && patient.phone && <Row k="الهاتف" v={patient.phone}/>}
-        <Row k="المسؤول" v={appt.th || appt.dr || "—"}/>
-        <Row k="التاريخ" v={apptDateIso(appt)}/>
-        <Row k="الوقت"   v={`${appt.time || "—"} · ${appt.dur || 30} دقيقة`}/>
-        <Row k="النوع"   v={appt.type || "—"}/>
-        <Row k="الحالة"  v={<ApptBadge s={appt.status}/>}/>
-        {appt.payment && <Row k="الدفع" v={<PayBadge s={appt.payment}/>}/>}
-        {appt.notes && <Row k="ملاحظات" v={appt.notes}/>}
+        <Row k={tt("المريض")}  v={appt.patient || "—"}/>
+        {patient && patient.phone && <Row k={tt("الهاتف")} v={<bdi dir="ltr">{patient.phone}</bdi>}/>}
+        <Row k={tt("المسؤول")} v={appt.th || appt.dr || "—"}/>
+        <Row k={tt("التاريخ")} v={apptDateIso(appt)}/>
+        <Row k={tt("الوقت")}   v={tt("{time} · {n} دقيقة", { time: appt.time || "—", n: appt.dur || 30 })}/>
+        <Row k={tt("النوع")}   v={apptTypeLabel(appt.type) || "—"}/>
+        <Row k={tt("الحالة")}  v={<ApptBadge s={appt.status}/>}/>
+        {appt.payment && <Row k={tt("الدفع")} v={<PayBadge s={appt.payment}/>}/>}
+        {appt.notes && <Row k={tt("ملاحظات")} v={appt.notes}/>}
       </div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:16,justifyContent:"flex-end"}}>
         {patient && (
           <button className="btn btn-ghost" onClick={()=>{
             if (window.__goToPatient) window.__goToPatient(patient);
-            else if (window.showToast) window.showToast("افتح صفحة المرضى لعرض الملف", "info");
+            else if (window.showToast) window.showToast(tt("افتح صفحة المرضى لعرض الملف"), "info");
             onClose();
-          }}><I.User size={13}/> ملف المريض</button>
+          }}><I.User size={13}/> {tt("ملف المريض")}</button>
         )}
         {patient && (
-          <button className="btn btn-ghost" onClick={()=>setSchedOpen(true)}><I.Clock size={13}/> الجدول الثابت</button>
+          <button className="btn btn-ghost" onClick={()=>setSchedOpen(true)}><I.Clock size={13}/> {tt("الجدول الثابت")}</button>
         )}
         <WaReminderButton patient={patient} appt={appt} className="btn btn-ghost"/>
-        <button className="btn btn-secondary" onClick={()=>onStatus("ملغي")}><I.X size={13}/> إلغاء</button>
-        <button className="btn btn-secondary" onClick={()=>onStatus("مكتمل")}><I.Check size={13}/> إنهاء</button>
-        <button className="btn btn-blue" onClick={onEdit}><I.Edit size={13}/> نقل / تعديل</button>
+        <button className="btn btn-secondary" onClick={()=>onStatus("ملغي")}><I.X size={13}/> {tt("إلغاء")}</button>
+        <button className="btn btn-secondary" onClick={()=>onStatus("مكتمل")}><I.Check size={13}/> {tt("إنهاء")}</button>
+        <button className="btn btn-blue" onClick={onEdit}><I.Edit size={13}/> {tt("نقل / تعديل")}</button>
       </div>
     </Modal>
   );
@@ -3405,8 +3403,8 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
   // availability stays fresh without a page reload.
   window.useDataVersion && window.useDataVersion();
 
-  const AR_WEEKDAYS = ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
-  const AR_MONTHS   = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const WEEKDAYS = WEEKDAY_LABELS;
+  const MONTHS   = monthNames("long");
   // Bookable slots from clinic settings (working window + slot duration).
   const timeSlots = window.calendarSlots ? window.calendarSlots() : [
     "08:00","08:30","09:00","09:30","10:00","10:30","11:00","11:30",
@@ -3420,18 +3418,18 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
   const nowHM     = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
 
   // Build 7 rolling calendar days starting today. Each card carries
-  // its own ISO so downstream logic never re-parses Arabic labels.
+  // its own ISO so downstream logic never re-parses the labels.
   const days = React.useMemo(() => {
     const out = [];
     const base = new Date(todayIsoR + "T00:00:00");
     for (let i = 0; i < 7; i++) {
       const d = new Date(base); d.setDate(base.getDate() + i);
       const iso = isoDate(d);
-      const wd  = AR_WEEKDAYS[d.getDay()];
-      const mo  = AR_MONTHS[d.getMonth()];
-      const short = i === 0 ? `اليوم، ${d.getDate()} ${mo}`
-                  : i === 1 ? `غدًا، ${d.getDate()} ${mo}`
-                  : `${wd}، ${d.getDate()} ${mo}`;
+      const wd  = WEEKDAYS[d.getDay()];
+      const mo  = MONTHS[d.getMonth()];
+      const short = i === 0 ? tt("اليوم، {date}", { date: `${d.getDate()} ${mo}` })
+                  : i === 1 ? tt("غدًا، {date}", { date: `${d.getDate()} ${mo}` })
+                  : tt("{weekday}، {day} {month}", { weekday: wd, day: d.getDate(), month: mo });
       out.push({ iso, weekday: wd, day: d.getDate(), month: mo, label: short });
     }
     return out;
@@ -3484,7 +3482,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
   const selectedDay = days.find(d => d.iso === newDateIso) || days[0];
   const selectedLabel = selectedDay
-    ? `${selectedDay.weekday}، ${selectedDay.day} ${selectedDay.month}`
+    ? tt("{weekday}، {day} {month}", { weekday: selectedDay.weekday, day: selectedDay.day, month: selectedDay.month })
     : newDateIso;
 
   const canSave =
@@ -3516,21 +3514,21 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
           background:"#fff",borderRadius:18,boxShadow:"0 24px 60px rgba(0,0,0,.18)",
           width:"min(600px, calc(100vw - 32px))",
           maxHeight:"calc(100vh - 48px)",maxHeight:"calc(100dvh - 48px)",overflowY:"auto",
-          padding:"clamp(18px, 5vw, 28px) clamp(16px, 5vw, 28px) 24px",direction:"rtl",outline:"none",
+          padding:"clamp(18px, 5vw, 28px) clamp(16px, 5vw, 28px) 24px",outline:"none",
         }}
       >
         {/* ── Header ── */}
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20}}>
           <div style={{minWidth:0}}>
             <h2 id={titleId} style={{fontSize:18,fontWeight:700,color:"var(--ink-900)",lineHeight:1.2,margin:"0 0 4px"}}>
-              إعادة جدولة الموعد
+              {tt("إعادة جدولة الموعد")}
             </h2>
             <div style={{fontSize:13,color:"var(--ink-500)"}}>
-              {[appt.patient, appt.type].filter(Boolean).join(" · ")}
+              {[appt.patient, apptTypeLabel(appt.type)].filter(Boolean).join(" · ")}
             </div>
           </div>
           <button
-            type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق"
+            type="button" className="btn btn-ghost btn-icon" aria-label={tt("إغلاق")}
             onClick={onClose}
             style={{flexShrink:0,marginTop:2}}
           ><I.X size={16}/></button>
@@ -3544,7 +3542,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
           borderRadius:12,marginBottom:24,
         }}>
           <I.Clock size={14} style={{color:"var(--blue-700)",flexShrink:0}}/>
-          <span style={{fontSize:13,color:"var(--ink-500)",whiteSpace:"nowrap"}}>الموعد الحالي:</span>
+          <span style={{fontSize:13,color:"var(--ink-500)",whiteSpace:"nowrap"}}>{tt("الموعد الحالي:")}</span>
           <span style={{fontSize:13,fontWeight:600,color:"var(--ink-900)",whiteSpace:"nowrap"}}>{appt.time}</span>
           <span style={{color:"var(--ink-300)"}}>·</span>
           <span style={{fontSize:13,color:"var(--ink-700)",whiteSpace:"nowrap"}}>{appt.th}</span>
@@ -3552,7 +3550,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Date picker (rolling 7 days from real system time) ── */}
         <div style={{marginBottom:22}}>
-          {sectionLabel("اليوم الجديد", titleId + "-day")}
+          {sectionLabel(tt("اليوم الجديد"), titleId + "-day")}
           <div role="group" aria-labelledby={titleId + "-day"} style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))",gap:8}}>
             {days.map(d => {
               const active = newDateIso === d.iso;
@@ -3563,7 +3561,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
                   key={d.iso} type="button"
                   onClick={()=> !full && setNewDateIso(d.iso)}
                   disabled={full} aria-pressed={active ? "true" : "false"}
-                  title={full ? "لا تتوفر مواعيد" : `متاح: ${avail}`}
+                  title={full ? tt("لا تتوفر مواعيد") : tt("متاح: {n}", { n: avail })}
                   style={{
                     display:"flex",flexDirection:"column",alignItems:"center",gap:2,
                     padding:"10px 12px",borderRadius:12,
@@ -3581,7 +3579,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
                     <span className="mono">{d.day}</span> {d.month}
                   </span>
                   <span style={{fontSize:11}}>
-                    {full ? "محجوز بالكامل" : `متاح: ${avail}`}
+                    {full ? tt("محجوز بالكامل") : tt("متاح: {n}", { n: avail })}
                   </span>
                 </button>
               );
@@ -3591,7 +3589,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Time picker ── */}
         <div style={{marginBottom:22}}>
-          {sectionLabel("الوقت الجديد", titleId + "-time")}
+          {sectionLabel(tt("الوقت الجديد"), titleId + "-time")}
           <div role="group" aria-labelledby={titleId + "-time"} style={{
             display:"grid",
             gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))",
@@ -3606,9 +3604,9 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
                 <button
                   key={t} type="button"
                   disabled={disabled} aria-pressed={active ? "true" : "false"}
-                  aria-label={isPast ? `${t} — وقت سابق` : isTaken ? `${t} — محجوز` : undefined}
+                  aria-label={isPast ? tt("{time} — وقت سابق", { time: t }) : isTaken ? tt("{time} — محجوز", { time: t }) : undefined}
                   onClick={()=> !disabled && setNewTime(t)}
-                  title={isPast ? "وقت سابق" : isTaken ? "محجوز" : ""}
+                  title={isPast ? tt("وقت سابق") : isTaken ? tt("محجوز") : ""}
                   className="slot-btn"
                   style={{
                     display:"flex",alignItems:"center",justifyContent:"center",
@@ -3630,7 +3628,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Therapist picker ── */}
         <div style={{marginBottom:26}}>
-          {sectionLabel("الأخصائي", titleId + "-th")}
+          {sectionLabel(tt("الأخصائي"), titleId + "-th")}
           <div role="group" aria-labelledby={titleId + "-th"} style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {therapists.filter(t=>t.name!=="متاح").map(t => {
               const active = newTherapist === t.name;
@@ -3675,14 +3673,14 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
             {selectedLabel} · <span className="mono">{newTime || "—"}</span>
           </div>
           <div style={{display:"flex",gap:8,flexShrink:0}}>
-            <button type="button" className="btn btn-ghost" onClick={onClose} style={{whiteSpace:"nowrap"}}>إلغاء</button>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{whiteSpace:"nowrap"}}>{tt("إلغاء")}</button>
             <button
               type="button" className="btn btn-blue"
               disabled={!canSave}
               onClick={()=> canSave && onSave(newTime, newTherapist, newDateIso)}
               style={{whiteSpace:"nowrap",opacity:canSave?1:.55,cursor:canSave?"pointer":"not-allowed"}}
             >
-              <I.Check size={13}/> تأكيد إعادة الجدولة
+              <I.Check size={13}/> {tt("تأكيد إعادة الجدولة")}
             </button>
           </div>
         </div>
@@ -3700,23 +3698,21 @@ function AppointmentList() {
     <div>
       <div className="card" style={{padding:14,marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:"1 1 320px",maxWidth:380}}>
-          <I.Search size={14} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-          <input className="input" placeholder="ابحث في المواعيد…" style={{paddingLeft:32}}/>
+          <I.Search size={14} style={{position:"absolute",insetInlineEnd:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+          <input className="input" placeholder={tt("ابحث في المواعيد…")} style={{paddingInlineEnd:32}}/>
         </div>
-        <div className="seg">
-          {["الكل","مؤكد","معلّق","مكتمل","ملغي"].map(s=>(
-            <button key={s} className={statusFilter===s?"on":""} onClick={()=>setStatusFilter(s)}>{s}</button>
-          ))}
-        </div>
+        {/* Filter values are the stored statuses; only the labels are translated. */}
+        <Segmented label={tt("حالة الموعد")} value={statusFilter} onChange={setStatusFilter}
+          options={["الكل","مؤكد","معلّق","مكتمل","ملغي"].map(s => ({ value: s, label: tt(s) }))}/>
       </div>
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
-        <table className="tbl">
-          <thead><tr><th>وقت</th><th>المريض</th><th>الطبيب</th><th>الأخصائي</th><th>الغرفة</th><th>النوع</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+        <CardTable>
+          <thead><tr><th>{tt("وقت")}</th><th>{tt("المريض")}</th><th>{tt("الطبيب")}</th><th>{tt("الأخصائي")}</th><th>{tt("الغرفة")}</th><th>{tt("النوع")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
           <tbody>
             {filtered.map(a=>(
               <tr key={a.id}>
-                <td><span className="mono" style={{fontWeight:600}}>{a.time}</span> <span className="muted">· <span className="mono">{a.dur}</span> د</span></td>
+                <td><span className="mono" style={{fontWeight:600}}>{a.time}</span> <span className="muted">· <span className="mono">{a.dur}</span> {tt("د")}</span></td>
                 <td>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div className="av sm">{(a.patient||"—").split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
@@ -3726,39 +3722,39 @@ function AppointmentList() {
                 <td>{a.dr}</td>
                 <td>{a.th}</td>
                 <td>{a.room}</td>
-                <td>{a.type}</td>
+                <td>{apptTypeLabel(a.type)}</td>
                 <td><ApptBadge s={a.status}/></td>
                 <td style={{whiteSpace:"nowrap"}}>
                   <WaReminderButton appt={a} iconOnly/>
                   <RowMenu size={14} items={[
-                    { label:"تأكيد الموعد", icon:<I.Check size={13}/>, onClick:async ()=>{
+                    { label:tt("تأكيد الموعد"), icon:<I.Check size={13}/>, onClick:async ()=>{
                       try {
                         if (window.KineticData) await window.KineticData.upsert("appts", { booking_id:a.id, patient_id:a.patient_id||null, status:"مؤكد" });
                         a.status = "مؤكد";
-                        if (window.showToast) window.showToast("تم تأكيد الموعد","success");
-                      } catch (e) { console.warn("confirm appt failed", e); if (window.showToast) window.showToast("تعذّر التأكيد","error"); }
+                        if (window.showToast) window.showToast(tt("تم تأكيد الموعد"),"success");
+                      } catch (e) { console.warn("confirm appt failed", e); if (window.showToast) window.showToast(tt("تعذّر التأكيد"),"error"); }
                     }},
-                    { label:"وضع كمكتمل", icon:<I.Check size={13}/>, onClick:async ()=>{
+                    { label:tt("وضع كمكتمل"), icon:<I.Check size={13}/>, onClick:async ()=>{
                       try {
                         if (window.KineticData) await window.KineticData.upsert("appts", { booking_id:a.id, patient_id:a.patient_id||null, status:"مكتمل" });
                         a.status = "مكتمل";
-                        if (window.showToast) window.showToast("تم وضع الموعد كمكتمل","success");
-                      } catch (e) { console.warn("complete appt failed", e); if (window.showToast) window.showToast("تعذّر التحديث","error"); }
+                        if (window.showToast) window.showToast(tt("تم وضع الموعد كمكتمل"),"success");
+                      } catch (e) { console.warn("complete appt failed", e); if (window.showToast) window.showToast(tt("تعذّر التحديث"),"error"); }
                     }},
-                    { label:"إلغاء الموعد", icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
-                      if (!window.confirm(`إلغاء موعد ${a.patient||""}؟`)) return;
+                    { label:tt("إلغاء الموعد"), icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
+                      if (!window.confirm(tt("إلغاء موعد {name}؟", { name: a.patient||"" }))) return;
                       try {
                         if (window.KineticData) await window.KineticData.upsert("appts", { booking_id:a.id, patient_id:a.patient_id||null, status:"ملغي" });
                         a.status = "ملغي";
-                        if (window.showToast) window.showToast("تم إلغاء الموعد","success");
-                      } catch (e) { console.warn("cancel appt failed", e); if (window.showToast) window.showToast("تعذّر الإلغاء","error"); }
+                        if (window.showToast) window.showToast(tt("تم إلغاء الموعد"),"success");
+                      } catch (e) { console.warn("cancel appt failed", e); if (window.showToast) window.showToast(tt("تعذّر الإلغاء"),"error"); }
                     }},
                   ]}/>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
         </div>
       </div>
     </div>
@@ -3779,11 +3775,11 @@ function nextAvailableLabel(doctorId) {
       .map(a => a.time));
     const free = slots.find(t => !booked.has(t));
     if (free) {
-      const lbl = i === 0 ? "اليوم" : i === 1 ? "غدًا" : d.toLocaleDateString("ar-EG-u-nu-latn", { day: "numeric", month: "short" });
+      const lbl = i === 0 ? tt("اليوم") : i === 1 ? tt("غدًا") : fmtDate(d, "dayMonth");
       return `${lbl} ${free}`;
     }
   }
-  return "لا يوجد قريبًا";
+  return tt("لا يوجد قريبًا");
 }
 
 // ── BookingFlow — 5 steps, all DB-driven, persists on confirm ──
@@ -3802,7 +3798,7 @@ function BookingFlow({ onDone }) {
     updatePreferredTime: false,        // persist the chosen slot as the new fixed time
   });
   const [busy, setBusy] = React.useState(false);
-  const steps = ["المريض","الأخصائي","الطبيب (اختياري)","التاريخ","الوقت"];
+  const steps = [tt("المريض"),tt("الأخصائي"),tt("الطبيب (اختياري)"),tt("التاريخ"),tt("الوقت")];
   const LAST = steps.length;
   const update = (patch) => setPicks(p => ({ ...p, ...patch }));
   // The saved recurring schedule for the selected (existing) patient — used
@@ -3821,11 +3817,11 @@ function BookingFlow({ onDone }) {
   // Validate the patient step before advancing.
   function patientStepValid() {
     if (picks.patientMode === "existing") {
-      if (!picks.patientId) { window.showToast && window.showToast("اختر المريض أو أدخل بياناته الأولية", "error"); return false; }
+      if (!picks.patientId) { window.showToast && window.showToast(tt("اختر المريض أو أدخل بياناته الأولية"), "error"); return false; }
       return true;
     }
-    if (!picks.newName.trim()) { window.showToast && window.showToast("أدخل اسم المريض", "error"); return false; }
-    if (!picks.newPhone.trim()) { window.showToast && window.showToast("أدخل رقم الهاتف", "error"); return false; }
+    if (!picks.newName.trim()) { window.showToast && window.showToast(tt("أدخل اسم المريض"), "error"); return false; }
+    if (!picks.newPhone.trim()) { window.showToast && window.showToast(tt("أدخل رقم الهاتف"), "error"); return false; }
     return true;
   }
 
@@ -3849,9 +3845,9 @@ function BookingFlow({ onDone }) {
   }
 
   async function confirm() {
-    if (!picks.therapist) return window.showToast && window.showToast("اختر الأخصائي", "error");
-    if (!picks.date) return window.showToast && window.showToast("اختر التاريخ", "error");
-    if (!picks.slot) return window.showToast && window.showToast("اختر الوقت", "error");
+    if (!picks.therapist) return window.showToast && window.showToast(tt("اختر الأخصائي"), "error");
+    if (!picks.date) return window.showToast && window.showToast(tt("اختر التاريخ"), "error");
+    if (!picks.slot) return window.showToast && window.showToast(tt("اختر الوقت"), "error");
     if (!patientStepValid()) return;
     // Default rule: one free day between the patient's sessions unless the
     // therapist explicitly overrides (checkbox in the time step).
@@ -3903,11 +3899,11 @@ function BookingFlow({ onDone }) {
           updated_at: new Date().toISOString(),
         });
       }
-      window.showToast && window.showToast("تم تأكيد الحجز", "success");
+      window.showToast && window.showToast(tt("تم تأكيد الحجز"), "success");
       onDone && onDone();
     } catch (e) {
       console.warn("booking failed", e);
-      window.showToast && window.showToast("تعذّر الحجز", "error");
+      window.showToast && window.showToast(tt("تعذّر الحجز"), "error");
     } finally { setBusy(false); }
   }
 
@@ -3919,7 +3915,7 @@ function BookingFlow({ onDone }) {
     if (patch) update(patch);
     if (step === 1 && !patientStepValid()) return;
     if (step === 2 && !p.therapist) {
-      window.showToast && window.showToast("اختر الأخصائي — الموعد مع الأخصائي إلزامي", "error");
+      window.showToast && window.showToast(tt("اختر الأخصائي — الموعد مع الأخصائي إلزامي"), "error");
       return;
     }
     if (step < LAST) setStep(step + 1); else confirm();
@@ -3949,7 +3945,7 @@ function BookingFlow({ onDone }) {
     <div>
       <div className="card" style={{padding:18,marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         {/* Focusable so a keyboard can scroll it on phones. */}
-        <div ref={stepperRef} className="stepper" role="group" tabIndex={0} aria-label={`خطوات الحجز — الخطوة ${step} من ${LAST}: ${steps[step-1]}`} style={{gap:0,flex:1}}>
+        <div ref={stepperRef} className="stepper" role="group" tabIndex={0} aria-label={tt("خطوات الحجز — الخطوة {n} من {total}: {name}", { n: step, total: LAST, name: steps[step-1] })} style={{gap:0,flex:1}}>
           {steps.map((s,i)=>(
             <React.Fragment key={i}>
               <div aria-current={i+1===step ? "step" : undefined} style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -3968,14 +3964,14 @@ function BookingFlow({ onDone }) {
         </div>
       </div>
 
-      <div ref={stepBoxRef} tabIndex={-1} aria-label={`الخطوة ${step}: ${steps[step-1]}`} role="group" className="card card-pad" style={{minHeight:420,marginBottom:18,outline:"none"}}>
+      <div ref={stepBoxRef} tabIndex={-1} aria-label={tt("الخطوة {n}: {name}", { n: step, name: steps[step-1] })} role="group" className="card card-pad" style={{minHeight:420,marginBottom:18,outline:"none"}}>
         {step===1 && <PatientStep picks={picks} update={update}/>}
-        {step===2 && (therapists.length ? <PickGrid title="اختر أخصائيًا — الموعد مع الأخصائي إلزامي"
-          items={therapists.map(t=>({ id:t.name, l:t.name, sub:`${t.spec} · حمل ${t.load}/${t.max}`, ic:t.name.split(" ").map(x=>x[0]).join(""), color:t.color, count:`${t.max-t.load} فترة متاحة` }))}
+        {step===2 && (therapists.length ? <PickGrid title={tt("اختر أخصائيًا — الموعد مع الأخصائي إلزامي")}
+          items={therapists.map(t=>({ id:t.name, l:t.name, sub:`${t.spec} · ${tt("حمل {load}/{max}", { load: t.load, max: t.max })}`, ic:t.name.split(" ").map(x=>x[0]).join(""), color:t.color, count:tt("{n} فترة متاحة", { n: t.max-t.load }) }))}
           avatar
           onPick={v=>next({ therapist: v })}
           selected={picks.therapist}
-        /> : <EmptyState icon={<I.Users size={22}/>} title="لا أخصائيين بعد" body="أضف الأخصائيين من الإعدادات."/>)}
+        /> : <EmptyState icon={<I.Users size={22}/>} title={tt("لا أخصائيين بعد")} body={tt("أضف الأخصائيين من الإعدادات.")}/>)}
         {step===3 && <OptionalDoctorStep picks={picks} update={update} onSkip={()=>{ update({doctorId:null, deptId:null}); setStep(4); }} onPicked={()=>setStep(4)}/>}
         {step===4 && <DatePick value={picks.date} onPick={v=>next({ date: v })} schedule={patientSchedule} patient={selectedPatient} onGenerated={onDone}/>}
         {step===5 && <SlotPick picks={picks} update={update} schedule={patientSchedule}/>}
@@ -3983,12 +3979,12 @@ function BookingFlow({ onDone }) {
 
       <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <button className="btn btn-secondary" disabled={step===1} onClick={()=>setStep(step-1)} style={{opacity:step===1?.5:1}}>
-          <I.ArrowLeft size={13}/> رجوع
+          <I.ArrowLeft size={13}/> {tt("رجوع")}
         </button>
         <div style={{display:"flex",gap:10}}>
-          <button className="btn btn-ghost" onClick={onDone}>إلغاء</button>
+          <button className="btn btn-ghost" onClick={onDone}>{tt("إلغاء")}</button>
           <button className="btn btn-blue" disabled={busy} onClick={()=>next()}>
-            {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <>{step<LAST ? "متابعة" : "تأكيد الحجز"} <I.ArrowRight size={13}/></>}
+            {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <>{step<LAST ? tt("متابعة") : tt("تأكيد الحجز")} <I.ArrowRight size={13}/></>}
           </button>
         </div>
       </div>
@@ -4010,17 +4006,15 @@ function PatientStep({ picks, update }) {
   const selected = patients.find(p => (p.patient_id || p.id) === picks.patientId);
   return (
     <div>
-      <div className="h2" style={{marginBottom:6}}>بيانات المريض</div>
-      <div className="muted" style={{fontSize:13,marginBottom:18}}>ابدأ بتحديد المريض — ابحث عن ملف موجود أو أدخل البيانات الأولية لمريض جديد.</div>
+      <div className="h2" style={{marginBottom:6}}>{tt("بيانات المريض")}</div>
+      <div className="muted" style={{fontSize:13,marginBottom:18}}>{tt("ابدأ بتحديد المريض — ابحث عن ملف موجود أو أدخل البيانات الأولية لمريض جديد.")}</div>
 
-      <div className="seg" style={{marginBottom:18}}>
-        <button className={!isNew?"on":""} onClick={()=>update({patientMode:"existing"})}>مريض مسجّل</button>
-        <button className={isNew?"on":""} onClick={()=>update({patientMode:"new"})}>مريض جديد</button>
-      </div>
+      <Segmented label={tt("المريض")} value={isNew ? "new" : "existing"} onChange={m=>update({patientMode:m})} style={{marginBottom:18}}
+        options={[{ value:"existing", label:tt("مريض مسجّل") }, { value:"new", label:tt("مريض جديد") }]}/>
 
       {!isNew ? (
         <div style={{maxWidth:460}}>
-          <div className="label">ابحث عن المريض</div>
+          <div className="label">{tt("ابحث عن المريض")}</div>
           <PatientCombobox value={picks.patientId || ""} onChange={id=>update({ patientId: id })} patients={patients}/>
           {selected && (
             <div style={{marginTop:14,padding:14,border:"1px solid var(--ink-200)",borderRadius:12,display:"flex",alignItems:"center",gap:12}}>
@@ -4032,25 +4026,25 @@ function PatientStep({ picks, update }) {
               <I.Check size={16} style={{color:"var(--green)"}}/>
             </div>
           )}
-          {patients.length===0 && <div className="muted" style={{fontSize:12.5,marginTop:12}}>لا مرضى مسجّلين بعد — اختر «مريض جديد» لإدخال البيانات الأولية.</div>}
+          {patients.length===0 && <div className="muted" style={{fontSize:12.5,marginTop:12}}>{tt("لا مرضى مسجّلين بعد — اختر «مريض جديد» لإدخال البيانات الأولية.")}</div>}
         </div>
       ) : (
         <div style={{maxWidth:520}}>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-            <Field label="اسم المريض" required>
-              <input className="input" value={picks.newName} onChange={e=>update({newName:e.target.value})} placeholder="الاسم الكامل" autoFocus/>
+            <Field label={tt("اسم المريض")} required>
+              <input className="input" value={picks.newName} onChange={e=>update({newName:e.target.value})} placeholder={tt("الاسم الكامل")} autoFocus/>
             </Field>
-            <Field label="رقم الهاتف" required>
-              <input className="input" value={picks.newPhone} onChange={e=>update({newPhone:e.target.value})} placeholder="+20 1xx xxx xxxx" dir="ltr" style={{textAlign:"right"}}/>
+            <Field label={tt("رقم الهاتف")} required>
+              <input className="input" value={picks.newPhone} onChange={e=>update({newPhone:e.target.value})} placeholder="+20 1xx xxx xxxx" dir="ltr" style={{textAlign:IS_RTL ? "right" : "left"}}/>
             </Field>
           </div>
           {matched && (
             <div style={{fontSize:12,color:"var(--green)",marginTop:4,display:"flex",alignItems:"center",gap:6}}>
-              <I.Check size={12}/> رقم معروف — سيُربط الحجز بملف <strong>{matched.name}</strong>
+              <I.Check size={12}/> {ttx("رقم معروف — سيُربط الحجز بملف {name}", { name: <strong>{matched.name}</strong> })}
             </div>
           )}
           <div className="muted" style={{fontSize:12,marginTop:12,lineHeight:1.6,padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
-            سيُنشأ ملف مبدئي بحالة «ملف غير مكتمل» عند تأكيد الحجز، وتُستكمل بقية البيانات لاحقًا من صفحة المرضى.
+            {tt("سيُنشأ ملف مبدئي بحالة «ملف غير مكتمل» عند تأكيد الحجز، وتُستكمل بقية البيانات لاحقًا من صفحة المرضى.")}
           </div>
         </div>
       )}
@@ -4067,30 +4061,30 @@ function OptionalDoctorStep({ picks, update, onSkip, onPicked }) {
   const doctors = deptId ? doctorsInDept(deptId) : (DATA.doctors || []).filter(d => d.active !== false);
   return (
     <div>
-      <div className="h2" style={{marginBottom:6}}>استشارة طبيب (اختياري)</div>
+      <div className="h2" style={{marginBottom:6}}>{tt("استشارة طبيب (اختياري)")}</div>
       <div className="muted" style={{fontSize:13,marginBottom:14,lineHeight:1.6}}>
-        العلاج يبدأ مع الأخصائي مباشرةً — لا يُشترط موعد طبيب. أضف طبيبًا فقط إذا قررتَ أن المريض يحتاج استشارة.
+        {tt("العلاج يبدأ مع الأخصائي مباشرةً — لا يُشترط موعد طبيب. أضف طبيبًا فقط إذا قررتَ أن المريض يحتاج استشارة.")}
       </div>
       <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:18}}>
         <button className="btn btn-blue" onClick={onSkip}>
-          <I.ArrowRight size={13}/> متابعة بدون طبيب
+          <I.ArrowRight size={13}/> {tt("متابعة بدون طبيب")}
         </button>
         {depts.length > 0 && (
-          <select className="input" style={{maxWidth:240}} value={deptId}
+          <select className="input" style={{maxWidth:240}} value={deptId} aria-label={tt("القسم")}
             onChange={e=>update({ deptId: e.target.value || null, doctorId: null })}>
-            <option value="">كل الأقسام</option>
-            {depts.map(d=>(<option key={d.id} value={d.id}>{d.name_ar}</option>))}
+            <option value="">{tt("كل الأقسام")}</option>
+            {depts.map(d=>(<option key={d.id} value={d.id}>{deptLabel(d)}</option>))}
           </select>
         )}
         {picks.doctorId && (
           <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>update({doctorId:null})}>
-            <I.X size={12}/> إزالة الطبيب المحدد
+            <I.X size={12}/> {tt("إزالة الطبيب المحدد")}
           </button>
         )}
       </div>
       {doctors.length === 0 ? (
-        <EmptyState icon={<I.Stethoscope size={22}/>} title="لا أطباء متاحون"
-          body="تابع بدون طبيب — يمكن إنشاء موعد طبيب لاحقًا عند الحاجة."/>
+        <EmptyState icon={<I.Stethoscope size={22}/>} title={tt("لا أطباء متاحون")}
+          body={tt("تابع بدون طبيب — يمكن إنشاء موعد طبيب لاحقًا عند الحاجة.")}/>
       ) : (
       <div className="grid-3" style={{gap:14}}>
         {doctors.map(d=>{
@@ -4099,7 +4093,7 @@ function OptionalDoctorStep({ picks, update, onSkip, onPicked }) {
           return (
             <button key={d.id} onClick={()=>{ update({ doctorId: d.id, deptId: d.department_id || deptId || null }); onPicked && onPicked(); }}
               style={{
-                padding:16,textAlign:"left",cursor:"pointer",
+                padding:16,textAlign:"end",cursor:"pointer",
                 border:`1px solid ${isSel?"var(--blue-500)":"var(--ink-200)"}`,
                 borderRadius:14,background: isSel?"var(--blue-50)":"#fff",
                 display:"flex",flexDirection:"column",gap:8, transition:"all .15s"
@@ -4113,11 +4107,11 @@ function OptionalDoctorStep({ picks, update, onSkip, onPicked }) {
                   <div className="muted" style={{fontSize:11.5}}>{d.specialization || "—"}</div>
                 </div>
               </div>
-              <div className="muted" style={{fontSize:11.5,display:"flex",alignItems:"center",gap:5}}><I.Activity size={12}/> خبرة {d.experience_years||0} سنة</div>
+              <div className="muted" style={{fontSize:11.5,display:"flex",alignItems:"center",gap:5}}><I.Activity size={12}/> {tt("خبرة {n} سنة", { n: d.experience_years||0 })}</div>
               {d.schedule && <div className="muted" style={{fontSize:11.5,display:"flex",alignItems:"center",gap:5}}><I.Clock size={12}/> {d.schedule}</div>}
               <div style={{marginTop:"auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,paddingTop:6}}>
-                <span className={"badge " + st.badge}><span className="dot"></span>{st.l}</span>
-                <span className="mono" style={{fontSize:11,color:"var(--blue-700)"}}>أقرب: {nextAvailableLabel(d.id)}</span>
+                <span className={"badge " + st.badge}><span className="dot"></span>{tt(st.l)}</span>
+                <span className="mono" style={{fontSize:11,color:"var(--blue-700)"}}>{tt("أقرب: {v}", { v: nextAvailableLabel(d.id) })}</span>
               </div>
             </button>
           );
@@ -4136,7 +4130,7 @@ function PickGrid({ title, items, onPick, selected, avatar }) {
         {items.map(it=>(
           <button key={it.id} onClick={()=>onPick(it.id)}
             style={{
-              padding:18,textAlign:"left",cursor:"pointer",
+              padding:18,textAlign:"end",cursor:"pointer",
               border:`1px solid ${selected===it.id?"var(--blue-500)":"var(--ink-200)"}`,
               borderRadius:14,background: selected===it.id?"var(--blue-50)":"#fff",
               display:"flex",flexDirection:"column",gap:10, transition:"all .15s"
@@ -4166,19 +4160,20 @@ function PickGrid({ title, items, onPick, selected, avatar }) {
 function DatePick({ value, onPick, schedule, patient, onGenerated }) {
   const [viewMonth, setViewMonth] = React.useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [genBusy, setGenBusy] = React.useState(false);
-  // Weekday initials as Arabic calendars print them; the full name is the
-  // header's accessible name.
-  const days = [["ح","الأحد"],["ن","الاثنين"],["ث","الثلاثاء"],["ر","الأربعاء"],["خ","الخميس"],["ج","الجمعة"],["س","السبت"]];
+  // Weekday initials as Arabic calendars print them (short names in
+  // English); the full name is the header's accessible name.
+  const fullDays = weekdayNames("long");
+  const days = (IS_RTL ? ["ح","ن","ث","ر","خ","ج","س"] : weekdayNames("short")).map((d, i) => [d, fullDays[i]]);
   const y = viewMonth.getFullYear(), m = viewMonth.getMonth();
   const startDow = new Date(y, m, 1).getDay();
   const total = new Date(y, m + 1, 0).getDate();
   const todayIso = new Date().toISOString().slice(0, 10);
   const iso = (n) => `${y}-${String(m+1).padStart(2,"0")}-${String(n).padStart(2,"0")}`;
-  const monthLabel = viewMonth.toLocaleDateString("ar-EG-u-nu-latn", { month: "long", year: "numeric" });
+  const monthLabel = fmtDate(viewMonth, "month");
   const quick = [
-    { l:"اليوم", d: todayIso },
-    { l:"غدًا", d: new Date(Date.now()+864e5).toISOString().slice(0,10) },
-    { l:"بعد غد", d: new Date(Date.now()+2*864e5).toISOString().slice(0,10) },
+    { l:tt("اليوم"), d: todayIso },
+    { l:tt("غدًا"), d: new Date(Date.now()+864e5).toISOString().slice(0,10) },
+    { l:tt("بعد غد"), d: new Date(Date.now()+2*864e5).toISOString().slice(0,10) },
   ];
   // Saved recurring pattern: highlight its weekdays on the calendar and
   // offer one-click generation of the upcoming sessions.
@@ -4189,27 +4184,27 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
     try {
       const made = await generateFromSchedule(patient, schedule);
       window.showToast && window.showToast(
-        made.length ? `أُنشئ ${made.length} موعدًا حسب الجدول الثابت` : "لا مواعيد جديدة — الأيام القادمة محجوزة بالفعل",
+        made.length ? tt("أُنشئ {n} موعدًا حسب الجدول الثابت", { n: made.length }) : tt("لا مواعيد جديدة — الأيام القادمة محجوزة بالفعل"),
         made.length ? "success" : "info");
       if (made.length && onGenerated) onGenerated();
     } catch (e) {
       console.warn("generate from schedule failed", e);
-      window.showToast && window.showToast("تعذّر إنشاء المواعيد", "error");
+      window.showToast && window.showToast(tt("تعذّر إنشاء المواعيد"), "error");
     } finally { setGenBusy(false); }
   }
   return (
     <div>
-      <div className="h2" style={{marginBottom:18}}>اختر تاريخًا</div>
+      <div className="h2" style={{marginBottom:18}}>{tt("اختر تاريخًا")}</div>
       {schedule && (
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",padding:"12px 16px",marginBottom:16,
           background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12}}>
           <I.Calendar size={15} style={{color:"var(--blue-700)",flexShrink:0}}/>
           <div style={{flex:1,minWidth:220,fontSize:13}}>
-            <strong>الجدول الثابت للمريض:</strong> {scheduleDaysLabel(schedule)} · <span className="mono">{schedule.time}</span>
-            <div className="muted" style={{fontSize:11.5,marginTop:2}}>الأيام المطابقة مميزة في التقويم — أو أنشئ كل المواعيد القادمة بضغطة واحدة.</div>
+            <strong>{tt("الجدول الثابت للمريض:")}</strong> {scheduleDaysLabel(schedule)} · <span className="mono">{schedule.time}</span>
+            <div className="muted" style={{fontSize:11.5,marginTop:2}}>{tt("الأيام المطابقة مميزة في التقويم — أو أنشئ كل المواعيد القادمة بضغطة واحدة.")}</div>
           </div>
           <button className="btn btn-blue" disabled={genBusy} onClick={generateUpcoming} style={{whiteSpace:"nowrap"}}>
-            {genBusy ? "جارٍ الإنشاء…" : "إنشاء المواعيد القادمة"}
+            {genBusy ? tt("جارٍ الإنشاء…") : tt("إنشاء المواعيد القادمة")}
           </button>
         </div>
       )}
@@ -4217,9 +4212,9 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
         <div className="card" style={{padding:18,boxShadow:"none"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             {/* LTR icon names: index.html mirrors them inside .btn, so «السابق» points right in RTL. */}
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="الشهر السابق" onClick={()=>setViewMonth(new Date(y,m-1,1))}><I.ArrowLeft size={14}/></button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("الشهر السابق")} onClick={()=>setViewMonth(new Date(y,m-1,1))}><I.ArrowLeft size={14}/></button>
             <div className="h3" aria-live="polite">{monthLabel}</div>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="الشهر التالي" onClick={()=>setViewMonth(new Date(y,m+1,1))}><I.ArrowRight size={14}/></button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("الشهر التالي")} onClick={()=>setViewMonth(new Date(y,m+1,1))}><I.ArrowRight size={14}/></button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
             {days.map(([d, full],i)=>(<div key={i} className="muted" title={full} aria-label={full} style={{textAlign:"center",fontSize:12,padding:"6px 0"}}>{d}</div>))}
@@ -4231,8 +4226,8 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
               const isSched = !isPast && schedDays.includes(new Date(dIso + "T00:00:00").getDay());
               return (
                 <button key={n} type="button" disabled={isPast} onClick={()=>onPick(dIso)} aria-pressed={isSel ? "true" : "false"}
-                  aria-label={dIso + (isSched ? " — يوم من الجدول الثابت" : "")}
-                  title={isSched ? "يوم من الجدول الثابت" : undefined}
+                  aria-label={dIso + (isSched ? " — " + tt("يوم من الجدول الثابت") : "")}
+                  title={isSched ? tt("يوم من الجدول الثابت") : undefined}
                   style={{
                     height:40,minWidth:0,padding:0,borderRadius:9,cursor:isPast?"default":"pointer",
                     border:isSel?"1px solid var(--blue-700)":isSched?"1px dashed var(--blue-700)":"1px solid transparent",
@@ -4245,7 +4240,7 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
           </div>
         </div>
         <div>
-          <div className="label">اختيار سريع</div>
+          <div className="label">{tt("اختيار سريع")}</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {quick.map(q=>(
               <button key={q.l} className="btn btn-secondary" style={{justifyContent:"flex-start",padding:"11px 14px"}} onClick={()=>onPick(q.d)}>
@@ -4254,7 +4249,7 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
             ))}
           </div>
           <div style={{padding:14,background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12,marginTop:18,fontSize:12.5}}>
-            اختيار التاريخ يعرض الأوقات المتاحة فعليًا للأخصائي المحدد فقط.
+            {tt("اختيار التاريخ يعرض الأوقات المتاحة فعليًا للأخصائي المحدد فقط.")}
           </div>
         </div>
       </div>
@@ -4300,8 +4295,8 @@ function SlotPick({ picks, update, schedule }) {
     const pref = t === preferredTime;
     return (
       <button type="button" disabled={u} onClick={()=>update({ slot: t })} className="mono slot-btn" aria-pressed={sel ? "true" : "false"}
-        aria-label={u ? `${t} — محجوز` : pref ? `${t} — الوقت المفضل للمريض` : undefined}
-        title={pref ? "الوقت المفضل للمريض" : undefined}
+        aria-label={u ? tt("{time} — محجوز", { time: t }) : pref ? tt("{time} — الوقت المفضل للمريض", { time: t }) : undefined}
+        title={pref ? tt("الوقت المفضل للمريض") : undefined}
         style={{
           padding:"10px 16px",borderRadius:10,
           border: pref && !sel ? "1px dashed var(--blue-700)" : "1px solid var(--ink-200)",
@@ -4315,46 +4310,46 @@ function SlotPick({ picks, update, schedule }) {
 
   return (
     <div>
-      <div className="h2" style={{marginBottom:6}}>اختر الوقت</div>
+      <div className="h2" style={{marginBottom:6}}>{tt("اختر الوقت")}</div>
       <div className="muted" style={{marginBottom:18,fontSize:13}}>
-        {picks.therapist ? `المتاح لـ${picks.therapist}` : "المتاح"} · {picks.date || "—"} · جلسات {window.calendarConfig ? window.calendarConfig().slotMinutes : 45} دقيقة
+        {picks.therapist ? tt("المتاح لـ{name}", { name: picks.therapist }) : tt("المتاح")} · {picks.date || "—"} · {tt("جلسات {n} دقيقة", { n: window.calendarConfig ? window.calendarConfig().slotMinutes : 45 })}
       </div>
       {preferredTime && (
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,marginBottom:14,padding:"8px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
           <I.Clock size={13} style={{color:"var(--blue-700)"}}/>
-          الوقت المفضل المحفوظ لهذا المريض: <strong className="mono">{preferredTime}</strong> — محدد تلقائيًا إن كان متاحًا.
+          {ttx("الوقت المفضل المحفوظ لهذا المريض: {time} — محدد تلقائيًا إن كان متاحًا.", { time: <strong className="mono">{preferredTime}</strong> })}
         </div>
       )}
 
-      <div className="label">الصباح</div>
+      <div className="label">{tt("الصباح")}</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>{morning.map(t=><SlotBtn key={t} t={t}/>)}</div>
 
-      <div className="label">بعد الظهر</div>
+      <div className="label">{tt("بعد الظهر")}</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>{afternoon.map(t=><SlotBtn key={t} t={t}/>)}</div>
 
-      <div className="label">ملاحظات (اختياري)</div>
-      <textarea className="input" rows={2} style={{padding:10,resize:"vertical",marginBottom:8}} value={picks.notes || ""} onChange={e=>update({ notes: e.target.value })} placeholder="سبب الزيارة…"/>
+      <div className="label" id="slotpick-notes">{tt("ملاحظات (اختياري)")}</div>
+      <textarea className="input" rows={2} aria-labelledby="slotpick-notes" style={{padding:10,resize:"vertical",marginBottom:8}} value={picks.notes || ""} onChange={e=>update({ notes: e.target.value })} placeholder={tt("سبب الزيارة…")}/>
 
       {schedule && picks.slot && picks.slot !== preferredTime && (
         <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,marginBottom:6,cursor:"pointer"}}>
           <input type="checkbox" checked={Boolean(picks.updatePreferredTime)} onChange={e=>update({ updatePreferredTime: e.target.checked })}/>
-          تحديث الوقت المفضل الدائم إلى <span className="mono">{picks.slot}</span> (وإلا فهذا تغيير لمرة واحدة فقط)
+          {ttx("تحديث الوقت المفضل الدائم إلى {time} (وإلا فهذا تغيير لمرة واحدة فقط)", { time: <span className="mono">{picks.slot}</span> })}
         </label>
       )}
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,marginBottom:8,cursor:"pointer"}}>
         <input type="checkbox" checked={Boolean(picks.allowConsecutive)} onChange={e=>update({ allowConsecutive: e.target.checked })}/>
-        السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — بقرار الأخصائي)
+        {tt("السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — بقرار الأخصائي)")}
       </label>
 
       <div style={{padding:18,background:"var(--ink-50)",borderRadius:12,marginTop:8}}>
-        <div className="h3" style={{marginBottom:10}}>ملخّص الحجز</div>
+        <div className="h3" style={{marginBottom:10}}>{tt("ملخّص الحجز")}</div>
         <div className="grid-4" style={{fontSize:12.5}}>
-          <div><div className="muted">الأخصائي</div><div>{picks.therapist||"—"}</div></div>
-          <div><div className="muted">الطبيب</div><div>{doctor?doctor.name:"بدون طبيب"}</div></div>
-          <div><div className="muted">القسم</div><div>{dept?dept.name_ar:"—"}</div></div>
-          <div><div className="muted">التاريخ والوقت</div><div className="mono">{picks.date||"—"} {picks.slot||""}</div></div>
+          <div><div className="muted">{tt("الأخصائي")}</div><div>{picks.therapist||"—"}</div></div>
+          <div><div className="muted">{tt("الطبيب")}</div><div>{doctor?doctor.name:tt("بدون طبيب")}</div></div>
+          <div><div className="muted">{tt("القسم")}</div><div>{dept?deptLabel(dept):"—"}</div></div>
+          <div><div className="muted">{tt("التاريخ والوقت")}</div><div className="mono">{picks.date||"—"} {picks.slot||""}</div></div>
         </div>
-        <div style={{marginTop:8,fontSize:12.5}}><span className="muted">المريض: </span>{patientName || "—"}</div>
+        <div style={{marginTop:8,fontSize:12.5}}><span className="muted">{tt("المريض:")} </span>{patientName || "—"}</div>
       </div>
     </div>
   );
