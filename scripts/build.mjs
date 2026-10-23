@@ -2,12 +2,18 @@
 // Babel Standalone (3 MB) and transpiles ~900 KB of JSX on every visit.
 //
 //   npm run build   →   dist/index.html, dist/app.<hash>.js,
-//                       dist/import.<hash>.js, dist/assets/
+//                       dist/import.<hash>.js, dist/lang-en.<hash>.js,
+//                       dist/assets/
+//   BUILD_OUT=<dir> npm run build   →   the same into <dir> (parallel test
+//                       stacks each build their own copy, scripts/dev-stack.sh)
 //
 // The files are classic scripts that share globals (no import/export), so
 // they are concatenated in the exact order index.html lists them and
 // transformed — not bundled. src/import.jsx (the ?import=1 page) becomes a
-// separate chunk that screens2.jsx loads only on that route.
+// separate chunk that screens2.jsx loads only on that route. The English
+// dictionaries (src/lang/en-*.jsx) become dist/lang-en.<hash>.js, which the
+// language boot script in index.html loads ahead of the app only when the
+// interface is in English (src/i18n.jsx), so Arabic users never download it.
 // index.html stays the dev entry point (`npm run dev`, Babel in-browser).
 import { transform } from "esbuild";
 import { createHash } from "node:crypto";
@@ -16,7 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST = path.join(ROOT, "dist");
+const DIST = process.env.BUILD_OUT ? path.resolve(process.env.BUILD_OUT) : path.join(ROOT, "dist");
 const IMPORT_PAGE = "src/import.jsx";
 
 // Production React builds. SRI hashes are sha384 of the npm package files,
@@ -68,13 +74,17 @@ const eol = html.includes("\r\n") ? "\r\n" : "\n";
 const scripts = [...html.matchAll(/<script type="text\/babel" src="([^"]+)"><\/script>/g)].map(m => m[1]);
 if (!scripts.length) fail("no <script type=\"text/babel\"> tags found in index.html");
 if (!scripts.includes(IMPORT_PAGE)) fail(`${IMPORT_PAGE} is no longer listed in index.html — update scripts/build.mjs`);
-const appFiles = scripts.filter(s => s !== IMPORT_PAGE);
+const isLangEn = s => /^src\/lang\/en-[\w-]+\.jsx$/.test(s);
+const langEnFiles = scripts.filter(isLangEn);
+if (!langEnFiles.length) fail("no src/lang/en-*.jsx dictionaries listed in index.html");
+const appFiles = scripts.filter(s => s !== IMPORT_PAGE && !isLangEn(s));
 
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
 const app = await compile(appFiles, "app");
 const importPage = await compile([IMPORT_PAGE], "import");
+const langEn = await compile(langEnFiles, "lang-en");
 
 for (const [dev, prod] of Object.entries(REACT_PROD)) {
   html = replaceOnce(
@@ -85,6 +95,8 @@ for (const [dev, prod] of Object.entries(REACT_PROD)) {
   );
 }
 html = replaceOnce(html, /<script src="https:\/\/unpkg\.com\/@babel\/standalone@[^"]+"[^>]*><\/script>\r?\n/, "", "Babel Standalone script tag");
+// The language boot script reads KINETIC_LANG_EN to load the dictionary.
+html = replaceOnce(html, /<!-- i18n:lang-chunk -->/, `<script>window.KINETIC_LANG_EN = "${langEn.out}";</script>`, "i18n:lang-chunk marker");
 
 // Swap the whole block of text/babel tags (and the comment inside it) for
 // the compiled bundle. The chunk map tells screens2.jsx where the
@@ -105,4 +117,5 @@ fs.cpSync(path.join(ROOT, "assets"), path.join(DIST, "assets"), { recursive: tru
 const kb = n => `${(n / 1024).toFixed(0)} KB`;
 console.log(`dist/${app.out}  ${kb(app.bytes)}  (${appFiles.join(", ")})`);
 console.log(`dist/${importPage.out}  ${kb(importPage.bytes)}  (${IMPORT_PAGE}, loaded only on ?import=1)`);
-console.log("dist/index.html, dist/assets/");
+console.log(`dist/${langEn.out}  ${kb(langEn.bytes)}  (${langEnFiles.length} English dictionaries, loaded only in English)`);
+console.log(`${path.relative(ROOT, DIST) || "."}/index.html, assets/`);

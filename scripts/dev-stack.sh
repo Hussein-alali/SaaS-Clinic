@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Whole stack on one machine for development and browser tests:
 # PostgreSQL (cPanel-like, via dev-db.sh) → migrations → dev seed →
-# npm run build → API serving /api and dist/ on one port.
+# npm run build (into /tmp/clinicsys-dist-<apiport>) → API serving /api and
+# that build on one port.
 #
 #   scripts/dev-stack.sh start [dbport] [apiport]   → prints the app URL
 #   scripts/dev-stack.sh stop  [dbport] [apiport]
@@ -22,6 +23,7 @@ APIPORT="${3:-3100}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PIDFILE="/tmp/clinicsys-api-$APIPORT.pid"
 LOG="/tmp/clinicsys-api-$APIPORT.log"
+DISTDIR="/tmp/clinicsys-dist-$APIPORT"
 
 stop_api() {
   if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -39,14 +41,16 @@ case "$CMD" in
     URL="$("$ROOT/scripts/dev-db.sh" reset "$DBPORT" 2>/dev/null)"
     DATABASE_URL="$URL" node "$ROOT/db/migrate.js" >/dev/null
     psql "$URL" -q -v ON_ERROR_STOP=1 -f "$ROOT/db/seed/dev.sql" >/dev/null
-    (cd "$ROOT" && npm run build --silent >/dev/null)
+    # Each stack builds its own copy, so parallel stacks (and npm run build
+    # in the working tree) never delete each other's files mid-test.
+    (cd "$ROOT" && BUILD_OUT="$DISTDIR" npm run build --silent >/dev/null)
     rm -rf "$ROOT/api/.outbox-$APIPORT" "/tmp/clinicsys-files-$APIPORT"
     # exec + full redirection: the API must not hold this script's stdout,
     # or callers doing URL=$(dev-stack.sh start) would wait forever.
     (cd "$ROOT/api" && exec env \
       DATABASE_URL="$URL" PORT="$APIPORT" APP_BASE_DOMAIN=localhost \
       MAIL_TRANSPORT=file MAIL_OUTBOX_DIR="$ROOT/api/.outbox-$APIPORT" \
-      FILES_DIR="/tmp/clinicsys-files-$APIPORT" DIST_DIR="$ROOT/dist" \
+      FILES_DIR="/tmp/clinicsys-files-$APIPORT" DIST_DIR="$DISTDIR" \
       node app.js) </dev/null >"$LOG" 2>&1 &
     echo $! >"$PIDFILE"
     for _ in $(seq 1 50); do

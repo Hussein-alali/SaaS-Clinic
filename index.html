@@ -3,6 +3,26 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<!-- i18n:lang-chunk -->
+<script>
+/* Interface language before anything renders (src/i18n.jsx): ?lang=ar|en,
+   else the saved choice, else Arabic. English also loads its dictionary
+   ahead of the app (the build sets KINETIC_LANG_EN; `npm run dev` loads
+   src/lang/*.jsx with the other scripts). */
+(function () {
+  var l = null;
+  try {
+    var q = /[?&]lang=(ar|en)\b/.exec(location.search);
+    if (q) { l = q[1]; localStorage.setItem("clinicsys.lang", l); }
+    else l = localStorage.getItem("clinicsys.lang");
+  } catch (e) {}
+  if (l !== "en") l = "ar";
+  var h = document.documentElement;
+  h.lang = l; h.dir = l === "ar" ? "rtl" : "ltr";
+  window.CLINICSYS_LANG = l;
+  if (l === "en" && window.KINETIC_LANG_EN) document.write('<script src="' + window.KINETIC_LANG_EN + '"><\/script>');
+})();
+</script>
 <title>Beactive — سيستم عيادة علاج الطبيعي</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='9' fill='%237BBDE8'/%3E%3Cpath d='M10 22 L13 14 L16 19 L19 11 L22 22' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='22' cy='22' r='1.6' fill='%23fff'/%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -441,6 +461,20 @@
     .auth-brand{padding:16px 20px !important;gap:0 !important}
     .auth-brand .auth-brand-extra{display:none !important}
   }
+  /* <CardTable> (src/ui.jsx): one card per row on phones (docs/04, task 3.20) */
+  @media (max-width: 640px){
+    .tbl-scroll > .tbl-cards,.tbl-cards{min-width:0 !important;display:block}
+    .tbl-cards thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .tbl-cards tbody{display:block}
+    .tbl-cards tbody tr{display:block;height:auto;padding:8px 0;border-bottom:1px solid var(--ink-100)}
+    .tbl-cards tbody tr:last-child{border-bottom:none}
+    .tbl-cards tbody td{display:grid;grid-template-columns:max-content minmax(0,1fr);justify-items:end;align-items:center;column-gap:12px;row-gap:0;padding:5px 14px;border-bottom:none;background:transparent !important;text-align:end;min-height:32px;white-space:normal}
+    .tbl-cards tbody td > *{grid-column:2;max-width:100%}
+    .tbl-cards tbody td[data-label]::before{content:attr(data-label);grid-column:1;grid-row:1 / span 4;justify-self:start;color:var(--ink-500);font-size:11.5px;font-weight:500;text-align:start}
+    .tbl-cards tbody td:not([data-label]){grid-template-columns:minmax(0,1fr)}
+    .tbl-cards tbody td:not([data-label]) > *{grid-column:1}
+    .tbl-cards tbody td[colspan]{display:block;text-align:center}
+  }
 
   /* ── Phone (<= 768px) ───────────────────────────────────────── */
   @media (max-width: 768px){
@@ -525,6 +559,13 @@
 <body>
   <div id="root"></div>
 
+  <script type="text/babel" src="src/lang/en-shell.jsx"></script>
+  <script type="text/babel" src="src/lang/en-tenant.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens1.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens2.jsx"></script>
+  <script type="text/babel" src="src/lang/en-screens3.jsx"></script>
+  <script type="text/babel" src="src/lang/en-platform.jsx"></script>
+  <script type="text/babel" src="src/i18n.jsx"></script>
   <script type="text/babel" src="src/apiclient.jsx"></script>
   <script type="text/babel" src="src/supabase.jsx"></script>
   <script type="text/babel" src="src/core.jsx"></script>
@@ -538,5 +579,6 @@
        and src/import.jsx after the paper-record migration is complete. -->
   <script type="text/babel" src="src/import.jsx"></script>
   <script type="text/babel" src="src/screens2.jsx"></script>
+  <script type="text/babel" src="src/screens3.jsx"></script>
 </body>
 </html>

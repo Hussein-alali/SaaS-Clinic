@@ -52,4 +52,51 @@ function lastLinkTo(to) {
   return m ? m[0] : null;
 }
 
-module.exports = { test, expect: base.expect, PASSWORD, readOutbox, lastLinkTo };
+// ── English interface checks (src/i18n.jsx, docs/06 task 3.29) ──────
+// Arabic text that is DATA, not interface: every quoted Arabic literal of
+// the seed and of the migrations' seed rows (template library, treatment
+// methods...), plus what a test passes in `allow` (names it created).
+let seedArabic = null;
+function seedCorpus() {
+  if (seedArabic) return seedArabic;
+  const root = path.join(__dirname, "..");
+  const files = [path.join(root, "db", "seed", "dev.sql"), path.join(root, "api", "test", "fixtures", "extras.sql")]
+    .concat(fs.readdirSync(path.join(root, "db", "migrations")).map((f) => path.join(root, "db", "migrations", f)));
+  seedArabic = files.filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, "utf8")).join("\n");
+  return seedArabic;
+}
+
+// Arabic runs left in the interface of the current page: text of buttons,
+// labels, headings, table heads, tabs, menus, badges, options, toasts and
+// dialogs' titles, plus placeholder / aria-label / title attributes. A run
+// that also appears in the seed data (or in `allow`) is data and is skipped.
+async function untranslatedUi(page, allow = []) {
+  const found = await page.evaluate(() => {
+    const AR = /[\u0600-\u06FF][\u0600-\u06FF\s،؛؟«»\-–—.:]*[\u0600-\u06FF]|[\u0600-\u06FF]/g;
+    const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    const out = new Set();
+    const SEL = "button, label, h1, h2, h3, h4, th, legend, [role=tab], [role=menuitem], [role=option], nav a, .badge, option, [role=status], [role=alert], .toast, [role=dialog] [id$=-title]";
+    for (const el of document.querySelectorAll(SEL)) {
+      if (!visible(el) && el.tagName !== "OPTION") continue;
+      if (el.closest("[data-lang-switch]")) continue;
+      for (const m of (el.innerText || el.textContent || "").match(AR) || []) out.add(m.trim());
+    }
+    for (const el of document.querySelectorAll("[placeholder], [aria-label], [title]")) {
+      if (el.closest("[data-lang-switch]")) continue;
+      for (const a of ["placeholder", "aria-label", "title"]) {
+        const v = el.getAttribute(a);
+        if (v) for (const m of v.match(AR) || []) out.add(m.trim());
+      }
+    }
+    return [...out].filter(Boolean);
+  });
+  const corpus = seedCorpus();
+  return found.filter((run) => !corpus.includes(run) && !allow.some((a) => a.includes(run) || run.includes(a)));
+}
+
+// Strings that went through tt() without an English translation.
+async function missingKeys(page) {
+  return page.evaluate(() => [...(window.I18N_MISSING || [])]);
+}
+
+module.exports = { test, expect: base.expect, PASSWORD, readOutbox, lastLinkTo, untranslatedUi, missingKeys };

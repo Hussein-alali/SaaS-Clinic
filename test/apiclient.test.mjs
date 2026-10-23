@@ -27,8 +27,9 @@ function compile(files) {
     loader: "jsx", target: "es2017", sourcefile: files.join("+"),
   }).code;
 }
-const CLIENT_JS = compile(["src/apiclient.jsx"]);
-const WITH_DATA_LAYER_JS = compile(["src/apiclient.jsx", "src/supabase.jsx"]);
+// src/i18n.jsx is the first app script: the data layer uses tt() and fmtMoney().
+const CLIENT_JS = compile(["src/i18n.jsx", "src/apiclient.jsx"]);
+const WITH_DATA_LAYER_JS = compile(["src/i18n.jsx", "src/apiclient.jsx", "src/supabase.jsx"]);
 
 // Objects created inside the vm have their own prototypes; compare plain copies.
 const plain = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -1494,11 +1495,14 @@ describe("src/supabase.jsx on top of the client", () => {
 
 // ════════════════════════════════════════════════════════════════
 describe("wiring", () => {
-  test("index.html loads src/apiclient.jsx first and no longer loads supabase-js; CRLF kept", () => {
+  test("index.html loads the dictionaries, src/i18n.jsx, then src/apiclient.jsx; no supabase-js; CRLF kept", () => {
     const html = read("index.html");
     const scripts = [...html.matchAll(/<script type="text\/babel" src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-    assert.equal(scripts[0], "src/apiclient.jsx");
-    assert.equal(scripts[1], "src/supabase.jsx");
+    const app = scripts.filter((s) => !s.startsWith("src/lang/"));
+    assert.ok(scripts.indexOf("src/i18n.jsx") > scripts.findLastIndex((s) => s.startsWith("src/lang/")), "dictionaries before src/i18n.jsx");
+    assert.equal(app[0], "src/i18n.jsx");
+    assert.equal(app[1], "src/apiclient.jsx");
+    assert.equal(app[2], "src/supabase.jsx");
     assert.doesNotMatch(html, /supabase-js/);
     assert.equal(html.split("\n").length - 1, html.split("\r\n").length - 1, "every line ends with CRLF");
   });

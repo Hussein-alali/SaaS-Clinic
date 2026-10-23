@@ -975,6 +975,53 @@ Object.assign(window, {
   waReminderDisabledReason, sendWaApptReminder, WaReminderButton,
 });
 
+// ── Segmented buttons ──────────────────────────────────────────
+// The shared .seg control (docs/04, task 3.24): a labelled group whose
+// buttons announce the chosen one with aria-pressed.
+//   <Segmented label={tt("العرض")} value={view} onChange={setView}
+//     options={[{ value: "list", label: tt("قائمة") }, { value: "cards", label: tt("بطاقات"), icon: "Grid" }]}/>
+function Segmented({ options, value, onChange, label, className, style, size }) {
+  return (
+    <div className={"seg" + (className ? " " + className : "")} role="group" aria-label={label} style={style}>
+      {(options || []).map((o) => {
+        const on = o.value === value;
+        const Icon = o.icon && I[o.icon];
+        return (
+          <button key={String(o.value)} type="button" className={on ? "on" : ""} aria-pressed={on ? "true" : "false"}
+            disabled={o.disabled} title={o.title} data-value={o.value} onClick={() => !on && onChange && onChange(o.value)}>
+            {Icon ? <Icon size={size || 13} aria-hidden="true"/> : null}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Tables that become cards on phones ─────────────────────────
+// docs/04 «Layout rules»: under 640px a list table turns into one card per
+// row (task 3.20). <CardTable> is a <table className="tbl tbl-cards">
+// that, after every render, gives each body cell its column title as
+// data-label; the phone CSS in index.html shows it before the value. A
+// header cell with .sr-only text (e.g. «إجراءات») gives no label.
+function CardTable({ children, className, ...rest }) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const table = ref.current;
+    if (!table) return;
+    const heads = Array.from(table.querySelectorAll("thead th")).map((th) => (th.querySelector(".sr-only") || th.classList.contains("sr-only") ? "" : th.textContent.trim()));
+    table.querySelectorAll("tbody tr").forEach((tr) => {
+      Array.from(tr.children).forEach((td, i) => {
+        const label = td.colSpan > 1 ? "" : heads[i] || "";
+        if (label) { if (td.getAttribute("data-label") !== label) td.setAttribute("data-label", label); }
+        else if (td.hasAttribute("data-label")) td.removeAttribute("data-label");
+      });
+    });
+  });
+  return <table ref={ref} className={"tbl tbl-cards" + (className ? " " + className : "")} {...rest}>{children}</table>;
+}
+
+Object.assign(window, { Segmented, CardTable });
+
 // ── Searchable combobox ────────────────────────────────────────
 // Modern healthcare-SaaS style entity picker. Drop-in replacement for a
 // native <select> that renders two-line cards, filters with Arabic
