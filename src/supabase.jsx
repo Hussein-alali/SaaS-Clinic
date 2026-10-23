@@ -1157,7 +1157,7 @@ function printHTML(title, bodyHtml) {
       @media print { .no-print{display:none} body{padding:12px} }
     </style></head><body>
     <h1>${brand} — ${safeTitle}</h1>
-    <div class="sub">${escHtml(new Date().toLocaleString("ar-EG"))}</div>
+    <div class="sub">${escHtml(new Date().toLocaleString("ar-EG-u-nu-latn"))}</div>
     ${bodyHtml || ""}
     <div class="no-print" style="margin-top:24px"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
     </body></html>`);

@@ -5,7 +5,7 @@
 const Icon = ({ d, size = 16, stroke = 1.6, fill = "none", style, ...rest }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor"
     strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round"
-    style={{ flexShrink: 0, ...style }} {...rest}>
+    style={{ flexShrink: 0, ...style }} aria-hidden="true" focusable="false" {...rest}>
     {typeof d === "string" ? <path d={d} /> : d}
   </svg>
 );
@@ -140,6 +140,15 @@ function useContainerWidth(initialWidth) {
 // ── Shared chart constants ─────────────────────────────────────
 const CHART_PAD = { L: 38, R: 12, T: 10, B: 22 };
 const Y_TICKS = 4;
+// Axis top: Y_TICKS round steps (1, 2, 2.5 or 5 × 10^n, at least 1: the
+// charts plot counts and money), so the rounded tick labels never repeat.
+function chartNiceMax(maxV) {
+  const raw = (Math.max(Number(maxV) || 0, 0) * 1.15) / Y_TICKS;
+  if (!(raw > 0)) return Y_TICKS;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= raw);
+  return Math.max(1, step) * Y_TICKS;
+}
 
 // Placeholder rendered by every chart when there are no points yet —
 // production starts with an empty DB, so charts must not crash on [].
@@ -159,7 +168,7 @@ function AreaChart({ data, height = 160, color = "#7BBDE8", fill = "rgba(123,189
   const { L: padL, R: padR, T: padT, B: padB } = CHART_PAD;
   const innerW = Math.max(w - padL - padR, 50);
   const innerH = height - padT - padB;
-  const max = Math.max(...data.map(d => d.v)) * 1.15 || 1;
+  const max = chartNiceMax(Math.max(...data.map(d => d.v)));
   const min = 0;
   const stepX = innerW / Math.max(data.length - 1, 1);
   const pts = data.map((d,i) => ({
@@ -181,7 +190,7 @@ function AreaChart({ data, height = 160, color = "#7BBDE8", fill = "rgba(123,189
           return (
             <g key={i}>
               <line x1={padL} x2={w-padR} y1={y} y2={y} stroke="#EEF2F6" />
-              {showAxis && <text x={padL-6} y={y+3} fontSize="10" textAnchor="end" fill="#8898A8" fontFamily="Geist Mono">{formatY(Math.round(t))}</text>}
+              {showAxis && <text x={padL-6} y={y+3} fontSize="10" textAnchor="end" fill="#5B6C7C" fontFamily="Geist Mono">{formatY(Math.round(t))}</text>}
             </g>
           );
         })}
@@ -190,7 +199,7 @@ function AreaChart({ data, height = 160, color = "#7BBDE8", fill = "rgba(123,189
         {pts.map((p,i)=> (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r="2.5" fill="#fff" stroke={color} strokeWidth="1.6" />
-            {showAxis && <text x={p.x} y={height-6} fontSize="10" textAnchor="middle" fill="#8898A8" fontFamily="Geist Mono">{p.label}</text>}
+            {showAxis && <text x={p.x} y={height-6} fontSize="10" textAnchor="middle" fill="#5B6C7C" fontFamily="Geist Mono">{p.label}</text>}
           </g>
         ))}
       </svg>
@@ -204,7 +213,7 @@ function BarChart({ data, height = 160, color = "#7BBDE8", showAxis = true, form
   const { L: padL, R: padR, T: padT, B: padB } = CHART_PAD;
   const innerW = Math.max(w - padL - padR, 50);
   const innerH = height - padT - padB;
-  const max = Math.max(...data.map(d => d.v)) * 1.15 || 1;
+  const max = chartNiceMax(Math.max(...data.map(d => d.v)));
   const bandW = innerW / data.length;
   const barW = Math.min(bandW * 0.62, 26);
   const ticks = Array.from({length:Y_TICKS+1},(_,i)=> (max)*(i/Y_TICKS));
@@ -216,7 +225,7 @@ function BarChart({ data, height = 160, color = "#7BBDE8", showAxis = true, form
           return (
             <g key={i}>
               <line x1={padL} x2={w-padR} y1={y} y2={y} stroke="#EEF2F6" />
-              {showAxis && <text x={padL-6} y={y+3} fontSize="10" textAnchor="end" fill="#8898A8" fontFamily="Geist Mono">{formatY(Math.round(t))}</text>}
+              {showAxis && <text x={padL-6} y={y+3} fontSize="10" textAnchor="end" fill="#5B6C7C" fontFamily="Geist Mono">{formatY(Math.round(t))}</text>}
             </g>
           );
         })}
@@ -227,7 +236,7 @@ function BarChart({ data, height = 160, color = "#7BBDE8", showAxis = true, form
           return (
             <g key={i}>
               <rect x={x} y={y} width={barW} height={h} rx="4" fill={d.color || color} />
-              {showAxis && <text x={x+barW/2} y={height-6} fontSize="10" textAnchor="middle" fill="#8898A8" fontFamily="Geist Mono">{d.label}</text>}
+              {showAxis && <text x={x+barW/2} y={height-6} fontSize="10" textAnchor="middle" fill="#5B6C7C" fontFamily="Geist Mono">{d.label}</text>}
             </g>
           );
         })}
@@ -261,16 +270,16 @@ function DonutChart({ data, size=160, thickness=22, centerLabel, centerValue }) 
         {centerLabel && (
           <g>
             <text x={cx} y={cy-4} textAnchor="middle" fontSize="22" fontWeight="600" fill="#0F1E2B" fontFamily="Geist Mono">{centerValue}</text>
-            <text x={cx} y={cy+14} textAnchor="middle" fontSize="10" fill="#8898A8" letterSpacing=".05em">{centerLabel}</text>
+            <text x={cx} y={cy+14} textAnchor="middle" fontSize="10" fill="#5B6C7C" letterSpacing=".05em">{centerLabel}</text>
           </g>
         )}
       </svg>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {arcs.map((a,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}>
-            <span style={{width:10,height:10,borderRadius:3,background:a.color}}></span>
+            <span aria-hidden="true" style={{width:10,height:10,borderRadius:3,background:a.color}}></span>
             <span style={{color:"#2E4458"}}>{a.label}</span>
-            <span className="mono" style={{color:"#8898A8",marginLeft:"auto",paddingLeft:14}}>{Math.round(a.v/total*100)}%</span>
+            <span className="mono" style={{color:"var(--ink-500)",marginInlineStart:"auto",paddingInlineStart:14}}>{Math.round(a.v/total*100)}%</span>
           </div>
         ))}
       </div>

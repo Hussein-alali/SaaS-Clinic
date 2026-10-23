@@ -510,7 +510,7 @@ function TenantLoading({ text }) {
 // Left half of the split entry screens (the same look as the clinic login).
 function TenantBrandPanel({ title, lead, points, brand, subtitle, logo }) {
   return (
-    <div style={{
+    <div className="auth-brand" style={{
       background: "linear-gradient(155deg, #7BBDE8 0%, #BDD8E9 60%, #E8F1F7 100%)",
       position: "relative", padding: "clamp(24px, 4vw, 40px) clamp(20px, 5vw, 48px)", overflow: "hidden",
       display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 28,
@@ -518,13 +518,13 @@ function TenantBrandPanel({ title, lead, points, brand, subtitle, logo }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {logo
           ? <img src={logo} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", background: "rgba(255,255,255,.6)" }} />
-          : <I.Logo size={36} />}
+          : <I.Logo size={36} aria-hidden="true" />}
         <div>
           <div style={{ fontWeight: 600, fontSize: 20, color: "#0F1E2B" }}>{brand || "ClinicSystem EG"}</div>
           <div style={{ fontSize: 11.5, color: "#1E4A6E" }}>{subtitle || "نظام إدارة العيادات"}</div>
         </div>
       </div>
-      <div style={{ maxWidth: 460 }}>
+      <div className="auth-brand-extra" style={{ maxWidth: 460 }}>
         <div className="serif" style={{ fontSize: "clamp(28px, 4.6vw, 42px)", lineHeight: 1.2, color: "#0F1E2B", marginBottom: 16 }}>{title}</div>
         {lead && <p style={{ fontSize: 14.5, color: "#1E4A6E", lineHeight: 1.7, margin: 0 }}>{lead}</p>}
         {points && points.length > 0 && (
@@ -540,7 +540,7 @@ function TenantBrandPanel({ title, lead, points, brand, subtitle, logo }) {
           </ul>
         )}
       </div>
-      <div style={{ fontSize: 12, color: "#1E4A6E", opacity: 0.9 }}>© {new Date().getFullYear()} ClinicSystem EG</div>
+      <div className="auth-brand-extra" style={{ fontSize: 12, color: "#1E4A6E" }}>© {new Date().getFullYear()} ClinicSystem EG</div>
     </div>
   );
 }
@@ -589,7 +589,7 @@ function TenantForgotForm({ onBack, initialEmail }) {
           </form>
         )}
       <button type="button" onClick={onBack}
-        style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 13, marginTop: 16, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
+        style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 13, marginTop: 8, minHeight: 40, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, padding: 0 }}>
         <I.ArrowRight size={13} /> العودة لتسجيل الدخول
       </button>
     </>
@@ -816,7 +816,7 @@ function TenantRootPortal() {
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-700)", minHeight: 32 }}>
                 <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> أبقني مسجلاً لمدة 30 يومًا
               </label>
-              <button type="button" onClick={() => { setNotice(null); setPhase("forgot"); }}
+              <button type="button" className="auth-link" onClick={() => { setNotice(null); setPhase("forgot"); }}
                 style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>نسيت كلمة المرور؟</button>
             </div>
             <TenantSubmit busy={busy}>تسجيل الدخول</TenantSubmit>
@@ -1003,7 +1003,7 @@ function TenantResetScreen({ token }) {
           value={confirm} onChange={setConfirm} error={errors.confirm} />
         <TenantSubmit busy={busy}>حفظ كلمة المرور</TenantSubmit>
       </form>
-      <a href={loginUrl()} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--blue-700)", fontSize: 13, marginTop: 16 }}>
+      <a href={loginUrl()} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--blue-700)", fontSize: 13, marginTop: 8, minHeight: 40 }}>
         <I.ArrowRight size={13} /> العودة لتسجيل الدخول
       </a>
     </TenantSplit>

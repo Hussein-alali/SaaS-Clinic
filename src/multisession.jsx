@@ -441,7 +441,7 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
         {/* header */}
         <div className="card card-pad" style={{display:"flex",alignItems:"center",gap:18,position:"relative",overflow:"hidden",flexWrap:"wrap"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg, var(--blue-500), var(--blue-300))"}}/>
-          <div className="av lg" style={{background:"var(--blue-500)",color:"#fff",width:54,height:54,fontSize:18}}>{initials2(p.name)}</div>
+          <div className="av lg" style={{background:"var(--blue-700)",color:"#fff",width:54,height:54,fontSize:18}}>{initials2(p.name)}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <div className="h2">{p.name}</div>
@@ -482,7 +482,7 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
                 <div style={{gridColumn:"1 / -1"}}><span className="muted">البرنامج المنزلي: </span>{plan.home_instructions}</div>
               )}
               {plan.warnings && (
-                <div style={{gridColumn:"1 / -1",color:"var(--red)"}}><span className="muted">تحذيرات: </span>{plan.warnings}</div>
+                <div style={{gridColumn:"1 / -1",color:"#A8443A"}}><span className="muted">تحذيرات: </span>{plan.warnings}</div>
               )}
             </div>
           </div>

@@ -52,8 +52,7 @@ function BranchSwitcher({ role }) {
   const activeOff = !!active.id && !isActiveBranch(active);
   const options = branches.filter(b => isActiveBranch(b) || b.id === activeId);
   const isAdmin = role === "مدير";
-  const toArDigits = (n) => String(n).replace(/\d/g, d => "٠١٢٣٤٥٦٧٨٩"[+d]);
-  const subLine = (b) => [b.address, `${toArDigits(b.rooms||0)} غرف`].filter(Boolean).join(" · ");
+  const subLine = (b) => [b.address, `الغرف: ${b.rooms||0}`].filter(Boolean).join(" · ");
 
   return (
     <div ref={ref} style={{position:"relative",margin:"4px 14px 10px"}}>
@@ -75,7 +74,7 @@ function BranchSwitcher({ role }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12.5,fontWeight:600,color:"var(--ink-900)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active.name}</div>
           <div style={{fontSize:10.5,color:activeOff?"#A8443A":"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-            {activeOff ? "فرع معطّل — للعرض فقط" : `${toArDigits(active.rooms||0)} غرف`}
+            {activeOff ? "فرع معطّل — للعرض فقط" : `الغرف: ${active.rooms||0}`}
           </div>
         </div>
         <I.ChevronDown size={13} style={{color:"var(--ink-400)",transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}/>
@@ -289,7 +288,7 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
             <I.X size={14} style={{marginTop:3,flexShrink:0}}/><span>{serverError}</span>
           </div>
         )}
-        <label className="label" htmlFor="branch-name">اسم الفرع <span style={{color:"var(--red)"}}>*</span></label>
+        <label className="label" htmlFor="branch-name">اسم الفرع <span style={{color:"#A8443A"}}>*</span></label>
         <input id="branch-name" className="input" placeholder="فرع المعادي" value={form.name} maxLength={120} autoFocus
           aria-invalid={errors.name ? "true" : undefined} aria-describedby={errors.name ? "branch-name-err" : undefined}
           style={invalid("name")} onChange={e=>set("name", e.target.value)}/>
@@ -437,11 +436,11 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
       {/* Brand */}
       <div style={{padding:"18px 20px 14px",display:"flex",alignItems:"center",gap:10}}>
         {clinic.logo
-          ? <img src={clinic.logo} alt="clinic logo" style={{width:30,height:30,borderRadius:9,objectFit:"cover",background:"var(--blue-50)"}}/>
+          ? <img src={clinic.logo} alt="" style={{width:30,height:30,borderRadius:9,objectFit:"cover",background:"var(--blue-50)"}}/>
           : <I.Logo size={30}/>}
         <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
           <span style={{fontWeight:600,fontSize:15,letterSpacing:"-.01em"}}>{clinic.name || "—"}</span>
-          <span style={{fontSize:10.5,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>{clinic.subtitle || ""}</span>
+          <span style={{fontSize:11,color:"var(--ink-500)"}}>{clinic.subtitle || ""}</span>
         </div>
       </div>
 
@@ -476,10 +475,10 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
 
       {/* user card */}
       <div style={{padding:"12px 14px",borderTop:"1px solid var(--ink-200)",display:"flex",alignItems:"center",gap:10}}>
-        <div className="av md" style={{background:u.color||"var(--blue-500)",color:"#fff"}}>{uInit}</div>
+        <div className="av md" aria-hidden="true" style={{background:"var(--blue-700)",color:"#fff"}}>{uInit}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12.5,fontWeight:600,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.name}</div>
-          <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{role || "مدير"} · {u.email}</div>
+          <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{role || "مدير"} · <bdi dir="ltr">{u.email}</bdi></div>
         </div>
         {canSwitchClinic && (
           <button className="btn btn-ghost btn-icon" title="تبديل العيادة" aria-label="تبديل العيادة" onClick={()=>window.tenantGoRoot()}>
@@ -599,14 +598,16 @@ function __trapTab(e, box) {
 // page behind.
 const __FOCUS_GUARD = { position:"fixed", top:0, left:0, width:1, height:1, opacity:0, overflow:"hidden", pointerEvents:"none" };
 
-// A dialog (docs/04 Accessibility): role="dialog" named by its title;
-// focus moves into it ([data-autofocus] or an autoFocus field inside,
-// else the dialog itself), Tab and Shift+Tab stay inside it, Esc closes it
-// when it may be closed (onClose set), and focus returns to the element
-// that opened it. With stacked dialogs only the top one does this.
-function Modal({ open, onClose, children, title, footer, width=560 }) {
-  const isOpen = open !== false;
-  const boxRef = React.useRef(null);
+// The keyboard side of a dialog (docs/04 Accessibility), for Modal and for
+// the dialogs that draw their own box (reschedule, the patient booking
+// flow, the command palette): while `isOpen`, focus moves into `boxRef`
+// ([data-autofocus] or an autoFocus field inside, else the box itself),
+// Tab and Shift+Tab stay inside it, Esc closes it when it may be closed
+// (onClose set), and focus returns to the element that opened it. With
+// stacked dialogs only the top one does this. Returns an id for the
+// dialog's title (aria-labelledby). The box needs tabIndex={-1}, and the
+// focus guards (DialogFocusGuard) just before and after it.
+function useDialogFocus(boxRef, isOpen, onClose) {
   const idRef = React.useRef(null);
   if (!idRef.current) idRef.current = "modal-" + Math.random().toString(36).slice(2, 10);
   const closeRef = React.useRef(onClose);
@@ -621,7 +622,11 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
     const me = idRef.current;
     __openModals.push(me);
     const box = boxRef.current;
-    const opener = openerRef.current;
+    // A dialog opened from another one that closed in the same render (e.g.
+    // «نقل / تعديل» in the booking details) has lost its opener; that
+    // dialog has just given focus back to its own opener, so take that.
+    let opener = openerRef.current;
+    if ((!opener || !document.contains(opener)) && !(box && box.contains(document.activeElement))) opener = document.activeElement;
     if (box && !box.contains(document.activeElement)) {
       if (!__focusEl(box.querySelector("[data-autofocus]"))) __focusEl(box);
     }
@@ -646,17 +651,31 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
       if (lost && opener && opener !== document.body && document.contains(opener)) __focusEl(opener);
     };
   }, [isOpen]);
-  if (!isOpen) return null;
-  const titleId = idRef.current + "-title";
-  const wrapTo = (toLast) => {
+  return idRef.current + "-title";
+}
+
+// Invisible stop just before (start) or after (end) a dialog's box: focus
+// that reaches it wraps to the box's last or first element.
+function DialogFocusGuard({ boxRef, at }) {
+  const wrap = () => {
     const box = boxRef.current;
     if (!box) return;
     const list = __tabbablesIn(box);
-    if (!__focusEl(toLast ? list[list.length - 1] : list[0])) __focusEl(box);
+    if (!__focusEl(at === "start" ? list[list.length - 1] : list[0])) __focusEl(box);
   };
+  return <span tabIndex={0} data-focus-guard={at} style={__FOCUS_GUARD} onFocus={wrap}/>;
+}
+
+// A dialog (docs/04 Accessibility): role="dialog" named by its title, with
+// the keyboard behaviour of useDialogFocus.
+function Modal({ open, onClose, children, title, footer, width=560 }) {
+  const isOpen = open !== false;
+  const boxRef = React.useRef(null);
+  const titleId = useDialogFocus(boxRef, isOpen, onClose);
+  if (!isOpen) return null;
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <span tabIndex={0} data-focus-guard="start" style={__FOCUS_GUARD} onFocus={()=>wrapTo(true)}/>
+      <DialogFocusGuard boxRef={boxRef} at="start"/>
       <div ref={boxRef} className="modal" role="dialog" aria-modal="true" tabIndex={-1}
         aria-labelledby={title ? titleId : undefined}
         style={{width,maxWidth:`calc(100% - 40px)`,outline:"none"}} onClick={e=>e.stopPropagation()}>
@@ -669,23 +688,25 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
         <div style={{padding:"20px 22px"}}>{children}</div>
         {footer && <div style={{padding:"14px 22px",borderTop:"1px solid var(--ink-100)",display:"flex",justifyContent:"flex-end",gap:10,background:"var(--ink-50)",borderBottomLeftRadius:18,borderBottomRightRadius:18}}>{footer}</div>}
       </div>
-      <span tabIndex={0} data-focus-guard="end" style={__FOCUS_GUARD} onFocus={()=>wrapTo(false)}/>
+      <DialogFocusGuard boxRef={boxRef} at="end"/>
     </div>
   );
 }
 
 // ── Toast ──────────────────────────────────────────────────────
+// Top left under the top bar (docs/04 Components, like the platform's
+// toasts), announced to screen readers, and never in the way of a click.
 function Toast({ msg, kind="success" }) {
   if (!msg) return null;
-  const color = kind==="success" ? "var(--green)" : kind==="error" ? "var(--red)" : "var(--blue-500)";
+  const color = kind==="success" ? "var(--green)" : kind==="error" ? "var(--red)" : "var(--blue-700)";
   return (
-    <div style={{
-      position:"fixed",bottom:24,right:24,zIndex:200,
+    <div role={kind==="error" ? "alert" : "status"} aria-live={kind==="error" ? "assertive" : "polite"} style={{
+      position:"fixed",top:72,left:16,zIndex:200,maxWidth:"min(380px, calc(100vw - 32px))",
       background:"#fff",border:"1px solid var(--ink-200)",borderRadius:12,
-      boxShadow:"var(--shadow-lg)",padding:"12px 16px",
+      boxShadow:"var(--shadow-lg)",padding:"12px 16px",pointerEvents:"none",
       display:"flex",alignItems:"center",gap:10, animation:"popin .2s"
     }}>
-      <span style={{width:8,height:8,borderRadius:999,background:color}}></span>
+      <span aria-hidden="true" style={{width:8,height:8,borderRadius:999,background:color,flexShrink:0}}></span>
       <span style={{fontSize:13.5}}>{msg}</span>
     </div>
   );
@@ -699,6 +720,9 @@ function Page({ children }) {
 // ── Row action menu ────────────────────────────────────────────
 // Small popover triggered by a more-dots icon. Pass an `items` array of
 // { label, icon?, onClick, danger? }. Closes on outside click and Escape.
+// Keyboard: opening moves focus to the first item, ↑/↓ move between the
+// items, Esc and Tab close it with focus back on the trigger (the menu is
+// rendered at the end of <body>, out of the page's Tab order).
 function RowMenu({ items = [], size = 13, stopRowClick = true }) {
   const [open, setOpen] = React.useState(false);
   // Fixed positioning (computed from the trigger) lets the popover escape
@@ -714,7 +738,21 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
     if (!open) return;
     const inside = (t) => (ref.current && ref.current.contains(t)) || (popRef.current && popRef.current.contains(t));
     const onDoc = (e) => { if (!inside(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const itemsOf = () => popRef.current ? Array.from(popRef.current.querySelectorAll("button")) : [];
+    const onKey = (e) => {
+      if (e.key === "Escape" || e.key === "Tab") {
+        if (e.key === "Tab") e.preventDefault();
+        setOpen(false);
+        if (btnRef.current) btnRef.current.focus();
+      } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && popRef.current && popRef.current.contains(document.activeElement)) {
+        e.preventDefault();
+        const list = itemsOf();
+        const i = list.indexOf(document.activeElement);
+        const next = list[(i + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length];
+        if (next) next.focus();
+      }
+    };
+    const t = setTimeout(() => { const first = itemsOf()[0]; if (first) first.focus({ preventScroll: true }); }, 0);
     // Close when the trigger moves (page or table scrolled, window
     // resized). A scroll event that arrives after opening for a scroll made
     // before it (they fire on the next frame) leaves the trigger in place
@@ -729,6 +767,7 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
     window.addEventListener("scroll", onAway, true);
     window.addEventListener("resize", onAway);
     return () => {
+      clearTimeout(t);
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", onAway, true);
@@ -738,7 +777,7 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
   const MENU_W = 180;
   return (
     <div ref={ref} style={{position:"relative",display:"inline-block"}}>
-      <button ref={btnRef} type="button" className="btn btn-ghost btn-icon" title="المزيد" aria-haspopup="true" aria-expanded={open ? "true" : "false"} onClick={(e)=>{
+      <button ref={btnRef} type="button" className="btn btn-ghost btn-icon" title="المزيد" aria-label="المزيد" aria-expanded={open ? "true" : "false"} onClick={(e)=>{
         if (stopRowClick) e.stopPropagation();
         if (!open) {
           const r = e.currentTarget.getBoundingClientRect();
@@ -756,8 +795,13 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
       {open && __rowMenuPortal(
         <div ref={popRef} className="row-menu-pop" style={{position:"fixed",top:pos.top,left:pos.left,minWidth:MENU_W,background:"#fff",border:"1px solid var(--ink-200)",borderRadius:10,boxShadow:"var(--shadow-md)",zIndex:120,padding:6}}>
           {items.map((it, i) => (
-            <button key={i} onClick={(e)=>{ e.stopPropagation(); setOpen(false); if (it.onClick) it.onClick(); }}
-              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",fontSize:13,textAlign:"start",background:"transparent",border:"none",borderRadius:6,cursor:"pointer",color:it.danger?"var(--red)":"var(--ink-700)",fontFamily:"inherit"}}
+            <button key={i} type="button" className="row-menu-item" onClick={(e)=>{
+                e.stopPropagation(); setOpen(false);
+                // Back on the trigger first: a dialog the item opens returns focus there.
+                if (btnRef.current) btnRef.current.focus({ preventScroll: true });
+                if (it.onClick) it.onClick();
+              }}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",minHeight:34,padding:"7px 10px",fontSize:13,textAlign:"start",background:"transparent",border:"none",borderRadius:6,cursor:"pointer",color:it.danger?"#A8443A":"var(--ink-700)",fontFamily:"inherit"}}
               onMouseEnter={(e)=>{ e.currentTarget.style.background = "var(--ink-50)"; }}
               onMouseLeave={(e)=>{ e.currentTarget.style.background = "transparent"; }}
             >
@@ -1200,7 +1244,7 @@ function EntityCombobox({
               <div className="pcombo-empty">
                 <I.Search size={18}/>
                 <div>{emptyMessage}</div>
-                {query && emptyHint && <div style={{fontSize:11.5, color:"var(--ink-400)"}}>{emptyHint}</div>}
+                {query && emptyHint && <div style={{fontSize:11.5, color:"var(--ink-500)"}}>{emptyHint}</div>}
               </div>
             )}
 
@@ -1666,6 +1710,9 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
   const [showPw, setShowPw] = React.useState(false);
   const [shake, setShake] = React.useState(false);
   const [remember, setRemember] = React.useState(true);
+  // The field a local check refused: red border + aria-invalid, described
+  // by the message above the form (docs/04 Forms).
+  const [badField, setBadField] = React.useState("");
   // Inline message above the form: a refused login, a message from the
   // app (e.g. signed out because the membership was disabled), or the
   // one-shot flash after a password reset.
@@ -1682,13 +1729,16 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
   async function submit(e) {
     e && e.preventDefault();
     if (!isDemoMode() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setBadField("email");
       refuse("أدخل بريدًا إلكترونيًا صحيحًا");
       return;
     }
     if (!pw) {
+      setBadField("pw");
       refuse("أدخل كلمة المرور");
       return;
     }
+    setBadField("");
     setBusy(true);
     setNotice(null);
     // Real sign-in whenever the API client is there. Mock login is gated
@@ -1749,15 +1799,15 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
 
   return (
     <div className="auth-grid">
-      {/* Left — brand panel */}
-      <div style={{
+      {/* Left — brand panel (on phones only the clinic's name: index.html) */}
+      <div className="auth-brand" style={{
         background:"linear-gradient(155deg, #7BBDE8 0%, #BDD8E9 60%, #E8F1F7 100%)",
         position:"relative",padding:"clamp(24px, 4vw, 40px) clamp(20px, 5vw, 48px)",overflow:"hidden",
         display:"flex",flexDirection:"column",justifyContent:"space-between",gap:28,
         color:"#fff"
       }}>
         {/* decorative blobs */}
-        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.45}} viewBox="0 0 600 800" preserveAspectRatio="none">
+        <svg aria-hidden="true" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.45}} viewBox="0 0 600 800" preserveAspectRatio="none">
           <defs>
             <radialGradient id="g1" cx=".25" cy=".2">
               <stop offset="0%" stopColor="#fff" stopOpacity=".7"/>
@@ -1770,7 +1820,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
 
         <div style={{position:"relative",display:"flex",alignItems:"center",gap:12}}>
           {clinic.logo
-            ? <img src={clinic.logo} alt="clinic logo" style={{width:36,height:36,borderRadius:10,objectFit:"cover",background:"rgba(255,255,255,.6)"}}/>
+            ? <img src={clinic.logo} alt="" style={{width:36,height:36,borderRadius:10,objectFit:"cover",background:"rgba(255,255,255,.6)"}}/>
             : <I.Logo size={36}/>}
           <div>
             <div style={{fontWeight:600,fontSize:20,color:"#0F1E2B"}}>{clinic.name || ""}</div>
@@ -1778,7 +1828,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
           </div>
         </div>
 
-        <div style={{position:"relative",maxWidth:440}}>
+        <div className="auth-brand-extra" style={{position:"relative",maxWidth:440}}>
           <div className="serif" style={{fontSize:"clamp(30px, 5vw, 46px)",lineHeight:1.05,color:"#0F1E2B",letterSpacing:"-.01em",marginBottom:18}}>
             العيادة التي <em>تتحرك</em> مع مرضاك.
           </div>
@@ -1801,20 +1851,20 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
               {k:"حملات واتساب",v:"✓"},
             ]).map((s,i)=>(
               <div key={i} style={{background:"rgba(255,255,255,.55)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.6)",padding:"12px 14px",borderRadius:14}}>
-                <div style={{fontSize:11,color:"#1E4A6E",letterSpacing:".04em",textTransform:"uppercase"}}>{s.k}</div>
+                <div style={{fontSize:11,color:"#1E4A6E"}}>{s.k}</div>
                 <div className="mono" style={{fontSize:22,fontWeight:600,color:"#0F1E2B",marginTop:2}}>{s.v}</div>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{position:"relative",fontSize:12,color:"#1E4A6E",opacity:.8}}>
+        <div className="auth-brand-extra" style={{position:"relative",fontSize:12,color:"#1E4A6E"}}>
           © {new Date().getFullYear()} {clinic.name || ""} {clinic.subtitle || ""}
         </div>
       </div>
 
       {/* Right — form */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"clamp(20px, 5vw, 40px)"}}>
+      <main style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"clamp(20px, 5vw, 40px)"}}>
         <div style={{width:"100%",maxWidth:420, animation: shake?"shake .35s":""}}>
           {mode==="login" && (
             <>
@@ -1822,7 +1872,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
               <div className="muted" style={{fontSize:14,marginBottom:28}}>
                 سجّل الدخول للمتابعة إلى مساحة {clinic.name ? <strong style={{color:"var(--ink-700)"}}>{clinic.name}</strong> : "عيادتك"}.
               </div>
-              {window.TenantNotice && <window.TenantNotice notice={notice}/>}
+              <div id="login-notice">{window.TenantNotice && <window.TenantNotice notice={notice}/>}</div>
 
               {/* الدور picker — demo only; production resolves the role from
                   the Supabase account, so picking one here would mislead. */}
@@ -1845,21 +1895,25 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
 
               <form onSubmit={submit} noValidate>
                 <label className="label" htmlFor="login-email" style={{display:"block"}}>البريد الإلكتروني</label>
-                <input id="login-email" className="input" type="email" dir="ltr" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@clinic.com" style={{marginBottom:14,height:42}}/>
+                <input id="login-email" className="input" type="email" dir="ltr" autoComplete="username" value={email} onChange={e=>{ setEmail(e.target.value); if (badField === "email") setBadField(""); }} placeholder="you@clinic.com"
+                  aria-invalid={badField === "email" ? "true" : undefined} aria-describedby={badField === "email" ? "login-notice" : undefined}
+                  style={{marginBottom:14,height:42,borderColor:badField === "email" ? "var(--red)" : undefined}}/>
 
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <label className="label" htmlFor="login-password">كلمة المرور</label>
-                  <button type="button" onClick={()=>{ setNotice(null); setMode("forgot"); }} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>نسيت؟</button>
+                  <button type="button" className="auth-link" onClick={()=>{ setNotice(null); setMode("forgot"); }} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>نسيت؟</button>
                 </div>
                 <div style={{position:"relative"}}>
-                  <input id="login-password" className="input" type={showPw?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>setPw(e.target.value)} style={{height:42,paddingRight:38}}/>
-                  <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
+                  <input id="login-password" className="input" type={showPw?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>{ setPw(e.target.value); if (badField === "pw") setBadField(""); }}
+                    aria-invalid={badField === "pw" ? "true" : undefined} aria-describedby={badField === "pw" ? "login-notice" : undefined}
+                    style={{height:42,paddingRight:42,borderColor:badField === "pw" ? "var(--red)" : undefined}}/>
+                  <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPw ? "true" : "false"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:1,top:1,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",padding:0,border:"none",borderRadius:9,background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
                     <I.Eye size={15}/>
                   </button>
                 </div>
 
                 <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--ink-700)",marginTop:14}}>
-                  <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> أبقني مسجلاً لمدة 30 يوم
+                  <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> أبقني مسجلاً لمدة 30 يومًا
                 </label>
 
                 <button type="submit" disabled={busy} aria-busy={busy ? "true" : undefined} className="btn btn-blue" style={{width:"100%",height:44,justifyContent:"center",marginTop:18,fontSize:14}}>
@@ -1911,7 +1965,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
             <window.TenantForgotForm initialEmail={email} onBack={()=>setMode("login")}/>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -1927,13 +1981,14 @@ window.AuthScreen = AuthScreen;
 function CommandPalette({ open, onClose, onNav }) {
   const [q, setQ] = React.useState("");
   const [i, setI] = React.useState(0);
-  const inputRef = React.useRef(null);
+  const boxRef = React.useRef(null);
+  const listRef = React.useRef(null);
+  // A dialog like Modal (focus in, Tab kept inside, Esc closes, focus back
+  // to the search button); the field is its [data-autofocus] element.
+  const titleId = useDialogFocus(boxRef, !!open, onClose);
 
   React.useEffect(() => {
-    if (open) {
-      setQ(""); setI(0);
-      setTimeout(() => inputRef.current && inputRef.current.focus(), 30);
-    }
+    if (open) { setQ(""); setI(0); }
   }, [open]);
 
   if (!open) return null;
@@ -1961,19 +2016,19 @@ function CommandPalette({ open, onClose, onNav }) {
   const items = [];
   patients.forEach(p => items.push({
     kind: "patient", route: "patients", id: p.id,
-    title: p.name, sub: `${p.id} · ${p.diag || ""} · ${p.phone || ""}`,
+    title: p.name, sub: [p.id, p.diag, p.phone].filter(Boolean).join(" · "),
     hay: `${p.name} ${p.id} ${p.phone || ""} ${p.diag || ""}`,
     icon: I.Users,
   }));
   appts.forEach(a => items.push({
     kind: "appointment", route: "appointments", id: a.id,
-    title: `${a.patient} — ${a.time}`, sub: `${a.id} · ${a.dr} · ${a.status}`,
+    title: `${a.patient} — ${a.time}`, sub: [a.id, a.dr || a.th, a.status].filter(Boolean).join(" · "),
     hay: `${a.id} ${a.patient} ${a.time} ${a.dr} ${a.th} ${a.status}`,
     icon: I.Calendar,
   }));
   if (canSeePayments) payments.forEach(v => items.push({
     kind: "invoice", route: "payments", id: v.id,
-    title: `${v.id} — ${v.patient}`, sub: `${v.amount} ج.م · ${v.method} · ${v.status}`,
+    title: `${v.id} — ${v.patient}`, sub: [`EGP ${Number(v.amount || 0).toLocaleString("en-US")}`, v.method, v.status].filter(Boolean).join(" · "),
     hay: `${v.id} ${v.patient} ${v.method} ${v.status}`,
     icon: I.CreditCard,
   }));
@@ -2012,41 +2067,53 @@ function CommandPalette({ open, onClose, onNav }) {
     onNav && onNav(r.route, r);
   }
 
+  // Arrows move the active option (aria-activedescendant), Enter opens it;
+  // Esc is the dialog's (useDialogFocus).
   function onKey(e) {
     if (e.key === "ArrowDown") { e.preventDefault(); setI(x => Math.min(x + 1, results.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setI(x => Math.max(x - 1, 0)); }
     else if (e.key === "Enter") { e.preventDefault(); pick(sel); }
-    else if (e.key === "Escape") { e.preventDefault(); onClose && onClose(); }
   }
+  const activeIdx = Math.min(i, results.length - 1);
+  const optionId = (k) => titleId + "-opt-" + k;
+  const KIND_AR = { patient: "مريض", appointment: "موعد", invoice: "فاتورة", page: "صفحة" };
 
   return (
     <div className="modal-backdrop" style={{ alignItems: "flex-start", paddingTop: "min(90px, 10vh)" }} onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 640, width: "calc(100% - 40px)", padding: 0, overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+      <DialogFocusGuard boxRef={boxRef} at="start"/>
+      <div ref={boxRef} className="modal cmdk" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+        style={{ maxWidth: 640, width: "calc(100% - 40px)", padding: 0, overflow: "hidden", outline: "none" }} onClick={e => e.stopPropagation()}>
+        <h2 id={titleId} className="sr-only">البحث الشامل</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: "1px solid var(--ink-100)" }}>
-          <I.Search size={16} style={{ color: "var(--ink-400)" }} />
-          <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setI(0); }} onKeyDown={onKey}
+          <I.Search size={16} aria-hidden="true" style={{ color: "var(--ink-500)" }} />
+          <input data-autofocus="" value={q} onChange={e => { setQ(e.target.value); setI(0); }} onKeyDown={onKey}
+            role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={titleId + "-list"}
+            aria-activedescendant={results.length ? optionId(activeIdx) : undefined}
+            aria-label="ابحث عن مريض أو موعد أو فاتورة أو صفحة"
             placeholder="ابحث عن مريض · موعد · فاتورة · صفحة…"
-            style={{ flex: 1, border: "none", outline: "none", fontSize: 15, background: "transparent", fontFamily: "inherit" }} />
-          <span className="mono" style={{ fontSize: 10, color: "var(--ink-400)", border: "1px solid var(--ink-200)", padding: "2px 6px", borderRadius: 5 }}>Esc</span>
+            style={{ flex: 1, minHeight: 32, border: "none", outline: "none", fontSize: 15, background: "transparent", fontFamily: "inherit" }} />
+          <kbd className="mono" aria-hidden="true" style={{ fontSize: 10, color: "var(--ink-500)", border: "1px solid var(--ink-200)", padding: "2px 6px", borderRadius: 5 }}>Esc</kbd>
         </div>
-        <div style={{ maxHeight: 420, overflowY: "auto", padding: "6px 0" }}>
+        <div ref={listRef} id={titleId + "-list"} role="listbox" aria-label="النتائج" tabIndex={-1}
+          style={{ maxHeight: 420, overflowY: "auto", padding: "6px 0", outline: "none" }}>
           {results.length === 0 && (
-            <div style={{ padding: "24px 20px", color: "var(--ink-500)", fontSize: 13, textAlign: "center" }}>
+            <div role="presentation" style={{ padding: "24px 20px", color: "var(--ink-500)", fontSize: 13, textAlign: "center" }}>
               لا توجد نتائج مطابقة
             </div>
           )}
           {results.map((r, k) => {
             const Ico = r.icon || I.Search;
-            const active = k === Math.min(i, results.length - 1);
+            const active = k === activeIdx;
             return (
-              <div key={r.kind + ":" + r.id + ":" + k}
+              <div key={r.kind + ":" + r.id + ":" + k} id={optionId(k)} role="option" aria-selected={active ? "true" : "false"}
+                ref={active ? (el) => { if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" }); } : undefined}
                 onMouseEnter={() => setI(k)}
                 onClick={() => pick(r)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 18px", cursor: "pointer",
+                  padding: "10px 18px", cursor: "pointer", minHeight: 44,
                   background: active ? "var(--blue-50)" : "transparent",
-                  borderLeft: active ? "3px solid var(--blue-500)" : "3px solid transparent",
+                  borderInlineStart: active ? "3px solid var(--blue-700)" : "3px solid transparent",
                 }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--ink-100)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-700)", flexShrink: 0 }}>
                   <Ico size={15} />
@@ -2055,16 +2122,17 @@ function CommandPalette({ open, onClose, onNav }) {
                   <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
                   <div style={{ fontSize: 11.5, color: "var(--ink-500)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.sub}</div>
                 </div>
-                <span className="mono" style={{ fontSize: 10, color: "var(--ink-400)", textTransform: "uppercase", letterSpacing: ".04em" }}>{r.kind}</span>
+                <span style={{ fontSize: 11, color: "var(--ink-500)" }}>{KIND_AR[r.kind] || ""}</span>
               </div>
             );
           })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 18px", borderTop: "1px solid var(--ink-100)", fontSize: 11, color: "var(--ink-500)" }}>
           <span><span className="mono">↑ ↓</span> للتنقل · <span className="mono">Enter</span> للفتح</span>
-          <span>{results.length} نتيجة</span>
+          <span role="status">النتائج: <span className="mono">{results.length}</span></span>
         </div>
       </div>
+      <DialogFocusGuard boxRef={boxRef} at="end"/>
     </div>
   );
 }

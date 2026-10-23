@@ -155,7 +155,7 @@ function HomeHeader({ kicker, title, sub, right }){
     <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:22,gap:16,flexWrap:"wrap"}}>
       <div>
         <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>{kicker}</span></div>
-        <div className="h1">{title}</div>
+        <h1 className="h1">{title}</h1>
         <div className="muted" style={{fontSize:13.5,marginTop:4}}>{sub}</div>
       </div>
       {right && <div style={{display:"flex",gap:10,alignItems:"center"}}>{right}</div>}
@@ -168,7 +168,7 @@ function ApptRow({ a, right }){
     <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12,background:a.status==="قيد التنفيذ"?"var(--blue-50)":"#fff"}}>
       <div style={{textAlign:"center",minWidth:48}}>
         <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time}</div>
-        <div className="mono" style={{fontSize:10,color:"var(--ink-400)"}}>{a.dur}m</div>
+        <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> د</div>
       </div>
       <div style={{width:1,height:30,background:"var(--ink-200)"}}/>
       <div style={{flex:1,minWidth:0}}>
@@ -248,14 +248,14 @@ function ReceptionDashboard({ go, user }){
             <div className="h2" style={{marginBottom:4}}>صندوق اليوم</div>
             <div className="muted" style={{fontSize:12.5,marginBottom:14}}>ملخص التحصيل النقدي والبطاقات</div>
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span className="mono" style={{fontSize:30,fontWeight:600}}>EGP {collected.toLocaleString()}</span>
+              <span className="mono" style={{fontSize:30,fontWeight:600}}>EGP {collected.toLocaleString("en-US")}</span>
             </div>
             <div style={{height:8,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",margin:"12px 0"}}>
               <div style={{height:"100%",width:`${collected/(collected+outstanding)*100}%`,background:"var(--green)",borderRadius:999}}/>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5}}>
               <span className="muted">محصّل {Math.round(collected/(collected+outstanding)*100)}%</span>
-              <span style={{color:"var(--red)"}}>متبقٍ EGP {outstanding.toLocaleString()}</span>
+              <span style={{color:"#A8443A"}}>متبقٍ EGP {outstanding.toLocaleString("en-US")}</span>
             </div>
           </div>
           <div className="card card-pad">
@@ -268,7 +268,7 @@ function ReceptionDashboard({ go, user }){
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10}}>
                   <div className="av sm" style={{background:"var(--ink-100)",color:"var(--ink-700)"}}>{initialsOf(p.patient)}</div>
                   <div style={{flex:1,minWidth:0}}><div style={{fontSize:12.5,fontWeight:500}}>{p.patient}</div><div className="mono" style={{fontSize:11,color:"var(--ink-500)"}}>{p.id}</div></div>
-                  <div style={{textAlign:"left"}}><div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString()}</div><PayBadge s={p.status}/></div>
+                  <div style={{textAlign:"left"}}><div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString("en-US")}</div><PayBadge s={p.status}/></div>
                 </div>
               ))}
             </div>
@@ -299,9 +299,10 @@ function DoctorDashboard({ go, user }){
   // and belong on a different pile ("renew / discharge"), not the review list.
   const reviewPlans = myPatients.filter(p=>p.remain > 0 && p.remain <= 4);
   const caseMix = [
-    { label:"عمود فقري", v: myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف/.test(p.diag)).length || 1, color:"#7BBDE8" },
-    { label:"مفاصل",     v: myPatients.filter(p=>/كتف|ركبة|رضف/.test(p.diag)).length || 1, color:"#7E6BD3" },
-    { label:"أخرى",      v: Math.max(1, myPatients.length - myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف|كتف|ركبة|رضف/.test(p.diag)).length), color:"#BDD8E9" },
+    // Real counts only: with no patients the chart shows its empty state.
+    { label:"عمود فقري", v: myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف/.test(p.diag)).length, color:"#7BBDE8" },
+    { label:"مفاصل",     v: myPatients.filter(p=>/كتف|ركبة|رضف/.test(p.diag)).length, color:"#7E6BD3" },
+    { label:"أخرى",      v: myPatients.length - myPatients.filter(p=>/ظهر|فقر|عنق|عرق|غضروف|كتف|ركبة|رضف/.test(p.diag)).length, color:"#BDD8E9" },
   ];
 
   return (
@@ -309,7 +310,7 @@ function DoctorDashboard({ go, user }){
       <HomeHeader
         kicker="يومي الإكلينيكي"
         title={<>أهلاً، {user.name} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>🩺</span></>}
-        sub={`${todayLabelAr()} — لديك ${myAppts.length} مواعيد و${active.length} مريض نشط تحت رعايتك.`}
+        sub={`${todayLabelAr()} — مواعيد اليوم: ${myAppts.length} · المرضى النشطون: ${active.length}`}
         right={<>
           <button className="btn btn-secondary" onClick={()=>go("treatments")}><I.Clipboard size={14}/> خطط العلاج</button>
           <button className="btn btn-blue" onClick={()=>go("patients")}><I.Users size={14}/> مرضاي</button>
@@ -327,7 +328,7 @@ function DoctorDashboard({ go, user }){
         {/* My clinic today */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-            <div><div className="h2">عيادتي اليوم</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>{myAppts.length} مواعيد مجدولة</div></div>
+            <div><div className="h2">عيادتي اليوم</div><div className="muted" style={{fontSize:12.5,marginTop:2}}>المجدولة: {myAppts.length}</div></div>
             <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>التقويم <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -347,6 +348,7 @@ function DoctorDashboard({ go, user }){
             <table className="tbl" style={{margin:"-4px 0"}}>
               <thead><tr><th>المريض</th><th>التشخيص</th><th>متبقٍ</th><th>الدفع</th></tr></thead>
               <tbody>
+                {myPatients.length===0 && <tr><td colSpan={4} className="tbl-empty">لا مرضى تحت رعايتك بعد.</td></tr>}
                 {myPatients.map(p=>(
                   <tr key={p.id} data-clickable="true" tabIndex={0} onClick={()=>go("patients")} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();go("patients");} }}>
                     <td><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av sm">{initialsOf(p.name)}</div><span style={{fontWeight:500}}>{p.name}</span></div></td>

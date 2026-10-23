@@ -292,6 +292,13 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 - **حالة بريد الدعوة (3.15):** حُذف المفتاح `clinicsys.unsent_invites` من `sessionStorage`؛ الحالة من `email_status`، والقائمة تُحدَّث كل 15 ثانية (8 مرات حدًا أقصى) ما دامت دعوة `pending`.
 - **الحجم:** `dist/app.*.js` ≈ 224 KB gzip (‎`gzip -9`) + React ≈ 46 = **≈ 270 KB** (الميزانية 300).
 
+### ملاحظات التنفيذ (مراجعة UX وإمكانية الوصول 3.10)
+
+- **`useDialogFocus(open, onClose)` + `DialogFocusGuard`** في `src/ui.jsx`: سلوك النوافذ المشترك (التركيز، حبس Tab للنافذة العليا عبر `__openModals`، Esc، العودة للفاتح)؛ يستخدمه `Modal` ونافذة إعادة الجدولة و `PatientBookingFlow` ولوحة الأوامر.
+- **الأرقام** تُنسّق بأرقام لاتينية في كل `src/*.jsx` (منها `toLocaleString` في `src/supabase.jsx`).
+- **axe-core** يُثبَّت للفحص فقط (`npm install --no-save --no-audit --no-fund axe-core`)، وليس في `package.json`. سكربتات المراجعة خارج المستودع.
+- **الحجم:** `dist/app.*.js` = 227.4 KB (`gzip -9`) + React ≈ 46 = **≈ 273 KB** (الميزانية 300).
+
 ## Security and privacy
 
 | المتطلب | التطبيق |
@@ -376,3 +383,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 22 أكتوبر 2026 | ملاحظات تنفيذ الواجهة لـ Milestone 3: ترتيب تحديد السياق، وبوابة العيادة، والتنقل بالـ hash، و `window.ClinicApi` و `X-Platform`، ومفاتيح التخزين، والحجم المقاس (≈ 252 KB)، وحدود `npm run dev`. |
 | 22 أكتوبر 2026 | Milestone 3 (المرحلة الثانية): مسارات `/api/org/members` و `/api/org/usage`؛ فرض الوحدات في `/api/data` و `/api/rpc` (`module_disabled`) مع الربط؛ ملاحظات Modal و RowMenu؛ الحجم ≈ 267 KB. |
 | 22 أكتوبر 2026 | إكمال البند 9: `email_status` للدعوات (3.15)، فرض `core.files` في `/api/files` (3.16)، `branch_inactive` 409 و `BR409` (3.18)، إصلاح الثغرة الموروثة في فحوص الأدوار (2.9)، حبس التركيز في `Modal` (3.17)، و `listAllBranches` للتقارير (3.19). (هذا الـ commit) |
+| 23 أكتوبر 2026 | ملاحظات تنفيذ مراجعة 3.10: `useDialogFocus` و `DialogFocusGuard`، الأرقام اللاتينية، axe-core كأداة فحص خارج `package.json`، الحجم ≈ 273 KB. (هذا الـ commit) |

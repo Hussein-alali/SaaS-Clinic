@@ -1088,7 +1088,8 @@
 
     return (
       <div className="card pa-wizard">
-        <ol className="stepper pa-steps" aria-label="خطوات إنشاء العيادة">
+        {/* Focusable: on phones it scrolls sideways. */}
+        <ol className="stepper pa-steps" aria-label="خطوات إنشاء العيادة" tabIndex={0}>
           {WIZARD_STEPS.map((label, i) => {
             const n = i + 1;
             const state = n < step ? "done" : n === step ? "current" : "next";
@@ -2275,15 +2276,15 @@
   // ══════════════════════════════════════════════════════════════
   function BrandPanel() {
     return (
-      <div className="pa-brand-panel">
+      <div className="pa-brand-panel auth-brand">
         <div className="row gap-3" style={{ position: "relative" }}>
-          <I.Logo size={36}/>
+          <I.Logo size={36} aria-hidden="true"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 19, color: "#0F1E2B" }}>ClinicSystem EG</div>
             <div style={{ fontSize: 12, color: "#1E4A6E" }}>لوحة إدارة المنصة</div>
           </div>
         </div>
-        <div style={{ position: "relative", maxWidth: 420 }}>
+        <div className="auth-brand-extra" style={{ position: "relative", maxWidth: 420 }}>
           <div className="serif" style={{ fontSize: "clamp(28px, 4.5vw, 42px)", lineHeight: 1.15, color: "#0F1E2B", marginBottom: 14 }}>
             عيادات كثيرة، <em>لوحة واحدة</em>.
           </div>
@@ -2291,7 +2292,7 @@
             أنشئ العيادات وفعّل ميزاتها، وحدّد خططها، وراجع سجل العمليات — لفريق المنصة فقط.
           </p>
         </div>
-        <div style={{ position: "relative", fontSize: 12, color: "#1E4A6E" }}>© {new Date().getFullYear()} ClinicSystem EG</div>
+        <div className="auth-brand-extra" style={{ position: "relative", fontSize: 12, color: "#1E4A6E" }}>© {new Date().getFullYear()} ClinicSystem EG</div>
       </div>
     );
   }
@@ -2336,7 +2337,7 @@
     return (
       <div className="auth-grid">
         <BrandPanel/>
-        <div className="pa-auth-form-wrap">
+        <main className="pa-auth-form-wrap">
           <form className="pa-auth-form" onSubmit={submit} noValidate aria-labelledby="pa-login-title">
             <div className="pa-chip-platform"><PI.Shield size={14}/> مديرو المنصة فقط</div>
             <h1 className="h1" id="pa-login-title" style={{ fontSize: 28, margin: "10px 0 6px" }}>دخول لوحة المنصة</h1>
@@ -2361,7 +2362,7 @@
             </label>
             <Btn kind="primary" type="submit" busy={busy} className="pa-btn-block" style={{ marginTop: 18 }}>تسجيل الدخول</Btn>
           </form>
-        </div>
+        </main>
       </div>
     );
   }
@@ -2492,7 +2493,7 @@
               <div className="h2 pa-ellipsis">{titles[r.name]}</div>
             </div>
             <span className="pa-who muted"><Ltr>{email}</Ltr></span>
-            <Btn kind="secondary" busy={loggingOut} onClick={logout}><I.Logout size={15}/><span className="pa-hide-sm">تسجيل الخروج</span></Btn>
+            <Btn kind="secondary" busy={loggingOut} onClick={logout} aria-label="تسجيل الخروج"><I.Logout size={15}/><span className="pa-hide-sm">تسجيل الخروج</span></Btn>
           </header>
           <main className="page pa-page" id="pa-main" ref={mainRef} tabIndex={-1}>{page}</main>
         </div>
@@ -2660,8 +2661,8 @@
 .pa-app .btn:disabled{opacity:.5;cursor:not-allowed}
 .pa-btn-primary{background:var(--blue-700);color:#fff}
 .pa-btn-primary:hover:not(:disabled){background:var(--blue-900)}
-.pa-btn-danger{background:var(--red);color:#fff}
-.pa-btn-danger:hover:not(:disabled){background:#B9473C}
+.pa-btn-danger{background:#B84C42;color:#fff}
+.pa-btn-danger:hover:not(:disabled){background:#9E3F36}
 .pa-btn-block{width:100%;height:44px;justify-content:center;font-size:14px}
 .pa-app button:focus-visible,.pa-app a:focus-visible,.pa-app [role=switch]:focus-visible,.pa-app .input:focus-visible{outline:2px solid var(--blue-700);outline-offset:2px}
 .pa-spinner{display:inline-block;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;flex-shrink:0}

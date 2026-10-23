@@ -25,7 +25,7 @@ function buildTelUrl(phone) {
 const CHART_COLORS = ["#7BBDE8","#3A7FB5","#BDD8E9","#7E6BD3","#3FA984","#1E4A6E","#D49044"];
 // Long Arabic date for page subtitles ("الأحد، 24 مايو").
 function todayLabelAr() {
-  try { return new Date().toLocaleDateString("ar-EG", { weekday:"long", day:"numeric", month:"long" }); }
+  try { return new Date().toLocaleDateString("ar-EG-u-nu-latn", { weekday:"long", day:"numeric", month:"long" }); }
   catch { return new Date().toISOString().slice(0,10); }
 }
 // Active branch name (settings-driven; falls back to a neutral label).
@@ -105,7 +105,7 @@ function enumerateMonths(from, to){
   while (cur <= e) { out.push(`${cur.getFullYear()}-${__dashPad(cur.getMonth()+1)}`); cur.setMonth(cur.getMonth()+1); }
   return out;
 }
-const fmtEGP = (v) => v >= 1000 ? `EGP ${(v/1000).toFixed(1)}K` : `EGP ${(v||0).toLocaleString()}`;
+const fmtEGP = (v) => v >= 1000 ? `EGP ${(v/1000).toFixed(1)}K` : `EGP ${Math.round(v||0).toLocaleString("en-US")}`;
 
 function Dashboard({ go }) {
   window.useDataVersion && window.useDataVersion();
@@ -262,7 +262,7 @@ function Dashboard({ go }) {
       <div className="page-head" style={{marginBottom:22}}>
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>لوحة التحكم</span></div>
-          <div className="h1">صباح الخير{window.ME && window.ME.name ? `، ${window.ME.name.split(" ")[0]}` : ""} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></div>
+          <h1 className="h1">صباح الخير{window.ME && window.ME.name ? `، ${window.ME.name.split(" ")[0]}` : ""} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>{todayLabelAr()} — أداء {activeBranchName()} اليوم.</div>
         </div>
         <div className="page-actions">
@@ -287,7 +287,7 @@ function Dashboard({ go }) {
         <StatCard label={labels.rev}   value={fmtEGP(periodRevenue)} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
         <StatCard label="الإيرادات الشهرية"   value={fmtEGP(monthRevenue)} accent="#7E6BD3" icon={<I.Chart size={15}/>}/>
         <StatCard label="الأخصائيون النشطون" value={`${(DATA.therapists||[]).filter(t=>t.active!==false).length}/${(DATA.therapists||[]).length}`} accent="#D49044" icon={<I.Stethoscope size={15}/>}/>
-        <StatCard label="الجلسات المتبقية" value={remainTotal.toLocaleString()} accent="#D8665A" icon={<I.Activity size={15}/>}/>
+        <StatCard label="الجلسات المتبقية" value={remainTotal.toLocaleString("en-US")} accent="#D8665A" icon={<I.Activity size={15}/>}/>
       </div>
 
       {/* main two cols */}
@@ -306,7 +306,7 @@ function Dashboard({ go }) {
               <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--ink-500)"}} className="mono">{fmtEGP(periodRevenue)}</span>
             </div>
           </div>
-          <AreaChart data={revenueData} height={220} formatY={(v)=>v>=1000?`${Math.round(v/1000)}K`:v}/>
+          <AreaChart data={revenueData} height={220} formatY={(v)=>v>=1000?`${Number((v/1000).toFixed(1))}K`:v}/>
         </div>
 
         {/* مواعيد اليوم */}
@@ -324,7 +324,7 @@ function Dashboard({ go }) {
               <div key={a.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12,background:a.status==="قيد التنفيذ"?"var(--blue-50)":"#fff"}}>
                 <div style={{textAlign:"center",minWidth:48}}>
                   <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time}</div>
-                  <div className="mono" style={{fontSize:10,color:"var(--ink-400)"}}>{a.dur}m</div>
+                  <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> د</div>
                 </div>
                 <div style={{width:1,height:30,background:"var(--ink-200)"}}/>
                 <div style={{flex:1,minWidth:0}}>
@@ -370,7 +370,7 @@ function Dashboard({ go }) {
               <div key={t.name}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span className="av sm" style={{background:t.color+"33",color:t.color}}>{t.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</span>
+                    <span className="av sm" aria-hidden="true" style={{background:t.color+"33",color:"var(--ink-900)"}}>{t.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</span>
                     <div>
                       <div style={{fontSize:12.5,fontWeight:500}}>{t.name}</div>
                       <div style={{fontSize:11,color:"var(--ink-500)"}}>{t.spec}</div>
@@ -405,7 +405,7 @@ function Dashboard({ go }) {
                   <div style={{fontSize:13,fontWeight:500}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{p.diag}</div>
                 </div>
-                <button className="btn btn-ghost" style={{fontSize:11.5,padding:"4px 8px"}} onClick={()=>go("patients")}>فتح</button>
+                <button type="button" className="btn btn-ghost" aria-label={`فتح ملف ${p.name}`} style={{fontSize:11.5,padding:"4px 8px",minWidth:40,justifyContent:"center"}} onClick={()=>go("patients")}>فتح</button>
               </div>
             ))}
           </div>
@@ -436,7 +436,7 @@ function Dashboard({ go }) {
                   <div style={{fontSize:11,color:"var(--ink-500)"}} className="mono">{p.id} · {p.date}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString()}</div>
+                  <div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString("en-US")}</div>
                   <PayBadge s={p.status}/>
                 </div>
               </div>
@@ -476,7 +476,10 @@ function PayBadge({ s }) {
     "معلّق": { c:"b-grey",   d:"معلّق" },
     "متأخر": { c:"b-red",    d:"متأخر" },
   };
-  const m = map[s] || { c:"b-grey", d:s };
+  // Rows written by the API carry the English status codes.
+  const codes = { paid:"مدفوع", partial:"جزئي", pending:"معلّق", unpaid:"معلّق", overdue:"متأخر" };
+  const key = codes[String(s || "").toLowerCase()] || s;
+  const m = map[key] || { c:"b-grey", d:s === "cancelled" ? "ملغاة" : s };
   return <span className={"badge " + m.c}><span className="dot"></span>{m.d}</span>;
 }
 
@@ -485,6 +488,14 @@ Object.assign(window, { Dashboard, ApptBadge, PayBadge, todayLabelAr, activeBran
 
 // ===== src/مريض.jsx =====
 // المريض management — list, details, add/edit
+
+// «أنثى» / «ذكر» for the stored codes (F/M; older rows: Female/Male).
+function genderAr(g) {
+  const v = String(g || "").trim().toLowerCase();
+  if (v === "f" || v === "female" || v === "أنثى") return "أنثى";
+  if (v === "m" || v === "male" || v === "ذكر") return "ذكر";
+  return "";
+}
 
 function Patients({ go }) {
   // Subscribe to data-updated events so the list re-renders whenever the
@@ -499,7 +510,9 @@ function Patients({ go }) {
   const [statusFilter, setStatusFilter] = React.useState("الكل");
   const [page, setPage] = React.useState(1);
   const [confirmDelete, setConfirmDelete] = React.useState(null);
-  const [layout, setLayout] = React.useState("table"); // table | grid
+  // Phones start with the cards (docs/04: tables become cards under 640px).
+  const [layout, setLayout] = React.useState(() =>
+    (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) ? "grid" : "table"); // table | grid
   const csvRef = React.useRef(null);
 
   // Stable reference so unrelated re-renders (data-updated ticks that
@@ -529,8 +542,8 @@ function Patients({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المرضى</span></div>
-          <div className="h1">المرضى</div>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{myPatients.length} سجل · {activeCount} نشط</div>
+          <h1 className="h1">المرضى</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>السجلات: {myPatients.length} · النشطة: {activeCount}</div>
         </div>
         <div className="page-actions">
           <input ref={csvRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{
@@ -554,7 +567,7 @@ function Patients({ go }) {
           ))}
         </div>
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
-          <span className="muted" style={{fontSize:12}}>{filtered.length} نتيجة</span>
+          <span className="muted" style={{fontSize:12}} role="status">النتائج: {filtered.length}</span>
           <div className="seg">
             <button className={layout==="table"?"on":""} onClick={()=>setLayout("table")}>جدول</button>
             <button className={layout==="grid"?"on":""}  onClick={()=>setLayout("grid")}>بطاقات</button>
@@ -568,7 +581,7 @@ function Patients({ go }) {
           <table className="tbl">
             <thead>
               <tr>
-                <th style={{width:36}}><input type="checkbox"/></th>
+                <th style={{width:36}}><input type="checkbox" aria-label="تحديد كل المرضى"/></th>
                 <th>المريض</th>
                 <th>رقم الملف</th>
                 <th>التشخيص</th>
@@ -577,23 +590,23 @@ function Patients({ go }) {
                 <th>متبقي</th>
                 <th>آخر زيارة</th>
                 <th>الدفع</th>
-                <th style={{width:90}}></th>
+                <th style={{width:90}}><span className="sr-only">إجراءات</span></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p=>(
                 <tr key={p.id} data-clickable="true" tabIndex={0} onClick={()=>{setSelected(p);setView("detail")}} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelected(p);setView("detail");} }}>
-                  <td onClick={e=>e.stopPropagation()}><input type="checkbox"/></td>
+                  <td onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={`تحديد ${p.name}`}/></td>
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       <div className="av md">{p.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
                       <div>
                         <div style={{fontWeight:500}}>{p.name}</div>
-                        <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{p.age} · {p.gender} · {p.job}</div>
+                        <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{[p.age ? `${p.age} سنة` : "", genderAr(p.gender), p.job && p.job !== "—" ? p.job : ""].filter(Boolean).join(" · ") || "—"}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="mono" style={{fontSize:12.5,color:"var(--ink-700)"}}>{p.id}</td>
+                  <td className="mono" style={{fontSize:12.5,color:"var(--ink-700)",whiteSpace:"nowrap"}}>{p.id}</td>
                   <td><span style={{fontSize:12.5}}>{p.diag}</span></td>
                   <td><span style={{fontSize:12.5}}>{p.dr}</span></td>
                   <td><span style={{fontSize:12.5}}>{p.th}</span></td>
@@ -605,12 +618,12 @@ function Patients({ go }) {
                       </div>
                     </div>
                   </td>
-                  <td className="muted" style={{fontSize:12.5}}>{p.visited}</td>
+                  <td className="muted mono" style={{fontSize:12.5,whiteSpace:"nowrap"}}>{p.visited}</td>
                   <td><PayBadge s={p.payment}/></td>
-                  <td onClick={e=>e.stopPropagation()}>
-                    <button className="btn btn-ghost btn-icon" onClick={()=>{setSelected(p);setView("detail")}}><I.Eye size={14}/></button>
-                    <button className="btn btn-ghost btn-icon" title="تعديل بيانات المريض" onClick={()=>setEditing(p)}><I.Edit size={14}/></button>
-                    <button className="btn btn-ghost btn-icon" onClick={()=>setConfirmDelete(p)} style={{color:"var(--red)"}}><I.Trash size={14}/></button>
+                  <td onClick={e=>e.stopPropagation()} style={{whiteSpace:"nowrap"}}>
+                    <button type="button" className="btn btn-ghost btn-icon" title="عرض الملف" aria-label={`عرض ملف ${p.name}`} onClick={()=>{setSelected(p);setView("detail")}}><I.Eye size={14}/></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title="تعديل بيانات المريض" aria-label={`تعديل بيانات ${p.name}`} onClick={()=>setEditing(p)}><I.Edit size={14}/></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title="حذف المريض" aria-label={`حذف ${p.name}`} onClick={()=>setConfirmDelete(p)} style={{color:"#A8443A"}}><I.Trash size={14}/></button>
                   </td>
                 </tr>
               ))}
@@ -640,7 +653,7 @@ function Patients({ go }) {
                 <PayBadge s={p.payment}/>
               </div>
               <div style={{padding:"10px 12px",background:"var(--ink-50)",borderRadius:10,fontSize:12,marginBottom:10}}>
-                <div style={{color:"var(--ink-500)",fontSize:10.5,textTransform:"uppercase",letterSpacing:".05em",marginBottom:3}}>التشخيص</div>
+                <div style={{color:"var(--ink-500)",fontSize:11,marginBottom:3}}>التشخيص</div>
                 <div>{p.diag}</div>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
@@ -650,7 +663,7 @@ function Patients({ go }) {
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div className="muted" style={{fontSize:10.5}}>متبقي</div>
-                  <div className="mono">{p.remain} Sessions</div>
+                  <div>{p.remain ?? "—"} جلسات</div>
                 </div>
               </div>
               <div style={{marginTop:12,display:"flex"}}>
@@ -923,12 +936,12 @@ function PatientEditModal({ patient, onClose, onSaved }) {
         <Field label="رقم الملف الطبي">
           <input className="input" value={form.medical_file_no || ""} onChange={e=>set("medical_file_no", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("medical_file_no")}/>
-          {errors.medical_file_no && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.medical_file_no}</div>}
+          {errors.medical_file_no && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.medical_file_no}</div>}
         </Field>
         <Field label="الرقم القومي / جواز السفر">
           <input className="input" value={form.national_id || ""} onChange={e=>set("national_id", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("national_id")}/>
-          {errors.national_id && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.national_id}</div>}
+          {errors.national_id && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.national_id}</div>}
         </Field>
         <Field label="الحالة">
           <select className="input" value={form.status || "نشط"} onChange={e=>set("status", e.target.value)}
@@ -943,22 +956,22 @@ function PatientEditModal({ patient, onClose, onSaved }) {
         <Field label="الاسم الكامل" required span={2}>
           <input className="input" value={form.name || ""} onChange={e=>set("name", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("name")}/>
-          {errors.name && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.name}</div>}
+          {errors.name && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.name}</div>}
         </Field>
         <Field label="الهاتف" required>
           <input className="input" value={form.phone || ""} onChange={e=>set("phone", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("phone")}/>
-          {errors.phone && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.phone}</div>}
+          {errors.phone && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.phone}</div>}
         </Field>
         <Field label="واتساب">
           <input className="input" value={form.whatsapp || ""} onChange={e=>set("whatsapp", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("whatsapp")}/>
-          {errors.whatsapp && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.whatsapp}</div>}
+          {errors.whatsapp && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.whatsapp}</div>}
         </Field>
         <Field label="البريد الإلكتروني">
           <input className="input" type="email" value={form.email || ""} onChange={e=>set("email", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("email")}/>
-          {errors.email && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.email}</div>}
+          {errors.email && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.email}</div>}
         </Field>
         <Field label="الجنس">
           <select className="input" value={form.gender || ""} onChange={e=>set("gender", e.target.value)}
@@ -991,7 +1004,7 @@ function PatientEditModal({ patient, onClose, onSaved }) {
         <Field label="هاتف الطوارئ">
           <input className="input" value={form.emergency_phone || ""} onChange={e=>set("emergency_phone", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("emergency_phone")}/>
-          {errors.emergency_phone && <div style={{color:"var(--red)",fontSize:11,marginTop:3}}>{errors.emergency_phone}</div>}
+          {errors.emergency_phone && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.emergency_phone}</div>}
         </Field>
       </div>
 
@@ -1134,7 +1147,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
           {/* hero */}
           <div className="card" style={{padding:24,display:"flex",alignItems:"flex-start",gap:18,marginBottom:18,position:"relative",overflow:"hidden",flexWrap:"wrap"}}>
             <div style={{position:"absolute",inset:0,background:"linear-gradient(120deg, var(--blue-100), transparent 60%)",opacity:.7,pointerEvents:"none"}}/>
-            <div className="av lg" style={{width:64,height:64,fontSize:22,background:"var(--blue-500)",color:"#fff",position:"relative"}}>
+            <div className="av lg" style={{width:64,height:64,fontSize:22,background:"var(--blue-700)",color:"#fff",position:"relative"}}>
               {p.name.split(" ").map(x=>x[0]).join("").slice(0,2)}
             </div>
             <div style={{flex:1,position:"relative",minWidth:220}}>
@@ -1144,10 +1157,10 @@ function PatientDetail({ p: pIn, onBack, go }) {
                 <span className="mono" style={{fontSize:11,color:"var(--ink-500)",border:"1px solid var(--ink-200)",padding:"2px 8px",borderRadius:6}}>{p.id}</span>
               </div>
               <div style={{display:"flex",gap:"8px 18px",marginTop:8,fontSize:12.5,color:"var(--ink-500)",flexWrap:"wrap"}}>
-                <span style={{display:"flex",alignItems:"center",gap:6}}><I.User size={13}/> {p.age} y · {p.gender==="F"?"Female":"Male"}</span>
-                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Phone size={13}/> {p.phone}</span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}><I.User size={13}/> {[p.age ? `${p.age} سنة` : "", genderAr(p.gender)].filter(Boolean).join(" · ") || "—"}</span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Phone size={13}/> <bdi dir="ltr">{p.phone}</bdi></span>
                 <span style={{display:"flex",alignItems:"center",gap:6}}><I.MapPin size={13}/> {p.address || "—"}</span>
-                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Clock size={13}/> Reg. {p.registered}</span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Clock size={13}/> سُجّل في <bdi dir="ltr" className="mono">{p.registered}</bdi></span>
               </div>
             </div>
             <div style={{display:"flex",gap:8,position:"relative",flexWrap:"wrap"}}>
@@ -1285,8 +1298,8 @@ function PatientOverview({ p }) {
         <InfoRow k="رقم الملف" v={<span className="mono">{p.id}</span>}/>
         <InfoRow k="الاسم الكامل" v={p.name}/>
         <InfoRow k="الهاتف" v={p.phone}/>
-        <InfoRow k="العمر" v={`${p.age} years`}/>
-        <InfoRow k="الجنس" v={p.gender==="F"?"Female":"Male"}/>
+        <InfoRow k="العمر" v={p.age ? `${p.age} سنة` : "—"}/>
+        <InfoRow k="الجنس" v={genderAr(p.gender) || "—"}/>
         <InfoRow k="المهنة" v={p.job}/>
         <InfoRow k="العنوان" v={p.address || "—"}/>
         <InfoRow k="تاريخ التسجيل" v={p.registered}/>
@@ -1577,7 +1590,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           )}
           {t.warnings && (
             <>
-              <div className="label" style={{color:"var(--red)"}}>تحذيرات</div>
+              <div className="label" style={{color:"#A8443A"}}>تحذيرات</div>
               <div style={{padding:14,background:"#FDF1F0",border:"1px solid #F2CBC7",borderRadius:12,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap",marginBottom:18}}>
                 {t.warnings}
               </div>
@@ -1632,9 +1645,9 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           <div className="label">سجل الإنشاء</div>
           <div style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10,fontSize:12,lineHeight:1.7,marginBottom:14}}>
             <div><span className="muted">أنشأها: </span>{t.created_by_name || "—"}
-              {t.created_at ? <span className="muted"> · {new Date(t.created_at).toLocaleDateString("ar-EG")}</span> : null}</div>
+              {t.created_at ? <span className="muted"> · {new Date(t.created_at).toLocaleDateString("ar-EG-u-nu-latn")}</span> : null}</div>
             <div><span className="muted">آخر تحديث: </span>{t.updated_by_name || "—"}
-              {t.updated_at ? <span className="muted"> · {new Date(t.updated_at).toLocaleDateString("ar-EG")}</span> : null}</div>
+              {t.updated_at ? <span className="muted"> · {new Date(t.updated_at).toLocaleDateString("ar-EG-u-nu-latn")}</span> : null}</div>
           </div>
 
           <button className="btn btn-blue" style={{width:"100%",justifyContent:"center"}} onClick={openEditor}>
@@ -1956,14 +1969,14 @@ function PatientInvoices({ p }) {
       </div>
       <div className="tbl-scroll">
       <table className="tbl">
-        <thead><tr><th>فاتورة</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th></th></tr></thead>
+        <thead><tr><th>فاتورة</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
         <tbody>
           {invoices.length ? invoices.map(inv=>(
             <tr key={inv.id}>
               <td className="mono">{inv.id}</td>
               <td>{inv.date}</td>
-              <td className="mono">EGP {inv.amount.toLocaleString()}</td>
-              <td className="mono">EGP {inv.paid.toLocaleString()}</td>
+              <td className="mono">EGP {inv.amount.toLocaleString("en-US")}</td>
+              <td className="mono">EGP {inv.paid.toLocaleString("en-US")}</td>
               <td>{inv.method}</td>
               <td><PayBadge s={inv.status}/></td>
               <td><button className="btn btn-ghost btn-icon" onClick={()=>{
@@ -1991,7 +2004,7 @@ function PatientAdd({ onCancel, onSave }) {
   const [form, setForm] = React.useState({
     patient_id: newRecordId("P-"),
     created_at: new Date().toISOString().slice(0,10),
-    name: "", phone: "", email: "", age: "", gender: "Female",
+    name: "", phone: "", email: "", age: "", gender: "F",
     occupation: "", marital: "أعزب", address: "",
     diagnosis: "", complaint: "", chronic: "", surgeries: "",
     allergies: "", meds: "", smoking: "أبدًا", activity: "متوسط",
@@ -2049,7 +2062,7 @@ function PatientAdd({ onCancel, onSave }) {
   return (
     <Page>
       <div className="crumb"><span onClick={onCancel} style={{cursor:"pointer"}}>المرضى</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>مريض جديد</span></div>
-      <div className="h1" style={{marginBottom:6}}>تسجيل مريض جديد</div>
+      <h1 className="h1" style={{marginBottom:6}}>تسجيل مريض جديد</h1>
       <div className="muted" style={{fontSize:13.5,marginBottom:24}}>خطوة {step+1} من {steps.length} — drafts autosave every 5 seconds.</div>
 
       {/* stepper */}
@@ -2095,12 +2108,26 @@ function PatientAdd({ onCancel, onSave }) {
   );
 }
 
+// A labelled form field. The label names the field's control (docs/04:
+// every field has a connected label): the first input, select or textarea
+// inside without a name of its own gets aria-labelledby, and the hint
+// aria-describedby.
 function Field({ label, children, hint, span = 1, required }) {
+  const boxRef = React.useRef(null);
+  const id = "field" + React.useId().replace(/:/g, "");
+  React.useEffect(() => {
+    const el = boxRef.current && boxRef.current.querySelector(
+      'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea');
+    if (!el || (el.labels && el.labels.length) || el.hasAttribute("aria-label")) return;
+    if (!el.hasAttribute("aria-labelledby")) el.setAttribute("aria-labelledby", id + "-label");
+    if (hint && !el.hasAttribute("aria-describedby")) el.setAttribute("aria-describedby", id + "-hint");
+    if (required) el.setAttribute("aria-required", "true");
+  });
   return (
-    <div style={{gridColumn:`span ${span}`}}>
-      <div className="label">{label} {required && <span style={{color:"var(--red)"}}>*</span>}</div>
+    <div ref={boxRef} style={{gridColumn:`span ${span}`}}>
+      <div className="label" id={id + "-label"}>{label} {required && <span aria-hidden="true" style={{color:"#A8443A"}}>*</span>}</div>
       {children}
-      {hint && <div style={{fontSize:11.5,color:"var(--ink-500)",marginTop:4}}>{hint}</div>}
+      {hint && <div id={id + "-hint"} style={{fontSize:11.5,color:"var(--ink-500)",marginTop:4}}>{hint}</div>}
     </div>
   );
 }
@@ -2117,8 +2144,8 @@ function FormPersonal({ form, setField }) {
         <Field label="العمر"><input className="input" type="number" placeholder="34" value={form.age} onChange={e=>setField("age", e.target.value)}/></Field>
         <Field label="الجنس">
           <div style={{display:"flex",gap:6}}>
-            {["Female","Male"].map(g=>(
-              <button key={g} className={"btn " + (form.gender===g?"btn-primary":"btn-secondary")} style={{flex:1,justifyContent:"center"}} onClick={()=>setField("gender", g)}>{g}</button>
+            {[["F","أنثى"],["M","ذكر"]].map(([g, l])=>(
+              <button key={g} type="button" aria-pressed={form.gender===g ? "true" : "false"} className={"btn " + (form.gender===g?"btn-primary":"btn-secondary")} style={{flex:1,justifyContent:"center"}} onClick={()=>setField("gender", g)}>{l}</button>
             ))}
           </div>
         </Field>
@@ -2199,7 +2226,7 @@ function FormReview({ form }) {
       </div>
       <div className="grid-2" style={{gap:18}}>
         {[
-          {h:"شخصي", rows:[["الاسم الكامل", f.name || "—"],["رقم الملف", f.patient_id || "—"],["الهاتف", f.phone || "—"],["Age", `${f.age || "—"}, ${f.gender || "—"}`]]},
+          {h:"شخصي", rows:[["الاسم الكامل", f.name || "—"],["رقم الملف", f.patient_id || "—"],["الهاتف", f.phone || "—"],["العمر والجنس", `${f.age ? f.age + " سنة" : "—"}، ${genderAr(f.gender) || "—"}`]]},
           {h:"طبي", rows:[["التشخيص", f.diagnosis || "—"],["أمراض مزمنة", f.chronic || "—"],["العمليات", f.surgeries || "—"]]},
           {h:"المرفقات", rows:[["الملفات","تُرفع من ملف المريض بعد الإنشاء"]]},
           {h:"التعيينات", rows:[["طبيب", f.doctor || "—"],["الأخصائي", f.therapist || "—"],["الباقة", f.pkg || "—"]]},
@@ -2269,13 +2296,13 @@ function Appointments({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المواعيد</span></div>
-          <div className="h1">{scoped ? "جدولي" : "المواعيد"}</div>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{booked} اليوم · {free} متاح · {pending} بانتظار التأكيد</div>
+          <h1 className="h1">{scoped ? "جدولي" : "المواعيد"}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>المحجوزة: {booked} · المتاحة: {free} · بانتظار التأكيد: {pending}</div>
         </div>
         <div className="page-actions">
           <div className="seg">
             {["التقويم","قائمة","حجز"].map(t=>(
-              <button key={t} className={tab===t?"on":""} onClick={()=>setTab(t)} style={{textTransform:"capitalize"}}>
+              <button key={t} type="button" aria-pressed={tab===t ? "true" : "false"} className={tab===t?"on":""} onClick={()=>setTab(t)}>
                 {t==="التقويم" ? "التقويم" : t==="قائمة" ? "قائمة" : "حجز جديد"}
               </button>
             ))}
@@ -2793,11 +2820,11 @@ function CalendarView({ dateOffset, setDateOffset }) {
   const parentIso   = todayIso();
   const viewIso     = offsetIso(parentIso, dateOffset || 0);
   const viewDate    = new Date(viewIso + "T00:00:00");
-  const dm          = viewDate.toLocaleDateString("ar-EG", { day: "numeric", month: "long" });
+  const dm          = viewDate.toLocaleDateString("ar-EG-u-nu-latn", { day: "numeric", month: "long" });
   const dateLabel   = dateOffset === 0 ? `اليوم، ${dm}`
                     : dateOffset === 1 ? `غدًا، ${dm}`
                     : dateOffset === -1 ? `أمس، ${dm}`
-                    : viewDate.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" });
+                    : viewDate.toLocaleDateString("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" });
 
   // Direct absolute-date picker: convert user's chosen date back into
   // an offset from today so the parent state stays valid.
@@ -2912,7 +2939,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
       out.push({
         iso:   d.toISOString().slice(0,10),
-        label: d.toLocaleDateString("ar-EG", { weekday: "short", day: "numeric" }),
+        label: d.toLocaleDateString("ar-EG-u-nu-latn", { weekday: "short", day: "numeric" }),
       });
     }
     return out;
@@ -2996,6 +3023,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       <input
         type="date"
         className="input"
+        aria-label="اذهب إلى تاريخ"
         value={viewIso}
         onChange={e=>onPickDate(e.target.value)}
         style={{width:150,padding:"6px 10px",fontSize:12}}
@@ -3008,11 +3036,11 @@ function CalendarView({ dateOffset, setDateOffset }) {
       </div>
       <div style={{flex:1}}/>
       {unroutedCount > 0 && (
-        <span style={{fontSize:12,color:"var(--red)"}} title="مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة">
+        <span style={{fontSize:12,color:"#A8443A"}} title="مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة">
           ⚠ {unroutedCount} موعد خارج الشبكة
         </span>
       )}
-      <span className="muted" style={{fontSize:12}}>{dayBooked} محجوز · {dayFree} متاح · {dayPending} بانتظار</span>
+      <span className="muted" style={{fontSize:12}}>محجوز: {dayBooked} · متاح: {dayFree} · بانتظار: {dayPending}</span>
     </div>
   );
 
@@ -3031,7 +3059,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
             return (
             <div key={s.key} style={{padding:"12px 14px",borderRight:i<visibleStaffCols.length-1?"1px solid var(--ink-200)":"none",borderBottom:"1px solid var(--ink-200)",background:"var(--ink-50)"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span className="av sm" style={{background:s.color+"33",color:s.color}}>{(s.name||"").split(" ").map(x=>x[0]).join("").slice(0,2)}</span>
+                <span className="av sm" aria-hidden="true" style={{background:s.color+"33",color:"var(--ink-900)"}}>{(s.name||"").split(" ").map(x=>x[0]).join("").slice(0,2)}</span>
                 <div style={{minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
                   <div className="muted" style={{fontSize:11}}>{s.subtitle || s.role}</div>
@@ -3124,11 +3152,14 @@ function CalendarView({ dateOffset, setDateOffset }) {
                 return (
                   <div key={a.id}
                     draggable={!isAvail}
+                    // A booking opens its details from the keyboard too.
+                    role={isAvail ? undefined : "button"} tabIndex={isAvail ? undefined : 0}
+                    onKeyDown={isAvail ? undefined : (e)=>{ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setActionsModal(a); } }}
                     onDragStart={(e)=>{e.stopPropagation();setDraggedId(a.id);}}
                     onClick={()=>{ if(!isAvail) setActionsModal(a); }}
                     style={{
                       position:"absolute", left:6, right:6, top, height:h-3,
-                      background:bg, border, borderLeft: isAvail?border:`3px solid ${c}`,
+                      background:bg, border, borderInlineStart: isAvail?border:`3px solid ${c}`,
                       borderRadius:9, padding:"6px 8px",fontSize:11.5,
                       cursor: isAvail?"pointer":"grab", overflow:"hidden",
                       transition:"transform .12s",
@@ -3201,7 +3232,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                         }}>
                         <div style={{display:"flex",justifyContent:"space-between",gap:4}}>
                           <span className="mono" style={{fontWeight:600}}>{a.time || "—"}</span>
-                          <span className="muted" style={{fontSize:10}}>{a.dur||30}m</span>
+                          <span className="muted" style={{fontSize:10}}><span className="mono">{a.dur||30}</span> د</span>
                         </div>
                         <div style={{fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.patient || "—"}</div>
                         <div className="muted" style={{fontSize:10,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{staffLabel}</div>
@@ -3241,7 +3272,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
                   }}>
                   <div style={{textAlign:"center",minWidth:56}}>
                     <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time || "—"}</div>
-                    <div className="mono" style={{fontSize:10,color:"var(--ink-400)"}}>{a.dur || 30}m</div>
+                    <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur || 30}</span> د</div>
                   </div>
                   <div style={{width:1,height:34,background:"var(--ink-200)"}}/>
                   <div style={{flex:1,minWidth:0}}>
@@ -3444,36 +3475,44 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
     !(newDateIso === todayIsoR && newTime <= nowHM) &&
     !takenTimes.has(newTime);
 
-  const sectionLabel = (text) => (
-    <div style={{
-      fontSize:11,fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",
-      color:"var(--ink-400)",marginBottom:10,whiteSpace:"nowrap"
+  // Each picker is a labelled group (the label's id names it).
+  const sectionLabel = (text, id) => (
+    <div id={id} style={{
+      fontSize:12,fontWeight:600,
+      color:"var(--ink-700)",marginBottom:10,whiteSpace:"nowrap"
     }}>{text}</div>
   );
 
+  // A dialog like Modal (docs/04): role=dialog named by its title, focus
+  // kept inside, Esc closes it, focus back to the booking it came from.
+  const boxRef = React.useRef(null);
+  const titleId = useDialogFocus(boxRef, true, onClose);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
+      <DialogFocusGuard boxRef={boxRef} at="start"/>
       <div
+        ref={boxRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         onClick={e=>e.stopPropagation()}
         style={{
           background:"#fff",borderRadius:18,boxShadow:"0 24px 60px rgba(0,0,0,.18)",
           width:"min(600px, calc(100vw - 32px))",
-          maxHeight:"calc(100vh - 48px)",overflowY:"auto",
-          padding:"28px 28px 24px",direction:"rtl",
+          maxHeight:"calc(100vh - 48px)",maxHeight:"calc(100dvh - 48px)",overflowY:"auto",
+          padding:"clamp(18px, 5vw, 28px) clamp(16px, 5vw, 28px) 24px",direction:"rtl",outline:"none",
         }}
       >
         {/* ── Header ── */}
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,marginBottom:20}}>
           <div style={{minWidth:0}}>
-            <div style={{fontSize:18,fontWeight:700,color:"var(--ink-900)",lineHeight:1.2,marginBottom:4}}>
+            <h2 id={titleId} style={{fontSize:18,fontWeight:700,color:"var(--ink-900)",lineHeight:1.2,margin:"0 0 4px"}}>
               إعادة جدولة الموعد
-            </div>
-            <div style={{fontSize:13,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"visible"}}>
-              {appt.patient} · {appt.type}
+            </h2>
+            <div style={{fontSize:13,color:"var(--ink-500)"}}>
+              {[appt.patient, appt.type].filter(Boolean).join(" · ")}
             </div>
           </div>
           <button
-            className="btn btn-ghost btn-icon"
+            type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق"
             onClick={onClose}
             style={{flexShrink:0,marginTop:2}}
           ><I.X size={16}/></button>
@@ -3486,7 +3525,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
           background:"var(--blue-50)",border:"1px solid var(--blue-100)",
           borderRadius:12,marginBottom:24,
         }}>
-          <I.Clock size={14} style={{color:"var(--blue-500)",flexShrink:0}}/>
+          <I.Clock size={14} style={{color:"var(--blue-700)",flexShrink:0}}/>
           <span style={{fontSize:13,color:"var(--ink-500)",whiteSpace:"nowrap"}}>الموعد الحالي:</span>
           <span style={{fontSize:13,fontWeight:600,color:"var(--ink-900)",whiteSpace:"nowrap"}}>{appt.time}</span>
           <span style={{color:"var(--ink-300)"}}>·</span>
@@ -3495,36 +3534,36 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Date picker (rolling 7 days from real system time) ── */}
         <div style={{marginBottom:22}}>
-          {sectionLabel("اليوم الجديد")}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))",gap:8}}>
+          {sectionLabel("اليوم الجديد", titleId + "-day")}
+          <div role="group" aria-labelledby={titleId + "-day"} style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))",gap:8}}>
             {days.map(d => {
               const active = newDateIso === d.iso;
               const avail  = availableCount(d.iso);
               const full   = avail === 0;
               return (
                 <button
-                  key={d.iso}
+                  key={d.iso} type="button"
                   onClick={()=> !full && setNewDateIso(d.iso)}
-                  disabled={full}
-                  title={full ? "لا تتوفر مواعيد" : `${avail} موعد متاح`}
+                  disabled={full} aria-pressed={active ? "true" : "false"}
+                  title={full ? "لا تتوفر مواعيد" : `متاح: ${avail}`}
                   style={{
                     display:"flex",flexDirection:"column",alignItems:"center",gap:2,
                     padding:"10px 12px",borderRadius:12,
-                    border: active ? "none" : "1px solid var(--ink-200)",
+                    border: active ? "1px solid var(--blue-700)" : "1px solid var(--ink-200)",
                     cursor: full ? "not-allowed" : "pointer",
-                    background: active ? "var(--blue-500)" : full ? "var(--ink-50)" : "#fff",
-                    color: active ? "#fff" : full ? "var(--ink-300)" : "var(--ink-900)",
-                    boxShadow: active ? "0 2px 8px rgba(59,130,246,.3)" : "none",
+                    background: active ? "var(--blue-700)" : full ? "var(--ink-50)" : "#fff",
+                    color: active ? "#fff" : full ? "var(--ink-500)" : "var(--ink-900)",
+                    boxShadow: active ? "0 2px 8px rgba(58,127,181,.3)" : "none",
                     transition:"all .12s",
                     opacity: full ? .55 : 1,
                   }}
                 >
-                  <span style={{fontSize:11.5,fontWeight:500,opacity:.85}}>{d.weekday}</span>
-                  <span style={{fontSize:15,fontWeight:600,fontFamily:"var(--mono, monospace)"}}>
-                    {d.day} {d.month}
+                  <span style={{fontSize:11.5,fontWeight:500}}>{d.weekday}</span>
+                  <span style={{fontSize:15,fontWeight:600}}>
+                    <span className="mono">{d.day}</span> {d.month}
                   </span>
-                  <span style={{fontSize:11,opacity:.85}}>
-                    {full ? "محجوز بالكامل" : `${avail} متاح`}
+                  <span style={{fontSize:11}}>
+                    {full ? "محجوز بالكامل" : `متاح: ${avail}`}
                   </span>
                 </button>
               );
@@ -3534,8 +3573,8 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Time picker ── */}
         <div style={{marginBottom:22}}>
-          {sectionLabel("الوقت الجديد")}
-          <div style={{
+          {sectionLabel("الوقت الجديد", titleId + "-time")}
+          <div role="group" aria-labelledby={titleId + "-time"} style={{
             display:"grid",
             gridTemplateColumns:"repeat(auto-fill, minmax(72px, 1fr))",
             gap:6,
@@ -3547,17 +3586,19 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
               const disabled = isPast || isTaken;
               return (
                 <button
-                  key={t}
-                  disabled={disabled}
+                  key={t} type="button"
+                  disabled={disabled} aria-pressed={active ? "true" : "false"}
+                  aria-label={isPast ? `${t} — وقت سابق` : isTaken ? `${t} — محجوز` : undefined}
                   onClick={()=> !disabled && setNewTime(t)}
                   title={isPast ? "وقت سابق" : isTaken ? "محجوز" : ""}
+                  className="slot-btn"
                   style={{
                     display:"flex",alignItems:"center",justifyContent:"center",
                     padding:"8px 4px",borderRadius:9,cursor:disabled?"not-allowed":"pointer",
-                    fontSize:13,fontWeight: active?600:400,fontFamily:"var(--mono, monospace)",
-                    background: active?"var(--blue-500)":disabled?"var(--ink-100)":"var(--ink-50)",
-                    color: active?"#fff":disabled?"var(--ink-300)":"var(--ink-700)",
-                    boxShadow: active?"0 2px 8px rgba(59,130,246,.3)":"none",
+                    fontSize:13,fontWeight: active?600:400,fontFamily:"var(--font-mono)",
+                    background: active?"var(--blue-700)":disabled?"var(--ink-100)":"var(--ink-50)",
+                    color: active?"#fff":disabled?"var(--ink-500)":"var(--ink-700)",
+                    boxShadow: active?"0 2px 8px rgba(58,127,181,.3)":"none",
                     border: active?"none":"1px solid var(--ink-200)",
                     textDecoration: isTaken ? "line-through" : "none",
                     transition:"all .12s",
@@ -3571,29 +3612,29 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
 
         {/* ── Therapist picker ── */}
         <div style={{marginBottom:26}}>
-          {sectionLabel("الأخصائي")}
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {sectionLabel("الأخصائي", titleId + "-th")}
+          <div role="group" aria-labelledby={titleId + "-th"} style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {therapists.filter(t=>t.name!=="متاح").map(t => {
               const active = newTherapist === t.name;
               return (
                 <button
-                  key={t.name}
+                  key={t.name} type="button" aria-pressed={active ? "true" : "false"}
                   onClick={()=>setNewTherapist(t.name)}
                   style={{
-                    display:"inline-flex",alignItems:"center",gap:8,
+                    display:"inline-flex",alignItems:"center",gap:8,minHeight:40,
                     padding:"8px 14px",borderRadius:10,border:"none",cursor:"pointer",
                     fontSize:13,fontWeight: active?600:500,
-                    background: active?"var(--blue-500)":"var(--ink-100)",
+                    background: active?"var(--blue-700)":"var(--ink-100)",
                     color: active?"#fff":"var(--ink-700)",
-                    boxShadow: active?"0 2px 8px rgba(59,130,246,.3)":"none",
+                    boxShadow: active?"0 2px 8px rgba(58,127,181,.3)":"none",
                     transition:"all .12s",
                     whiteSpace:"nowrap",minWidth:0,
                   }}
                 >
-                  <div style={{
+                  <div aria-hidden="true" style={{
                     width:22,height:22,borderRadius:"50%",flexShrink:0,
                     background: active?"rgba(255,255,255,.25)":(t.color+"33"),
-                    color: active?"#fff":t.color,
+                    color: active?"#fff":"var(--ink-900)",
                     display:"flex",alignItems:"center",justifyContent:"center",
                     fontSize:9,fontWeight:700,
                   }}>
@@ -3611,14 +3652,14 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
           display:"flex",alignItems:"center",justifyContent:"space-between",
           paddingTop:18,borderTop:"1px solid var(--ink-100)",gap:10,
         }}>
-          <div style={{fontSize:12.5,color:"var(--ink-500)",whiteSpace:"nowrap"}}>
-            <I.Calendar size={12} style={{marginLeft:4,verticalAlign:"middle"}}/>
-            {selectedLabel} · {newTime || "—"}
+          <div style={{fontSize:12.5,color:"var(--ink-500)",whiteSpace:"nowrap"}} aria-live="polite">
+            <I.Calendar size={12} style={{marginInlineEnd:4,verticalAlign:"middle"}}/>
+            {selectedLabel} · <span className="mono">{newTime || "—"}</span>
           </div>
           <div style={{display:"flex",gap:8,flexShrink:0}}>
-            <button className="btn btn-ghost" onClick={onClose} style={{whiteSpace:"nowrap"}}>إلغاء</button>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{whiteSpace:"nowrap"}}>إلغاء</button>
             <button
-              className="btn btn-blue"
+              type="button" className="btn btn-blue"
               disabled={!canSave}
               onClick={()=> canSave && onSave(newTime, newTherapist, newDateIso)}
               style={{whiteSpace:"nowrap",opacity:canSave?1:.55,cursor:canSave?"pointer":"not-allowed"}}
@@ -3628,6 +3669,7 @@ function RescheduleModal({ appt, onClose, onSave, therapists }) {
           </div>
         </div>
       </div>
+      <DialogFocusGuard boxRef={boxRef} at="end"/>
     </div>
   );
 }
@@ -3652,11 +3694,11 @@ function AppointmentList() {
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>وقت</th><th>المريض</th><th>الطبيب</th><th>الأخصائي</th><th>الغرفة</th><th>النوع</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>وقت</th><th>المريض</th><th>الطبيب</th><th>الأخصائي</th><th>الغرفة</th><th>النوع</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {filtered.map(a=>(
               <tr key={a.id}>
-                <td><span className="mono" style={{fontWeight:600}}>{a.time}</span> <span className="muted">· {a.dur}m</span></td>
+                <td><span className="mono" style={{fontWeight:600}}>{a.time}</span> <span className="muted">· <span className="mono">{a.dur}</span> د</span></td>
                 <td>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div className="av sm">{(a.patient||"—").split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
@@ -3719,7 +3761,7 @@ function nextAvailableLabel(doctorId) {
       .map(a => a.time));
     const free = slots.find(t => !booked.has(t));
     if (free) {
-      const lbl = i === 0 ? "اليوم" : i === 1 ? "غدًا" : d.toLocaleDateString("ar-EG", { day: "numeric", month: "short" });
+      const lbl = i === 0 ? "اليوم" : i === 1 ? "غدًا" : d.toLocaleDateString("ar-EG-u-nu-latn", { day: "numeric", month: "short" });
       return `${lbl} ${free}`;
     }
   }
@@ -3865,16 +3907,37 @@ function BookingFlow({ onDone }) {
     if (step < LAST) setStep(step + 1); else confirm();
   }
 
+  // A step's buttons leave with it (a specialist card, a date): the focus
+  // moves to the new step instead of falling back to the page.
+  const stepBoxRef = React.useRef(null);
+  const firstStep = React.useRef(true);
+  React.useEffect(() => {
+    if (firstStep.current) { firstStep.current = false; return; }
+    const box = stepBoxRef.current;
+    const a = document.activeElement;
+    if (box && (!a || a === document.body || !document.contains(a))) __focusEl(box);
+  }, [step]);
+  // On phones the stepper scrolls sideways: keep the current step in view.
+  const stepperRef = React.useRef(null);
+  React.useEffect(() => {
+    const box = stepperRef.current;
+    const cur = box && box.querySelector('[aria-current="step"]');
+    if (!box || !cur || box.scrollWidth <= box.clientWidth) return;
+    const b = box.getBoundingClientRect(), c = cur.getBoundingClientRect();
+    if (c.left < b.left || c.right > b.right) box.scrollLeft += (c.left + c.width / 2) - (b.left + b.width / 2);
+  }, [step]);
+
   return (
     <div>
       <div className="card" style={{padding:18,marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div className="stepper" style={{gap:0,flex:1}}>
+        {/* Focusable so a keyboard can scroll it on phones. */}
+        <div ref={stepperRef} className="stepper" role="group" tabIndex={0} aria-label={`خطوات الحجز — الخطوة ${step} من ${LAST}: ${steps[step-1]}`} style={{gap:0,flex:1}}>
           {steps.map((s,i)=>(
             <React.Fragment key={i}>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                <div style={{
+              <div aria-current={i+1===step ? "step" : undefined} style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                <div aria-hidden="true" style={{
                   width:24,height:24,borderRadius:999,
-                  background:i+1<step?"var(--green)":i+1===step?"var(--blue-500)":"var(--ink-100)",
+                  background:i+1<step?"var(--green)":i+1===step?"var(--blue-700)":"var(--ink-100)",
                   color:i+1<=step?"#fff":"var(--ink-500)",
                   display:"flex",alignItems:"center",justifyContent:"center",
                   fontSize:11,fontWeight:600
@@ -3887,7 +3950,7 @@ function BookingFlow({ onDone }) {
         </div>
       </div>
 
-      <div className="card card-pad" style={{minHeight:420,marginBottom:18}}>
+      <div ref={stepBoxRef} tabIndex={-1} aria-label={`الخطوة ${step}: ${steps[step-1]}`} role="group" className="card card-pad" style={{minHeight:420,marginBottom:18,outline:"none"}}>
         {step===1 && <PatientStep picks={picks} update={update}/>}
         {step===2 && (therapists.length ? <PickGrid title="اختر أخصائيًا — الموعد مع الأخصائي إلزامي"
           items={therapists.map(t=>({ id:t.name, l:t.name, sub:`${t.spec} · حمل ${t.load}/${t.max}`, ic:t.name.split(" ").map(x=>x[0]).join(""), color:t.color, count:`${t.max-t.load} فترة متاحة` }))}
@@ -4085,13 +4148,15 @@ function PickGrid({ title, items, onPick, selected, avatar }) {
 function DatePick({ value, onPick, schedule, patient, onGenerated }) {
   const [viewMonth, setViewMonth] = React.useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [genBusy, setGenBusy] = React.useState(false);
-  const days = ["أحد","إثن","ثلا","أرب","خمي","جمع","سبت"];
+  // Weekday initials as Arabic calendars print them; the full name is the
+  // header's accessible name.
+  const days = [["ح","الأحد"],["ن","الاثنين"],["ث","الثلاثاء"],["ر","الأربعاء"],["خ","الخميس"],["ج","الجمعة"],["س","السبت"]];
   const y = viewMonth.getFullYear(), m = viewMonth.getMonth();
   const startDow = new Date(y, m, 1).getDay();
   const total = new Date(y, m + 1, 0).getDate();
   const todayIso = new Date().toISOString().slice(0, 10);
   const iso = (n) => `${y}-${String(m+1).padStart(2,"0")}-${String(n).padStart(2,"0")}`;
-  const monthLabel = viewMonth.toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
+  const monthLabel = viewMonth.toLocaleDateString("ar-EG-u-nu-latn", { month: "long", year: "numeric" });
   const quick = [
     { l:"اليوم", d: todayIso },
     { l:"غدًا", d: new Date(Date.now()+864e5).toISOString().slice(0,10) },
@@ -4133,12 +4198,13 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
       <div className="rgrid c-lg" style={{"--gtc":"1.4fr 1fr",gap:24}}>
         <div className="card" style={{padding:18,boxShadow:"none"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-            <button className="btn btn-ghost btn-icon" aria-label="الشهر السابق" onClick={()=>setViewMonth(new Date(y,m-1,1))}><I.ArrowRight size={14}/></button>
-            <div className="h3">{monthLabel}</div>
-            <button className="btn btn-ghost btn-icon" aria-label="الشهر التالي" onClick={()=>setViewMonth(new Date(y,m+1,1))}><I.ArrowLeft size={14}/></button>
+            {/* LTR icon names: index.html mirrors them inside .btn, so «السابق» points right in RTL. */}
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="الشهر السابق" onClick={()=>setViewMonth(new Date(y,m-1,1))}><I.ArrowLeft size={14}/></button>
+            <div className="h3" aria-live="polite">{monthLabel}</div>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="الشهر التالي" onClick={()=>setViewMonth(new Date(y,m+1,1))}><I.ArrowRight size={14}/></button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
-            {days.map((d,i)=>(<div key={i} className="muted" style={{textAlign:"center",fontSize:11,padding:"6px 0"}}>{d}</div>))}
+            {days.map(([d, full],i)=>(<div key={i} className="muted" title={full} aria-label={full} style={{textAlign:"center",fontSize:12,padding:"6px 0"}}>{d}</div>))}
             {Array.from({length:startDow}).map((_,i)=>(<div key={"e"+i}></div>))}
             {Array.from({length:total},(_,i)=>i+1).map(n=>{
               const dIso = iso(n);
@@ -4146,13 +4212,14 @@ function DatePick({ value, onPick, schedule, patient, onGenerated }) {
               const isSel = value === dIso;
               const isSched = !isPast && schedDays.includes(new Date(dIso + "T00:00:00").getDay());
               return (
-                <button key={n} disabled={isPast} onClick={()=>onPick(dIso)}
+                <button key={n} type="button" disabled={isPast} onClick={()=>onPick(dIso)} aria-pressed={isSel ? "true" : "false"}
+                  aria-label={dIso + (isSched ? " — يوم من الجدول الثابت" : "")}
                   title={isSched ? "يوم من الجدول الثابت" : undefined}
                   style={{
-                    height:38,borderRadius:9,cursor:isPast?"default":"pointer",
-                    border:isSel?"1px solid var(--blue-500)":isSched?"1px dashed var(--blue-500)":"1px solid transparent",
-                    background: isSel?"var(--blue-500)":isSched?"var(--blue-50)":"transparent",
-                    color: isSel?"#fff":isPast?"var(--ink-300)":"var(--ink-900)",
+                    height:40,minWidth:0,padding:0,borderRadius:9,cursor:isPast?"default":"pointer",
+                    border:isSel?"1px solid var(--blue-700)":isSched?"1px dashed var(--blue-700)":"1px solid transparent",
+                    background: isSel?"var(--blue-700)":isSched?"var(--blue-50)":"transparent",
+                    color: isSel?"#fff":isPast?"var(--ink-500)":"var(--ink-900)",opacity:isPast ? .55 : 1,
                     fontWeight:isSel?600:500,fontSize:13
                   }} className="mono">{n}</button>
               );
@@ -4214,13 +4281,14 @@ function SlotPick({ picks, update, schedule }) {
     const sel = picks.slot === t;
     const pref = t === preferredTime;
     return (
-      <button disabled={u} onClick={()=>update({ slot: t })} className="mono"
+      <button type="button" disabled={u} onClick={()=>update({ slot: t })} className="mono slot-btn" aria-pressed={sel ? "true" : "false"}
+        aria-label={u ? `${t} — محجوز` : pref ? `${t} — الوقت المفضل للمريض` : undefined}
         title={pref ? "الوقت المفضل للمريض" : undefined}
         style={{
           padding:"10px 16px",borderRadius:10,
-          border: pref && !sel ? "1px dashed var(--blue-500)" : "1px solid var(--ink-200)",
-          background: sel?"var(--blue-500)":u?"var(--ink-100)":pref?"var(--blue-50)":"#fff",
-          color: sel?"#fff":u?"var(--ink-300)":"var(--ink-900)",
+          border: pref && !sel ? "1px dashed var(--blue-700)" : "1px solid var(--ink-200)",
+          background: sel?"var(--blue-700)":u?"var(--ink-100)":pref?"var(--blue-50)":"#fff",
+          color: sel?"#fff":u?"var(--ink-500)":"var(--ink-900)",
           textDecoration:u?"line-through":"none",
           cursor:u?"not-allowed":"pointer", fontSize:13, fontWeight: pref&&!sel?600:500
         }}>{t}{pref ? " ★" : ""}</button>
@@ -4266,7 +4334,7 @@ function SlotPick({ picks, update, schedule }) {
           <div><div className="muted">الأخصائي</div><div>{picks.therapist||"—"}</div></div>
           <div><div className="muted">الطبيب</div><div>{doctor?doctor.name:"بدون طبيب"}</div></div>
           <div><div className="muted">القسم</div><div>{dept?dept.name_ar:"—"}</div></div>
-          <div><div className="muted">الوقت</div><div className="mono">{picks.date||"—"} {picks.slot||""}</div></div>
+          <div><div className="muted">التاريخ والوقت</div><div className="mono">{picks.date||"—"} {picks.slot||""}</div></div>
         </div>
         <div style={{marginTop:8,fontSize:12.5}}><span className="muted">المريض: </span>{patientName || "—"}</div>
       </div>

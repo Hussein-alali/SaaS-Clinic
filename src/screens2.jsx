@@ -49,7 +49,7 @@ async function exportReportExcel({ filename, sheetName = "التقرير", title
     return false;
   }
   const clinic = (window.CLINIC && window.CLINIC.name) || "العيادة";
-  const genDate = new Date().toLocaleString("ar-EG");
+  const genDate = new Date().toLocaleString("ar-EG-u-nu-latn");
   const nCols = Math.max(columns.length, 1);
 
   const aoa = [];
@@ -186,7 +186,7 @@ function Treatments({ go }) {
         sessions: total ? `${done}/${total}` : String(done),
         status: t.status === "completed" || (progress >= 100 && total) ? "مكتمل"
               : t.status === "draft" ? "مسودة" : "نشط",
-        updated: updatedAt ? new Date(updatedAt).toLocaleDateString("ar-EG") : "—",
+        updated: updatedAt ? new Date(updatedAt).toLocaleDateString("ar-EG-u-nu-latn") : "—",
         p: patientRow || { patient_id: t.patient_id, name: t.patient_name || t.patient_id },
         t,
       };
@@ -242,7 +242,7 @@ function Treatments({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>خطط العلاج</span></div>
-          <div className="h1">خطط العلاج</div>
+          <h1 className="h1">خطط العلاج</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>{planStats.active} نشط · {planStats.drafts} مسودات · متوسط التقدم {avgProgress}%</div>
         </div>
         <div className="page-actions">
@@ -259,7 +259,7 @@ function Treatments({ go }) {
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>الخطة</th><th>المريض</th><th>التشخيص</th><th>الأخصائي</th><th>التقدّم</th><th>الجلسات</th><th>الحالة</th><th>آخر تحديث</th>{canDelete && <th></th>}</tr></thead>
+          <thead><tr><th>الخطة</th><th>المريض</th><th>التشخيص</th><th>الأخصائي</th><th>التقدّم</th><th>الجلسات</th><th>الحالة</th><th>آخر تحديث</th>{canDelete && <th><span className="sr-only">إجراءات</span></th>}</tr></thead>
           <tbody>
             {plans.length===0 && !loadingRecords && (
               <tr><td colSpan={canDelete?9:8}><EmptyState icon={<I.Clipboard size={22}/>} title="لا خطط علاج بعد" body="ستظهر خطط العلاج هنا بعد إنشائها."/></td></tr>
@@ -312,13 +312,13 @@ function TreatmentPlanDetail({ plan, onBack, canDelete, onDelete }) {
       <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}><span>خطط العلاج</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{plan.id}</span></div>
       <div className="page-head" style={{alignItems:"flex-start"}}>
         <div>
-          <div className="h1">{plan.diag}</div>
+          <h1 className="h1">{plan.diag}</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>المريض: {plan.patient} · الأخصائي: {plan.therapist}{plan.p && plan.p.registered ? ` · سُجّل ${plan.p.registered}` : ""}</div>
         </div>
         <div className="page-actions">
           <button className="btn btn-secondary" onClick={()=>window.print()}><I.Print size={13}/> طباعة</button>
           {canDelete && onDelete && (
-            <button className="btn btn-secondary" style={{color:"var(--red)"}} onClick={onDelete}>
+            <button className="btn btn-secondary" style={{color:"#A8443A"}} onClick={onDelete}>
               <I.Trash size={13}/> حذف الخطة
             </button>
           )}
@@ -394,7 +394,7 @@ const PhysioCard = ({ title, children }) => (
 const PhysioLabelRow = ({ label, required, control }) => (
   <div style={{display:"flex", alignItems:"center", gap:12, padding:"6px 0"}}>
     <div style={{flex:1, textAlign:"right", fontSize:13, fontWeight:500, color:"var(--ink-900)"}}>
-      {label}{required && <span style={{color:"var(--red)", marginInlineStart:4}}>*</span>}
+      {label}{required && <span style={{color:"#A8443A", marginInlineStart:4}}>*</span>}
     </div>
     <div style={{display:"flex", gap:6, alignItems:"center"}}>{control}</div>
   </div>
@@ -508,7 +508,7 @@ function PhysioSessionForm({ onBack }) {
         <span style={{color:"var(--ink-700)"}}>تشخيص</span>
       </div>
       <div className="page-head">
-        <div className="h1">تشخيص</div>
+        <h1 className="h1">تشخيص</h1>
         <div className="page-actions">
           <button className="btn btn-ghost" onClick={onBack}>رجوع</button>
           <button className="btn btn-blue" onClick={save}><I.Check size={13}/> حفظ الجلسة</button>
@@ -522,14 +522,14 @@ function PhysioSessionForm({ onBack }) {
           <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)", gap:14}}>
             <div>
               <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>
-                الأخصائي المسؤول <span style={{color:"var(--red)"}}>*</span>
+                الأخصائي المسؤول <span style={{color:"#A8443A"}}>*</span>
               </div>
               <TherapistCombobox value={therapistId} onChange={setTherapistId}
                 therapists={therapists} placeholder="Select therapist…"/>
             </div>
             <div>
               <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>
-                المريض <span style={{color:"var(--red)"}}>*</span>
+                المريض <span style={{color:"#A8443A"}}>*</span>
               </div>
               <PatientCombobox value={patientId} onChange={setPatientId}
                 patients={patients} placeholder="Search patient by name or ID…"/>
@@ -903,7 +903,7 @@ function TxMethodModal({ onClose, onSaved }) {
                     </button>
                     <button
                       className="btn btn-ghost"
-                      style={{fontSize:11.5,padding:"4px 8px",color:"var(--red)",fontWeight:isConfirmingDelete?600:400}}
+                      style={{fontSize:11.5,padding:"4px 8px",color:"#A8443A",fontWeight:isConfirmingDelete?600:400}}
                       onClick={()=>doDelete(m)}
                       onBlur={()=>{ if (deletingId === id) setDeletingId(null); }}
                     >
@@ -1027,7 +1027,7 @@ function Sessions({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>جلسات العلاج</span></div>
-          <div className="h1">جلسات العلاج</div>
+          <h1 className="h1">جلسات العلاج</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>شغّل عدة جلسات في وقت واحد، سجّل الألم والملاحظات، ووقّع.</div>
         </div>
         <div className="seg">
@@ -1230,9 +1230,9 @@ function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8,flex:"1 1 100%"}}>
-      <div className="seg" style={{flexWrap:"wrap",gap:4}}>
+      <div className="seg" role="group" aria-label="فترة الفواتير" style={{flexWrap:"wrap",gap:4}}>
         {items.map(it => (
-          <button key={it.k}
+          <button key={it.k} type="button" aria-pressed={preset===it.k ? "true" : "false"}
             className={preset===it.k?"on":""}
             onClick={()=>setPreset(it.k)}
             style={{padding:"6px 10px",fontSize:12}}>{it.l}</button>
@@ -1242,7 +1242,7 @@ function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <I.Calendar size={13} style={{color:"var(--ink-400)"}}/>
           <span className="muted" style={{fontSize:12}}>اليوم</span>
-          <input className="input" type="date" value={custom||""}
+          <input className="input" type="date" aria-label="تاريخ الفواتير" value={custom||""}
             onChange={e=>setCustom(e.target.value)}
             style={{width:180}}/>
         </div>
@@ -1251,11 +1251,11 @@ function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <I.Calendar size={13} style={{color:"var(--ink-400)"}}/>
           <span className="muted" style={{fontSize:12}}>من</span>
-          <input className="input" type="date" value={rangeStart||""}
+          <input className="input" type="date" aria-label="من تاريخ" value={rangeStart||""}
             onChange={e=>setRangeStart(e.target.value)}
             style={{width:170}}/>
           <span className="muted" style={{fontSize:12}}>إلى</span>
-          <input className="input" type="date" value={rangeEnd||""}
+          <input className="input" type="date" aria-label="إلى تاريخ" value={rangeEnd||""}
             onChange={e=>setRangeEnd(e.target.value)}
             style={{width:170}}/>
         </div>
@@ -1339,7 +1339,7 @@ function Payments({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المدفوعات والفواتير</span></div>
-          <div className="h1">المدفوعات والفواتير</div>
+          <h1 className="h1">المدفوعات والفواتير</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>نقدي، بطاقة، إنستاباي، فودافون كاش، تحويل بنكي</div>
         </div>
         <div className="page-actions">
@@ -1348,17 +1348,17 @@ function Payments({ go }) {
         </div>
       </div>
 
-      <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="إجمالي الإيرادات" value={`EGP ${(Number(stats.revenue||0)/1000).toFixed(1)}K`} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
-        <StatCard label="المعلّق"          value={`EGP ${(Number(stats.outstanding||0)/1000).toFixed(1)}K`} accent="#D49044" icon={<I.Clock size={15}/>}/>
-        <StatCard label="المتأخر"          value={`EGP ${(Number(stats.overdue_amount||0)/1000).toFixed(1)}K`} accent="#D8665A" icon={<I.X size={15}/>}/>
-        <StatCard label="متوسط الفاتورة"   value={`EGP ${(Number(stats.avg_amount||0)/1000).toFixed(1)}K`} accent="#7BBDE8" icon={<I.FileText size={15}/>}/>
+      <div className="grid-stats" style={{marginBottom:18}}>
+        <StatCard label="إجمالي الإيرادات" value={fmtEGP(Number(stats.revenue||0))} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
+        <StatCard label="المعلّق"          value={fmtEGP(Number(stats.outstanding||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label="المتأخر"          value={fmtEGP(Number(stats.overdue_amount||0))} accent="#D8665A" icon={<I.X size={15}/>}/>
+        <StatCard label="متوسط الفاتورة"   value={fmtEGP(Number(stats.avg_amount||0))} accent="#7BBDE8" icon={<I.FileText size={15}/>}/>
       </div>
-      <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="إجمالي الفواتير"    value={`EGP ${(Number(stats.total_invoices||0)/1000).toFixed(1)}K`} accent="#7E6BD3" icon={<I.FileText size={15}/>}/>
-        <StatCard label="المدفوع"            value={`EGP ${(Number(stats.paid_amount||0)/1000).toFixed(1)}K`} accent="#3FA984" icon={<I.Check size={15}/>}/>
+      <div className="grid-stats" style={{marginBottom:18}}>
+        <StatCard label="إجمالي الفواتير"    value={fmtEGP(Number(stats.total_invoices||0))} accent="#7E6BD3" icon={<I.FileText size={15}/>}/>
+        <StatCard label="المدفوع"            value={fmtEGP(Number(stats.paid_amount||0))} accent="#3FA984" icon={<I.Check size={15}/>}/>
         <StatCard label="عدد الفواتير"       value={`${Number(stats.count||0)}`} accent="#3A7FB5" icon={<I.Layers size={15}/>}/>
-        <StatCard label="إجمالي المستحقات"   value={`EGP ${(Number(stats.due_total||0)/1000).toFixed(1)}K`} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label="إجمالي المستحقات"   value={fmtEGP(Number(stats.due_total||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
       </div>
 
       <div className="seg" style={{marginBottom:14}}>
@@ -1380,7 +1380,7 @@ function Payments({ go }) {
                 <button key={s} className={statusFilter===s?"on":""} onClick={()=>setStatusFilter(s)}>{s}</button>
               ))}
             </div>
-            <select className="input" style={{width:160}} value={methodFilter} onChange={e=>setMethodFilter(e.target.value)}>
+            <select className="input" aria-label="طريقة الدفع" style={{width:160}} value={methodFilter} onChange={e=>setMethodFilter(e.target.value)}>
               <option>الكل</option><option>نقدي</option><option>فيزا</option><option>إنستاباي</option><option>فودافون كاش</option><option>تحويل بنكي</option>
             </select>
             <InvoiceDateFilterBar
@@ -1394,7 +1394,7 @@ function Payments({ go }) {
             <div className="tbl-scroll">
             <table className="tbl">
               <thead><tr>
-                <th>فاتورة</th><th>المريض</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th></th>
+                <th>فاتورة</th><th>المريض</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th>
               </tr></thead>
               <tbody>
                 {filtered.length===0 && (
@@ -1413,14 +1413,14 @@ function Payments({ go }) {
                         </div>
                       </td>
                       <td>{p.date}</td>
-                      <td className="mono" style={{fontWeight:600}}>EGP {p.amount.toLocaleString()}</td>
+                      <td className="mono" style={{fontWeight:600}}>EGP {p.amount.toLocaleString("en-US")}</td>
                       <td>
                         <div>
-                          <div className="mono" style={{fontSize:13}}>EGP {p.paid.toLocaleString()}</div>
+                          <div className="mono" style={{fontSize:13}}>EGP {p.paid.toLocaleString("en-US")}</div>
                           <div style={{height:3,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",marginTop:3}}>
                             <div style={{height:"100%",width:`${pct*100}%`,background:pct===1?"var(--green)":"var(--amber)"}}/>
                           </div>
-                          {remaining>0 && <div className="muted mono" style={{fontSize:10.5,marginTop:2}}>EGP {remaining.toLocaleString()} due</div>}
+                          {remaining>0 && <div className="muted" style={{fontSize:10.5,marginTop:2}}>متبقٍ <span className="mono">EGP {remaining.toLocaleString("en-US")}</span></div>}
                         </div>
                       </td>
                       <td>
@@ -1501,7 +1501,7 @@ function PaymentMethodsView() {
     label,
     v: totalPaid ? Math.round(rev/totalPaid*100) : 0,
     color: colors[i % colors.length],
-    revenue: rev.toLocaleString(),
+    revenue: rev.toLocaleString("en-US"),
   }));
   if (data.length === 0) {
     return <EmptyState icon={<I.CreditCard size={22}/>} title="لا مدفوعات بعد" body="سيظهر توزيع طرق الدفع هنا بعد تسجيل الفواتير."/>;
@@ -1600,18 +1600,18 @@ function InvoiceModal({ invoice, onClose }) {
           <table className="tbl" style={{fontSize:12.5,minWidth:420}}>
             <thead><tr><th>البند</th><th style={{textAlign:"right"}}>الكمية</th><th style={{textAlign:"right"}}>السعر</th><th style={{textAlign:"right"}}>الإجمالي</th></tr></thead>
             <tbody>
-              <tr><td>{invoice.desc || "خدمات علاجية"}</td><td style={{textAlign:"right"}}>1</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString()}</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString()}</td></tr>
+              <tr><td>{invoice.desc || "خدمات علاجية"}</td><td style={{textAlign:"right"}}>1</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString("en-US")}</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString("en-US")}</td></tr>
             </tbody>
           </table>
         </div>
 
         <div style={{display:"flex",justifyContent:"flex-end"}}>
           <div style={{minWidth:240}}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {(invoice.amount||0).toLocaleString()}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {(invoice.amount||0).toLocaleString("en-US")}</span></div>
             <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">ض.ق.م (14%)</span><span className="mono">EGP 0.00</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid var(--ink-200)",marginTop:6}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:16}}>EGP {invoice.amount.toLocaleString()}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">مدفوعة عبر {invoice.method}</span><span className="mono">EGP {invoice.paid.toLocaleString()}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5,color: invoice.amount-invoice.paid>0?"var(--amber)":"var(--green)"}}><span>الرصيد المستحق</span><span className="mono" style={{fontWeight:600}}>EGP {(invoice.amount-invoice.paid).toLocaleString()}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid var(--ink-200)",marginTop:6}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:16}}>EGP {invoice.amount.toLocaleString("en-US")}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">مدفوعة عبر {invoice.method}</span><span className="mono">EGP {invoice.paid.toLocaleString("en-US")}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5,color: invoice.amount-invoice.paid>0?"var(--amber)":"var(--green)"}}><span>الرصيد المستحق</span><span className="mono" style={{fontWeight:600}}>EGP {(invoice.amount-invoice.paid).toLocaleString("en-US")}</span></div>
           </div>
         </div>
       </div>
@@ -1692,7 +1692,7 @@ function NewInvoiceModal({ onClose }) {
             <input className="input" value={it.name} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
             <input className="input" type="number" value={it.qty} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,qty:+e.target.value}:x))}/>
             <input className="input mono" type="number" value={it.price} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,price:+e.target.value}:x))}/>
-            <span className="mono" style={{textAlign:"right",fontWeight:600}}>EGP {(it.qty*it.price).toLocaleString()}</span>
+            <span className="mono" style={{textAlign:"right",fontWeight:600}}>EGP {(it.qty*it.price).toLocaleString("en-US")}</span>
             <button className="btn btn-ghost btn-icon" onClick={()=>setItems(items.filter((_,j)=>j!==i))}><I.X size={13}/></button>
           </div>
         ))}
@@ -1701,10 +1701,10 @@ function NewInvoiceModal({ onClose }) {
 
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:18}}>
         <div style={{minWidth:240,padding:14,background:"var(--ink-50)",borderRadius:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {subtotal.toLocaleString()}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {subtotal.toLocaleString("en-US")}</span></div>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">ض.ق.م (14%)</span><span className="mono">EGP 0</span></div>
           <hr className="sep" style={{margin:"8px 0"}}/>
-          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:18}}>EGP {subtotal.toLocaleString()}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:18}}>EGP {subtotal.toLocaleString("en-US")}</span></div>
         </div>
       </div>
     </Modal>
@@ -1725,7 +1725,7 @@ function Packages({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الباقات</span></div>
-          <div className="h1">باقات العلاج</div>
+          <h1 className="h1">باقات العلاج</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>{DATA.packages.filter(p=>p.active).length} نشط باقة</div>
         </div>
         <button className="btn btn-blue" onClick={()=>setEditing({mode:"new"})}><I.Plus size={14}/> باقة جديدة</button>
@@ -1741,7 +1741,7 @@ function Packages({ go }) {
             </div>
             <div style={{padding:18}}>
               <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:12}}>
-                <span className="mono" style={{fontSize:30,fontWeight:600,letterSpacing:"-.01em"}}>EGP {p.price.toLocaleString()}</span>
+                <span className="mono" style={{fontSize:30,fontWeight:600,letterSpacing:"-.01em"}}>EGP {p.price.toLocaleString("en-US")}</span>
                 <span className="muted" style={{fontSize:12}}>/ للباقة</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
@@ -2002,7 +2002,7 @@ function QuickPaymentModal({ onClose, onDone }) {
             {selected.map(a => (
               <div key={qpSelKey(a.type, a.id)} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}}>
                 <span>{a.label}</span>
-                <span className="mono">EGP {Number(a.amount).toLocaleString()}</span>
+                <span className="mono">EGP {Number(a.amount).toLocaleString("en-US")}</span>
               </div>
             ))}
           </div>
@@ -2012,9 +2012,9 @@ function QuickPaymentModal({ onClose, onDone }) {
           )}
           <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:10}}>
             <span style={{fontWeight:600}}>الإجمالي</span>
-            <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {total.toLocaleString()}</span>
+            <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {total.toLocaleString("en-US")}</span>
           </div>
-          {error && <div style={{fontSize:12,color:"var(--red)"}}>{error}</div>}
+          {error && <div style={{fontSize:12,color:"#A8443A"}}>{error}</div>}
         </div>
       </Modal>
     );
@@ -2029,7 +2029,7 @@ function QuickPaymentModal({ onClose, onDone }) {
           <button className="btn btn-secondary" onClick={clearPatient}>مريض آخر</button>
         )}
         <button className="btn btn-blue" disabled={!readyToConfirm} onClick={() => setConfirming(true)}>
-          <I.ArrowLeft size={13}/> مراجعة الدفع (EGP {total.toLocaleString()})
+          <I.ArrowLeft size={13}/> مراجعة الدفع (EGP {total.toLocaleString("en-US")})
         </button>
       </>}>
       {!patient && (
@@ -2069,7 +2069,7 @@ function QuickPaymentModal({ onClose, onDone }) {
                 items={fin.invoices.map(v => ({
                   key: v.invoice_id || v.id,
                   primary: `فاتورة ${v.invoice_id || v.id}`,
-                  secondary: `إجمالي EGP ${Number(v.amount||0).toLocaleString()} · مدفوع EGP ${Number(v.paid||0).toLocaleString()}`,
+                  secondary: `إجمالي EGP ${Number(v.amount||0).toLocaleString("en-US")} · مدفوع EGP ${Number(v.paid||0).toLocaleString("en-US")}`,
                   remaining: v.remaining, badge: "b-blue",
                 }))}
                 type="invoice" picks={picks} toggle={toggle} setAmount={setAmount}
@@ -2104,16 +2104,16 @@ function QuickPaymentModal({ onClose, onDone }) {
               }}>
                 <div>
                   <div className="muted" style={{fontSize:11.5,letterSpacing:".05em",textTransform:"uppercase"}}>الإجمالي المستحق</div>
-                  <div className="mono" style={{fontSize:22,fontWeight:700,color:"var(--blue-900)"}}>EGP {total.toLocaleString()}</div>
+                  <div className="mono" style={{fontSize:22,fontWeight:700,color:"var(--blue-900)"}}>EGP {total.toLocaleString("en-US")}</div>
                 </div>
                 <div style={{textAlign:"right",fontSize:12,color:"var(--ink-500)"}}>
                   {selected.length} عنصر محدد
-                  {hasOverpay && <div style={{color:"var(--red)",marginTop:4}}>مبلغ يتجاوز المتبقي</div>}
-                  {!hasOverpay && hasZero && <div style={{color:"var(--red)",marginTop:4}}>أدخل مبلغًا أكبر من صفر</div>}
+                  {hasOverpay && <div style={{color:"#A8443A",marginTop:4}}>مبلغ يتجاوز المتبقي</div>}
+                  {!hasOverpay && hasZero && <div style={{color:"#A8443A",marginTop:4}}>أدخل مبلغًا أكبر من صفر</div>}
                 </div>
               </div>
 
-              {error && <div style={{fontSize:12,color:"var(--red)"}}>{error}</div>}
+              {error && <div style={{fontSize:12,color:"#A8443A"}}>{error}</div>}
             </>
           )}
         </div>
@@ -2225,12 +2225,12 @@ function QpItemsSection({ title, icon, items, type, picks, toggle, setAmount }) 
                     value={picks[key].amount === "" ? "" : picks[key].amount}
                     onChange={e => setAmount(key, e.target.value)}/>
                   <span className={"badge " + (it.badge || "b-grey")}>
-                    من {Number(it.remaining||0).toLocaleString()}
+                    من {Number(it.remaining||0).toLocaleString("en-US")}
                   </span>
                 </div>
               ) : (
                 <div className="mono" style={{fontSize:13,fontWeight:600,minWidth:110,textAlign:"end"}}>
-                  EGP {Number(it.remaining||0).toLocaleString()}
+                  EGP {Number(it.remaining||0).toLocaleString("en-US")}
                 </div>
               )}
             </div>
@@ -2302,14 +2302,14 @@ function QpSummaryRow({ label, value, sub }) {
 function QuickPaymentReceipt({ r, onClose }) {
   const clinic = window.CLINIC || {};
   const clinicName = clinic.name || "العيادة";
-  const dateStr = new Date(r.date).toLocaleString("ar-EG");
+  const dateStr = new Date(r.date).toLocaleString("ar-EG-u-nu-latn");
 
   function printReceipt() {
     const esc = window.escHtml || (x => String(x||""));
     const rows = r.allocations.map(a => `
       <tr>
         <td>${esc(a.label || a.type + " " + a.id)}</td>
-        <td style="text-align:end" class="mono">EGP ${Number(a.amount||0).toLocaleString()}</td>
+        <td style="text-align:end" class="mono">EGP ${Number(a.amount||0).toLocaleString("en-US")}</td>
       </tr>`).join("");
     const body = `
       <div style="border:1px solid #EEF2F6;border-radius:10px;padding:18px 20px;margin-bottom:14px">
@@ -2340,7 +2340,7 @@ function QuickPaymentReceipt({ r, onClose }) {
         <thead><tr><th>البند</th><th style="text-align:end">المبلغ</th></tr></thead>
         <tbody>${rows}
           <tr><th style="border-top:2px solid #0F1E2B">الإجمالي المدفوع</th>
-              <td style="border-top:2px solid #0F1E2B;text-align:end;font-weight:600" class="mono">EGP ${Number(r.amount||0).toLocaleString()}</td></tr>
+              <td style="border-top:2px solid #0F1E2B;text-align:end;font-weight:600" class="mono">EGP ${Number(r.amount||0).toLocaleString("en-US")}</td></tr>
         </tbody>
       </table>
       ${r.notes ? `<div style="margin-top:16px;font-size:12.5px;color:#647686"><strong>ملاحظات:</strong> ${esc(r.notes)}</div>` : ""}
@@ -2390,13 +2390,13 @@ function QuickPaymentReceipt({ r, onClose }) {
           {r.allocations.map((a, i) => (
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}}>
               <span>{a.label || `${a.type} ${a.id}`}</span>
-              <span className="mono">EGP {Number(a.amount||0).toLocaleString()}</span>
+              <span className="mono">EGP {Number(a.amount||0).toLocaleString("en-US")}</span>
             </div>
           ))}
         </div>
         <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:10}}>
           <span style={{fontWeight:600}}>المبلغ المدفوع</span>
-          <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {Number(r.amount||0).toLocaleString()}</span>
+          <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {Number(r.amount||0).toLocaleString("en-US")}</span>
         </div>
       </div>
     </Modal>
@@ -2429,7 +2429,7 @@ function Campaigns({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>حملات واتساب</span></div>
-          <div className="h1">حملات واتساب</div>
+          <h1 className="h1">حملات واتساب</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>تواصل مع مرضاك عبر التذكيرات والمتابعات والإعلانات.</div>
         </div>
         <div className="page-actions">
@@ -2446,7 +2446,7 @@ function Campaigns({ go }) {
         const pct = (a,b)=> b ? `${Math.round(a/b*1000)/10}%` : "—";
         return (
       <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="رسائل مُرسلة"   value={sent.toLocaleString()} accent="#25D366" icon={<I.WhatsApp size={15}/>}/>
+        <StatCard label="رسائل مُرسلة"   value={sent.toLocaleString("en-US")} accent="#25D366" icon={<I.WhatsApp size={15}/>}/>
         <StatCard label="معدل القراءة"             value={pct(read, sent)} accent="#7BBDE8" icon={<I.Eye size={15}/>}/>
         <StatCard label="معدل الرد"         value={pct(replied, sent)} accent="#7E6BD3" icon={<I.Send size={15}/>}/>
         <StatCard label="الحملات النشطة"       value={String(DATA.campaigns.filter(c=>c.status==="جارٍ"||c.status==="مجدول").length)} accent="#D8665A" icon={<I.Megaphone size={15}/>}/>
@@ -2467,7 +2467,7 @@ function Campaigns({ go }) {
         </div>
         <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>الحملة</th><th>الجمهور</th><th>مُرسلة</th><th>مقروءة</th><th>ردّ</th><th>القالب</th><th>الجدولة</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الحملة</th><th>الجمهور</th><th>مُرسلة</th><th>مقروءة</th><th>ردّ</th><th>القالب</th><th>الجدولة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {DATA.campaigns.length===0 && (
               <tr><td colSpan={9}><EmptyState icon={<I.Megaphone size={22}/>} title="لا حملات بعد" body="أطلق أول حملة واتساب من زر «حملة جديدة»."/></td></tr>
@@ -2488,11 +2488,11 @@ function Campaigns({ go }) {
                     </div>
                   </div>
                 </td>
-                <td className="mono">{c.audience.toLocaleString()}</td>
-                <td className="mono">{c.sent.toLocaleString()}</td>
+                <td className="mono">{c.audience.toLocaleString("en-US")}</td>
+                <td className="mono">{c.sent.toLocaleString("en-US")}</td>
                 <td>
                   <div>
-                    <span className="mono">{c.read.toLocaleString()}</span>
+                    <span className="mono">{c.read.toLocaleString("en-US")}</span>
                     {c.sent>0 && <div style={{height:3,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",marginTop:3,width:80}}>
                       <div style={{height:"100%",width:`${c.read/c.sent*100}%`,background:"var(--blue-500)"}}/>
                     </div>}
@@ -2583,7 +2583,7 @@ function CampaignBuilder({ onCancel, onSave, initialTemplate }) {
   return (
     <Page>
       <div className="crumb" style={{cursor:"pointer"}} onClick={onCancel}><span>حملات واتساب</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>حملة جديدة</span></div>
-      <div className="h1" style={{marginBottom:6}}>إنشاء حملة</div>
+      <h1 className="h1" style={{marginBottom:6}}>إنشاء حملة</h1>
       <div className="muted" style={{fontSize:13.5,marginBottom:22}}>ابنِ، استهدف وجدول في 4 خطوات.</div>
 
       <div className="card" style={{padding:18,marginBottom:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -2846,7 +2846,7 @@ function CampaignAnalytics({ c, onBack }) {
       </div>
 
       <div className="grid-4" style={{marginBottom:18}}>
-        <StatCard label="مُرسلة"        value={c.sent.toLocaleString()}    accent="#7BBDE8" icon={<I.Send size={15}/>}/>
+        <StatCard label="مُرسلة"        value={c.sent.toLocaleString("en-US")}    accent="#7BBDE8" icon={<I.Send size={15}/>}/>
         <StatCard label="مقروءة"        value={`${(c.read/c.sent*100).toFixed(0)}%`} accent="#3A7FB5" icon={<I.Eye size={15}/>}/>
         <StatCard label="ردّ"     value={`${(c.replied/c.sent*100).toFixed(1)}%`} accent="#7E6BD3" icon={<I.WhatsApp size={15}/>}/>
         <StatCard label="تحويلات" value="42" delta="+12" deltaKind="up" accent="#3FA984" icon={<I.Check size={15}/>}/>
@@ -2866,7 +2866,7 @@ function CampaignAnalytics({ c, onBack }) {
                 <div key={f.label}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                     <span style={{fontSize:12.5,fontWeight:500}}>{f.label}</span>
-                    <span className="mono" style={{fontSize:12.5}}>{f.v.toLocaleString()} <span className="muted">({Math.round(w)}%)</span></span>
+                    <span className="mono" style={{fontSize:12.5}}>{f.v.toLocaleString("en-US")} <span className="muted">({Math.round(w)}%)</span></span>
                   </div>
                   <div style={{height:24,background:"var(--ink-100)",borderRadius:6,overflow:"hidden"}}>
                     <div style={{height:"100%",width:`${w}%`,background:f.color,transition:"width .3s"}}/>
@@ -2945,21 +2945,22 @@ function reportActiveFilters(f, show, opts, scopeLabel) {
 
 // Date-range + entity filter bar with search + Excel export button.
 function ReportFilterBar({ f, set, opts, show, onExport, searchPlaceholder = "بحث…" }) {
+  const uid = React.useId();
   return (
     <div className="card card-pad" style={{ marginBottom: 18 }}>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ minWidth: 140 }}>
-          <div className="label">من تاريخ</div>
-          <input type="date" className="input" value={f.from} max={f.to || undefined} onChange={e => set("from", e.target.value)} />
+          <label className="label" htmlFor={uid + "from"} style={{ display: "block" }}>من تاريخ</label>
+          <input id={uid + "from"} type="date" className="input" value={f.from} max={f.to || undefined} onChange={e => set("from", e.target.value)} />
         </div>
         <div style={{ minWidth: 140 }}>
-          <div className="label">إلى تاريخ</div>
-          <input type="date" className="input" value={f.to} min={f.from || undefined} onChange={e => set("to", e.target.value)} />
+          <label className="label" htmlFor={uid + "to"} style={{ display: "block" }}>إلى تاريخ</label>
+          <input id={uid + "to"} type="date" className="input" value={f.to} min={f.from || undefined} onChange={e => set("to", e.target.value)} />
         </div>
         {show.therapist && (
           <div style={{ minWidth: 150 }}>
-            <div className="label">الأخصائي</div>
-            <select className="input" value={f.therapist} onChange={e => set("therapist", e.target.value)}>
+            <label className="label" htmlFor={uid + "therapist"} style={{ display: "block" }}>الأخصائي</label>
+            <select id={uid + "therapist"} className="input" value={f.therapist} onChange={e => set("therapist", e.target.value)}>
               <option value="all">كل الأخصائيين</option>
               {opts.therapists.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -2967,8 +2968,8 @@ function ReportFilterBar({ f, set, opts, show, onExport, searchPlaceholder = "ب
         )}
         {show.doctor && (
           <div style={{ minWidth: 150 }}>
-            <div className="label">الطبيب</div>
-            <select className="input" value={f.doctor} onChange={e => set("doctor", e.target.value)}>
+            <label className="label" htmlFor={uid + "doctor"} style={{ display: "block" }}>الطبيب</label>
+            <select id={uid + "doctor"} className="input" value={f.doctor} onChange={e => set("doctor", e.target.value)}>
               <option value="all">كل الأطباء</option>
               {opts.doctors.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -2976,18 +2977,18 @@ function ReportFilterBar({ f, set, opts, show, onExport, searchPlaceholder = "ب
         )}
         {show.patient && (
           <div style={{ minWidth: 170 }}>
-            <div className="label">المريض</div>
-            <select className="input" value={f.patient} onChange={e => set("patient", e.target.value)}>
+            <label className="label" htmlFor={uid + "patient"} style={{ display: "block" }}>المريض</label>
+            <select id={uid + "patient"} className="input" value={f.patient} onChange={e => set("patient", e.target.value)}>
               <option value="all">كل المرضى</option>
               {opts.patients.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         )}
         <div style={{ flex: 1, minWidth: 170 }}>
-          <div className="label">بحث</div>
-          <input className="input" placeholder={searchPlaceholder} value={f.q} onChange={e => set("q", e.target.value)} />
+          <label className="label" htmlFor={uid + "q"} style={{ display: "block" }}>بحث</label>
+          <input id={uid + "q"} className="input" placeholder={searchPlaceholder} value={f.q} onChange={e => set("q", e.target.value)} />
         </div>
-        <button className="btn btn-blue" onClick={onExport} style={{ whiteSpace: "nowrap" }}>
+        <button type="button" className="btn btn-blue" onClick={onExport} style={{ whiteSpace: "nowrap" }}>
           <I.Download size={14} /> تصدير Excel
         </button>
       </div>
@@ -3003,7 +3004,8 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
   const view = rows.slice((safe - 1) * REPORT_PAGE_SIZE, safe * REPORT_PAGE_SIZE);
   return (
     <div className="card card-pad">
-      <div className="tbl-scroll">
+      {/* Focusable so a keyboard can scroll the wide table on phones. */}
+      <div className="tbl-scroll" role="region" aria-label="جدول النتائج" tabIndex={0}>
         <table className="tbl report-rows">
           <thead><tr>{columns.map(c => <th key={c.key} style={c.type === "number" || c.type === "currency" ? { textAlign: "start" } : undefined}>{c.label}</th>)}</tr></thead>
           <tbody>
@@ -3013,8 +3015,9 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
             {view.map((r, i) => (
               <tr key={r.id || i} data-branch={r.branch_id || undefined}>
                 {columns.map(c => (
-                  <td key={c.key} className={(c.type === "number" || c.type === "currency") ? "mono tnum" : undefined}>
-                    {c.render ? c.render(r) : (c.type === "currency" ? `EGP ${(Number(r[c.key]) || 0).toLocaleString()}` : (r[c.key] == null || r[c.key] === "" ? "—" : r[c.key]))}
+                  <td key={c.key} className={(c.type === "number" || c.type === "currency" || /date$/.test(c.key)) ? "mono tnum" : undefined}
+                    style={/date$/.test(c.key) || c.type === "currency" ? { whiteSpace: "nowrap" } : undefined}>
+                    {c.render ? c.render(r) : (c.type === "currency" ? `EGP ${(Number(r[c.key]) || 0).toLocaleString("en-US")}` : (r[c.key] == null || r[c.key] === "" ? "—" : r[c.key]))}
                   </td>
                 ))}
               </tr>
@@ -3024,10 +3027,10 @@ function ReportTable({ columns, rows, page, setPage, empty }) {
       </div>
       {total > 0 && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8, flexWrap: "wrap" }}>
-          <div className="muted" style={{ fontSize: 12 }}>صفحة <span className="mono">{safe}</span> من <span className="mono">{pages}</span> · <span className="mono">{total.toLocaleString()}</span> نتيجة</div>
+          <div className="muted" style={{ fontSize: 12 }}>صفحة <span className="mono">{safe}</span> من <span className="mono">{pages}</span> · النتائج: <span className="mono">{total.toLocaleString("en-US")}</span></div>
           <div style={{ display: "flex", gap: 4 }}>
-            <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe <= 1} onClick={() => setPage(safe - 1)}>السابق</button>
-            <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe >= pages} onClick={() => setPage(safe + 1)}>التالي</button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe <= 1} onClick={() => setPage(safe - 1)}>السابق</button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} disabled={safe >= pages} onClick={() => setPage(safe + 1)}>التالي</button>
           </div>
         </div>
       )}
@@ -3095,7 +3098,7 @@ function ReportBranchBreakdown({ rows, metrics }) {
   return (
     <div className="card card-pad report-branch-breakdown" style={{ marginBottom: 18 }}>
       <div className="h2" style={{ marginBottom: 12 }}>حسب الفرع</div>
-      <div className="tbl-scroll">
+      <div className="tbl-scroll" role="region" aria-label="حسب الفرع" tabIndex={0}>
         <table className="tbl">
           <thead><tr><th>الفرع</th>{metrics.map(m => <th key={m.key} style={{ textAlign: "start" }}>{m.label}</th>)}</tr></thead>
           <tbody>
@@ -3118,8 +3121,8 @@ function ReportBranchBreakdown({ rows, metrics }) {
     </div>
   );
 }
-const reportFmtCount = (v) => Number(v || 0).toLocaleString();
-const reportFmtMoney = (v) => `EGP ${Math.round(Number(v) || 0).toLocaleString()}`;
+const reportFmtCount = (v) => Number(v || 0).toLocaleString("en-US");
+const reportFmtMoney = (v) => `EGP ${Math.round(Number(v) || 0).toLocaleString("en-US")}`;
 const reportBranchColumn = { key: "branch", label: "الفرع", type: "text", width: 16 };
 
 function Reports({ go }) {
@@ -3140,7 +3143,7 @@ function Reports({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>التقارير</span></div>
-          <div className="h1">التقارير</div>
+          <h1 className="h1">التقارير</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>تحليلات مالية وطبية وتشغيلية — بيانات مباشرة من قاعدة البيانات.</div>
           {window.SB && (
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:8}}>
@@ -3231,12 +3234,12 @@ function FinancialReport({ view }) {
   const invoiced = filtered.reduce((s, r) => s + r.amount, 0);
   const outstanding = filtered.reduce((s, r) => s + r.outstanding, 0);
   const avg = filtered.length ? invoiced / filtered.length : 0;
-  const fmtK = (v) => v >= 1000 ? `EGP ${(v / 1000).toFixed(1)}K` : `EGP ${Math.round(v).toLocaleString()}`;
+  const fmtK = (v) => v >= 1000 ? `EGP ${(v / 1000).toFixed(1)}K` : `EGP ${Math.round(v).toLocaleString("en-US")}`;
 
   // Monthly collected trend + payment-method split from the filtered set.
   const byMonth = {};
   filtered.forEach(r => { if (r.date) byMonth[r.date.slice(0, 7)] = (byMonth[r.date.slice(0, 7)] || 0) + r.paid; });
-  const monthly = Object.keys(byMonth).sort().slice(-6).map(m => ({ label: m.slice(2), v: Math.round(byMonth[m] / 1000) }));
+  const monthly = Object.keys(byMonth).sort().slice(-6).map(m => ({ label: m.slice(2), v: Math.round(byMonth[m]) }));
   const byMethod = {};
   filtered.forEach(r => { byMethod[r.method] = (byMethod[r.method] || 0) + r.paid; });
   const methodColors = ["#7BBDE8", "#7E6BD3", "#3FA984", "#D49044", "#3A7FB5", "#BDD8E9"];
@@ -3268,7 +3271,7 @@ function FinancialReport({ view }) {
         <StatCard label="محصّل" value={fmtK(collected)} accent="#3FA984" icon={<I.Check size={15} />} />
         <StatCard label="إجمالي مفوتر" value={fmtK(invoiced)} accent="#3A7FB5" icon={<I.Dollar size={15} />} />
         <StatCard label="متبقٍ" value={fmtK(outstanding)} accent="#D49044" icon={<I.Clock size={15} />} />
-        <StatCard label="عدد الفواتير" value={filtered.length.toLocaleString()} accent="#7BBDE8" icon={<I.Chart size={15} />} />
+        <StatCard label="عدد الفواتير" value={filtered.length.toLocaleString("en-US")} accent="#7BBDE8" icon={<I.Chart size={15} />} />
       </div>
 
       {view.all && <ReportBranchBreakdown rows={filtered} metrics={[
@@ -3281,7 +3284,7 @@ function FinancialReport({ view }) {
       <div className="rgrid c-lg" style={{ "--gtc": "1.5fr 1fr", marginBottom: 18 }}>
         <div className="card card-pad">
           <div className="h2" style={{ marginBottom: 14 }}>اتجاه المبالغ المحصّلة (شهريًا)</div>
-          {monthly.length ? <AreaChart data={monthly} height={240} formatY={v => `${v}K`} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا بيانات ضمن الفترة المحددة.</div>}
+          {monthly.length ? <AreaChart data={monthly} height={240} formatY={v => v >= 1000 ? `${Number((v / 1000).toFixed(1))}K` : v} /> : <div className="muted" style={{ fontSize: 13, padding: "40px 0", textAlign: "center" }}>لا بيانات ضمن الفترة المحددة.</div>}
         </div>
         <div className="card card-pad">
           <div className="h2" style={{ marginBottom: 14 }}>توزيع طرق الدفع</div>
@@ -3390,7 +3393,7 @@ function MedicalReport({ view }) {
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
         <StatCard label="مرضى تحت العلاج" value={String(distinctPatients)} accent="#7BBDE8" icon={<I.Users size={15} />} />
-        <StatCard label="عدد الجلسات" value={totalSessions.toLocaleString()} accent="#3A7FB5" icon={<I.Activity size={15} />} />
+        <StatCard label="عدد الجلسات" value={totalSessions.toLocaleString("en-US")} accent="#3A7FB5" icon={<I.Activity size={15} />} />
         <StatCard label="متوسط الجلسات لكل مريض" value={avgPer} accent="#7E6BD3" icon={<I.Chart size={15} />} />
         <StatCard label="متوسط مستوى الألم" value={avgPain} accent="#D49044" icon={<I.Heart size={15} />} />
       </div>
@@ -3492,7 +3495,7 @@ function OperationalReport({ view }) {
       <ReportFilterBar f={f} set={set} opts={opts} show={show} onExport={doExport} searchPlaceholder="بحث بالمريض أو الغرفة…" />
 
       <div className="grid-4" style={{ marginBottom: 18 }}>
-        <StatCard label="مواعيد مسجلة" value={booked.toLocaleString()} accent="#7BBDE8" icon={<I.Calendar size={15} />} />
+        <StatCard label="مواعيد مسجلة" value={booked.toLocaleString("en-US")} accent="#7BBDE8" icon={<I.Calendar size={15} />} />
         <StatCard label="معدّل الحضور" value={`${attendRate}%`} accent="#3FA984" icon={<I.Check size={15} />} />
         <StatCard label="معدل عدم الحضور" value={`${noShowRate}%`} accent="#D49044" icon={<I.X size={15} />} />
         <StatCard label="نسبة الإكمال" value={`${completedRate}%`} accent="#7E6BD3" icon={<I.Activity size={15} />} />
@@ -3559,7 +3562,7 @@ function SettingsPage({ go }) {
   return (
     <Page>
       <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الإعدادات</span></div>
-      <div className="h1" style={{marginBottom:18}}>الإعدادات</div>
+      <h1 className="h1" style={{marginBottom:18}}>الإعدادات</h1>
 
       <div className="rgrid c-lg" style={{"--gtc":"220px 1fr"}}>
         <div className="card side-tabs" role="tablist" aria-label="أقسام الإعدادات" style={{padding:8,height:"fit-content"}}>
@@ -3714,7 +3717,7 @@ function DeptDoctorsPanel() {
         onAdd={()=>setDeptModal({})} addLabel="إضافة قسم"/>
       <div className="tbl-scroll" style={{marginBottom:26}}>
         <table className="tbl">
-          <thead><tr><th>القسم</th><th>بالإنجليزية</th><th>الأطباء</th><th>الأخصائيون</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>القسم</th><th>بالإنجليزية</th><th>الأطباء</th><th>الأخصائيون</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {depts.length===0 && <tr><td colSpan={6}><EmptyState icon={<I.Layers size={22}/>} title="لا أقسام بعد" body="أضف أول قسم من زر «إضافة قسم»."/></td></tr>}
             {depts.map(d=>(
@@ -3748,7 +3751,7 @@ function DeptDoctorsPanel() {
         onAdd={()=>setDocModal({})} addLabel="إضافة طبيب"/>
       <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>الطبيب</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>التوفر</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الطبيب</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>التوفر</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {doctorsRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Stethoscope size={22}/>} title="لا أطباء" body={depts.length? "أضف أول طبيب من زر «إضافة طبيب».":"أضف قسمًا أولاً ثم أضف الأطباء."}/></td></tr>}
             {doctorsRoster.view.map(d=>(
@@ -3787,13 +3790,13 @@ function DeptDoctorsPanel() {
         onAdd={()=>setSpecModal({})} addLabel="إضافة أخصائي"/>
       <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>الأخصائي</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>رقم الترخيص</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الأخصائي</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>رقم الترخيص</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {specRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Activity size={22}/>} title="لا أخصائيين" body={depts.length? "أضف أول أخصائي من زر «إضافة أخصائي».":"أضف قسمًا أولاً ثم أضف الأخصائيين."}/></td></tr>}
             {specRoster.view.map(s=>(
               <tr key={s.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span className="av sm" style={{background:(s.color||"#7BBDE8")+"33",color:s.color||"var(--blue-700)"}}>{(s.name||"").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</span>
+                  <span className="av sm" aria-hidden="true" style={{background:(s.color||"#7BBDE8")+"33",color:"var(--ink-900)"}}>{(s.name||"").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</span>
                   {s.name}
                 </div></td>
                 <td className="muted" style={{fontSize:12.5}}>{deptName(s.department_id)}</td>
@@ -3826,7 +3829,7 @@ function DeptDoctorsPanel() {
         onAdd={()=>setRcpModal({})} addLabel="إضافة موظف استقبال"/>
       <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>ملاحظات</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>ملاحظات</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {rcpRoster.total===0 && <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title="لا موظفي استقبال" body="أضف أول موظف من زر «إضافة موظف استقبال»."/></td></tr>}
             {rcpRoster.view.map(r=>(
@@ -4283,7 +4286,7 @@ function ConfirmModal({ title, message, confirmLabel="تأكيد", cancelLabel="
     <Modal title={title} onClose={busy?undefined:onClose} width={440}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose} disabled={busy}>{cancelLabel}</button>
-        <button className={"btn " + (danger?"btn-secondary":"btn-blue")} style={danger?{color:"var(--red)",borderColor:"var(--red-bg)"}:undefined} disabled={busy} onClick={onConfirm}>
+        <button className={"btn " + (danger?"btn-secondary":"btn-blue")} style={danger?{color:"#A8443A",borderColor:"var(--red-bg)"}:undefined} disabled={busy} onClick={onConfirm}>
           {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> {confirmLabel}</>}
         </button>
       </>}>
@@ -4696,7 +4699,7 @@ function BranchesPage({ go }) {
       <div className="page-head">
         <div>
           <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الفروع</span></div>
-          <div className="h1">الفروع</div>
+          <h1 className="h1">الفروع</h1>
           <div className="muted" style={{fontSize:13.5,marginTop:4}}>فروع عيادتك وساعات عملها وغرفها. الفرع المعطّل تبقى سجلاته محفوظة ولا يقبل حجوزات جديدة.</div>
         </div>
         <div className="page-actions">
@@ -4948,10 +4951,11 @@ function StaffInvitesPanel() {
           <div className="muted" style={{fontSize:12.5,marginTop:2}}>ادعُ فريقك بالبريد وحدد الدور والفروع، وفعّل أو عطّل الحسابات. لا يُحذف أي حساب.</div>
           {usage && usage.users && (
             <div className="users-counter" data-testid="users-counter" style={{marginTop:8,fontSize:12.5,color:atLimit?"#9B6321":"var(--ink-700)"}}>
-              {usersMax != null
-                ? <>المستخدمون: <span className="mono">{usage.users.used}</span> من <span className="mono">{usersMax}</span></>
-                : <>المستخدمون: <span className="mono">{usage.users.used}</span> · خطتك بلا حد للمستخدمين</>}
+              {/* The pending invitations belong to the count, before the plan's note. */}
+              المستخدمون: <span className="mono">{usage.users.used}</span>
+              {usersMax != null && <> من <span className="mono">{usersMax}</span></>}
               {usage.users.pending_invitations > 0 && <span className="muted"> (منها دعوات معلّقة: <span className="mono">{usage.users.pending_invitations}</span>)</span>}
+              {usersMax == null && <> · خطتك بلا حد للمستخدمين</>}
             </div>
           )}
         </div>
@@ -4972,7 +4976,7 @@ function StaffInvitesPanel() {
 
       {/* My account */}
       <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
-        <div className="av md" style={{background:"var(--blue-500)",color:"#fff"}}>{initials(me.name)}</div>
+        <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{initials(me.name)}</div>
         <div style={{flex:1,minWidth:160}}>
           <div style={{fontWeight:600,fontSize:13.5}}>{me.name || "حسابي"} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{me.role || "مدير"}</span></div>
           <div className="mono muted" style={{fontSize:12}}><bdi dir="ltr">{me.email || "—"}</bdi></div>
@@ -5081,7 +5085,7 @@ function StaffInvitesPanel() {
                             ? <span className="spin" aria-hidden="true" style={{width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%"}}/>
                             : <I.Send size={12}/>} إعادة الإرسال
                         </button>
-                        <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"var(--red)",whiteSpace:"nowrap"}}
+                        <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"#A8443A",whiteSpace:"nowrap"}}
                           aria-label={`إلغاء دعوة ${inv.email}`} onClick={()=>setRevokeRow(inv)}>
                           <I.X size={12}/> إلغاء
                         </button>
@@ -5175,19 +5179,19 @@ function InviteStaffModal({ onClose, onDone }) {
     </>}>
       <form onSubmit={(e)=>{ e.preventDefault(); submit(); }} noValidate>
         {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
-        <label className="label" htmlFor="staff-invite-email">البريد الإلكتروني <span style={{color:"var(--red)"}}>*</span></label>
+        <label className="label" htmlFor="staff-invite-email">البريد الإلكتروني <span style={{color:"#A8443A"}}>*</span></label>
         <input id="staff-invite-email" className="input" type="email" dir="ltr" autoFocus placeholder="name@clinic.eg" value={email}
           style={{textAlign:"right", ...(errors.email ? {borderColor:"var(--red)"} : {})}}
           aria-invalid={errors.email ? "true" : undefined} aria-describedby={errors.email ? "staff-invite-email-err" : undefined}
           onChange={e=>{ setEmail(e.target.value); setErrors(x=>({...x,email:undefined})); setServerError(""); }}/>
         {errors.email && <div id="staff-invite-email-err" style={errStyle}>{errors.email}</div>}
         <div style={{height:12}}/>
-        <label className="label" htmlFor="staff-invite-role">الدور <span style={{color:"var(--red)"}}>*</span></label>
+        <label className="label" htmlFor="staff-invite-role">الدور <span style={{color:"#A8443A"}}>*</span></label>
         <select id="staff-invite-role" className="input" value={role} onChange={e=>{ setRole(e.target.value); setServerError(""); }}>
           {CA_INVITE_ROLES.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
         </select>
         <div style={{height:14}}/>
-        <div className="label" id="staff-invite-branches-label">الفروع {role !== "admin" && <span style={{color:"var(--red)"}}>*</span>}</div>
+        <div className="label" id="staff-invite-branches-label">الفروع {role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
         {role === "admin"
           ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
           : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setErrors(x=>({...x,branches:undefined})); }} idPrefix="staff-invite-branch"
@@ -5292,7 +5296,7 @@ function StaffRosterPanel() {
       </div>
 
       <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
-        <div className="av md" style={{background:"var(--blue-500)",color:"#fff"}}>{(me.name||"?").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</div>
+        <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{(me.name||"?").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</div>
         <div style={{flex:1,minWidth:160}}>
           <div style={{fontWeight:600,fontSize:13.5}}>{me.name || "حسابي"} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{me.role || "مدير"}</span></div>
           <div className="mono muted" style={{fontSize:12}}>{me.email || "—"}</div>
@@ -5304,7 +5308,7 @@ function StaffRosterPanel() {
       {/* Team table */}
       <div className="tbl-scroll">
       <table className="tbl">
-        <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>حالة الحساب</th><th></th></tr></thead>
+        <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>حالة الحساب</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
         <tbody>
           {staff.length===0 && (
             <tr><td colSpan={5}><EmptyState icon={<I.Users size={22}/>} title="لا مستخدمين بعد" body="أنشئ أول حساب دخول من زر «إنشاء مستخدم»."/></td></tr>
@@ -5480,7 +5484,7 @@ function CreateUserModal({ onClose, onDone }) {
       {api && (
         <>
           <div style={{height:12}}/>
-          <div className="label">الفروع {form.role !== "admin" && <span style={{color:"var(--red)"}}>*</span>}</div>
+          <div className="label">الفروع {form.role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
           {form.role === "admin"
             ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
             : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setServerError(""); }} idPrefix="create-user-branch"/>}
@@ -5858,7 +5862,7 @@ function CustomSectionsPanel() {
       ) : (
         <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>القسم</th><th>المجموعة</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>القسم</th><th>المجموعة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {sections.map(s=>{
               const Ico = I[s.icon] || I.Layers;
@@ -5971,7 +5975,7 @@ function CustomSectionPage({ id }) {
           <Ico size={22}/>
         </div>
         <div>
-          <div className="h1" style={{marginBottom:2}}>{s.label}</div>
+          <h1 className="h1" style={{marginBottom:2}}>{s.label}</h1>
           {s.description && <div className="muted" style={{fontSize:13.5}}>{s.description}</div>}
         </div>
       </div>
@@ -5987,7 +5991,7 @@ function NotFound({ go }) {
     <Page>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"80px 0"}}>
         <div className="serif" style={{fontSize:120,lineHeight:1,color:"var(--blue-300)"}}>404</div>
-        <div className="h1" style={{marginTop:18}}>هذه الصفحة في يوم تعافي.</div>
+        <h1 className="h1" style={{marginTop:18}}>هذه الصفحة في يوم تعافي.</h1>
         <div className="muted" style={{marginTop:8,maxWidth:480,textAlign:"center"}}>الصفحة التي تبحث عنها غير موجودة أو تم نقلها. عُد إلى لوحة التحكم.</div>
         <button className="btn btn-blue" style={{marginTop:20}} onClick={()=>go("dashboard")}><I.ArrowLeft size={13}/> العودة إلى لوحة التحكم</button>
       </div>
@@ -6068,6 +6072,17 @@ function ClinicApp({ ctx }) {
   const [notifsOpen, setNotifsOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  // Esc closes the phone menu drawer and the notifications list (a dialog
+  // on top handles its own Esc first).
+  React.useEffect(() => {
+    if (!mobileNavOpen && !notifsOpen) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape" || __openModals.length) return;
+      setMobileNavOpen(false); setNotifsOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileNavOpen, notifsOpen]);
   // TEMPORARY isolated route for the historical patient import page (?import=1).
   // Bypasses auth/nav entirely. Remove this line, the early return below, and
   // src/import.jsx after the paper-record migration is complete.
@@ -6128,7 +6143,7 @@ function ClinicApp({ ctx }) {
   React.useEffect(()=>{
     window.showToast = (msg, kind="success") => {
       setToast({msg, kind});
-      setTimeout(()=>setToast(null), 2400);
+      setTimeout(()=>setToast(null), 4000);
     };
   },[]);
 
@@ -6266,7 +6281,7 @@ function ClinicApp({ ctx }) {
       const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
       setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
     }
-    setToast({ msg: `أهلاً بعودتك, ${u.name.split(" ")[0]}`, kind:"success" });
+    setToast({ msg: `أهلاً بعودتك، ${u.name.split(" ")[0]}`, kind:"success" });
     setTimeout(()=>setToast(null), 2400);
   }
 
@@ -6345,12 +6360,14 @@ function ClinicApp({ ctx }) {
   // logged sessions (no canned entries).
   const notifs = [
     ...DATA.appts.filter(a=>a.status!=="متاح").slice(-2).map(a=>({ title:`موعد — ${a.patient}${a.time?` ${a.time}`:""}`, time:a.date||"", dot:"var(--blue-500)" })),
-    ...DATA.payments.slice(-2).map(p=>({ title:`فاتورة ${p.id} — EGP ${(p.paid||0).toLocaleString()}`, time:p.date||"", dot:"var(--green)" })),
+    ...DATA.payments.slice(-2).map(p=>({ title:`فاتورة ${p.id} — EGP ${(p.paid||0).toLocaleString("en-US")}`, time:p.date||"", dot:"var(--green)" })),
     ...DATA.sessions.slice(0,1).map(s=>({ title:`جلسة مسجلة — ${s.patient||""} #${s.session||""}`, time:s.date||"", dot:"var(--amber)" })),
   ].slice(0,5);
 
   return (
     <div style={{display:"flex",minHeight:"100vh",background:"var(--ink-50)"}}>
+      {/* First Tab stop: past the menu and the top bar to the page (like the platform's). */}
+      <a className="skip-link" href="#clinic-main" onClick={(e)=>{ e.preventDefault(); const m = document.getElementById("clinic-main"); if (m) m.focus(); }}>تخطَّ إلى المحتوى</a>
       <div className={"sidebar-backdrop" + (mobileNavOpen ? " open" : "")} onClick={()=>setMobileNavOpen(false)}/>
       <Sidebar active={route} onNav={(id)=>{ setMobileNavOpen(false); go(id); }} role={acct.role} user={acct} isOpen={mobileNavOpen}/>
       <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
@@ -6360,26 +6377,26 @@ function ClinicApp({ ctx }) {
             <I.Menu size={18}/>
           </button>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-            <span className="mono" style={{fontSize:11,color:"var(--ink-400)",letterSpacing:".05em",textTransform:"uppercase"}}>{acct.role}</span>
-            <span style={{color:"var(--ink-300)"}}>·</span>
+            <span style={{fontSize:12,color:"var(--ink-500)",whiteSpace:"nowrap"}}>{acct.role}</span>
+            <span aria-hidden="true" style={{color:"var(--ink-300)"}}>·</span>
             <span style={{fontSize:13,color:"var(--ink-700)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeBranchName()}</span>
-            <span className="badge b-green" style={{marginLeft:6}}><span className="dot"></span>متصل</span>
+            <span className="badge b-green topbar-online"><span className="dot" aria-hidden="true"></span>متصل</span>
           </div>
-          <button type="button" className="search-wrap" onClick={()=>setPaletteOpen(true)}
+          {/* Its name is its visible text (WCAG 2.5.3); ⌘K is a hint only. */}
+          <button type="button" className="search-wrap" onClick={()=>setPaletteOpen(true)} aria-haspopup="dialog"
             style={{position:"relative",width:"min(340px, 32vw)",height:36,padding:"0 34px",borderRadius:10,
-              border:"1px solid transparent",background:"var(--ink-50)",cursor:"pointer",
-              alignItems:"center",gap:8,color:"var(--ink-500)",fontSize:13,fontFamily:"inherit"}}
-            aria-label="فتح البحث الشامل">
-            <I.Search size={15} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-            <span style={{flex:1,textAlign:"right"}}>ابحث عن مرضى، مواعيد، فواتير…</span>
-            <span className="mono" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-400)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</span>
+              border:"1px solid var(--ink-200)",background:"var(--ink-50)",cursor:"pointer",
+              alignItems:"center",gap:8,color:"var(--ink-500)",fontSize:13,fontFamily:"inherit"}}>
+            <I.Search size={15} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-500)"}}/>
+            <span style={{flex:1,textAlign:"start"}}>ابحث عن مرضى، مواعيد، فواتير…</span>
+            <kbd className="mono" aria-hidden="true" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-500)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</kbd>
           </button>
           {/* Phone: the full search bar collapses to this icon (opens the same palette) */}
-          <button type="button" className="btn btn-ghost btn-icon mobile-search-btn" title="بحث" aria-label="فتح البحث الشامل" onClick={()=>setPaletteOpen(true)}>
+          <button type="button" className="btn btn-ghost btn-icon mobile-search-btn" title="بحث" aria-label="فتح البحث الشامل" aria-haspopup="dialog" onClick={()=>setPaletteOpen(true)}>
             <I.Search size={17}/>
           </button>
           <div style={{position:"relative"}}>
-            <button className="btn btn-ghost btn-icon" title="الإشعارات" style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
+            <button type="button" className="btn btn-ghost btn-icon" title="الإشعارات" aria-label={notifs.length ? `الإشعارات (${notifs.length})` : "الإشعارات"} aria-expanded={notifsOpen ? "true" : "false"} style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
               <I.Bell size={17}/>
               {notifs.length>0 && <span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>}
             </button>
@@ -6393,7 +6410,7 @@ function ClinicApp({ ctx }) {
                     <span style={{width:8,height:8,borderRadius:"50%",background:n.dot,flexShrink:0}}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:12.5,fontWeight:500}}>{n.title}</div>
-                      <div style={{fontSize:11,color:"var(--ink-400)"}}>{n.time}</div>
+                      <div className="mono" style={{fontSize:11,color:"var(--ink-500)"}}>{n.time}</div>
                     </div>
                   </div>
                 ))}
@@ -6403,12 +6420,12 @@ function ClinicApp({ ctx }) {
               </div>
             )}
           </div>
-          <button className="btn btn-ghost btn-icon" title="مساعدة" onClick={()=>window.showToast&&window.showToast("فتح المساعدة — قريباً","success")}>
+          <button type="button" className="btn btn-ghost btn-icon" title="مساعدة" aria-label="مساعدة" onClick={()=>window.showToast&&window.showToast("المساعدة قريبًا","info")}>
             <I.Sparkle size={17}/>
           </button>
         </div>
 
-        <main style={{flex:1}}>
+        <main id="clinic-main" tabIndex={-1} style={{flex:1,outline:"none"}}>
           {!demo && <InactiveBranchBanner/>}
           {moduleOff && <TenantModuleDisabled go={go}/>}
           {!moduleOff && <>
@@ -6511,7 +6528,7 @@ function PatientPortal({ onLogout }) {
 
   function handleBookingComplete(slot) {
     setBookingOpen(false);
-    setToast({ msg: `Appointment booked for ${slot.date} at ${slot.time}`, kind:"success" });
+    setToast({ msg: `تم حجز موعدك يوم ${slot.date} الساعة ${slot.time}`, kind:"success" });
     setTimeout(()=>setToast(null), 3000);
     setRoute("appointments");
   }
@@ -6605,7 +6622,7 @@ function PatientTopbar({ onNav, active }) {
           <span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>
         </button>
         <button onClick={()=>onNav("profile")} style={{border:"none",background:"transparent",padding:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
-          <div className="av md" style={{background:"var(--blue-500)",color:"#fff"}}>{PATIENT_ME.initials}</div>
+          <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{PATIENT_ME.initials}</div>
           <I.ChevronDown size={12} style={{color:"var(--ink-500)"}}/>
         </button>
         <button className="btn btn-ghost btn-icon" title="تسجيل الخروج" onClick={()=>onNav("logout")}>
@@ -6825,7 +6842,7 @@ function PatientHome({ onBook, go }) {
             const clinicPhone = ((window.BRANCHES||[])[0]||{}).phone || "";
             return (
             <div key={i} style={{display:"flex",alignItems:"center",gap:14,padding:14,border:"1px solid var(--ink-200)",borderRadius:12}}>
-              <div className="av lg" style={{background:c.color+"33",color:c.color}}>{(c.name||"—").split(" ").slice(-2).map(x=>x[0]||"").join("")}</div>
+              <div className="av lg" aria-hidden="true" style={{background:c.color+"33",color:"var(--ink-900)"}}>{(c.name||"—").split(" ").slice(-2).map(x=>x[0]||"").join("")}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:14}}>{c.name || "—"}</div>
                 <div className="muted" style={{fontSize:12}}>{c.role}{c.spec ? ` · ${c.spec}` : ""}</div>
@@ -6922,7 +6939,7 @@ function PatientAppointments({ onBook }) {
               display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               flexShrink:0
             }}>
-              <div className="mono" style={{fontSize:11,opacity:.8,fontWeight:500}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? new Date(a.date).toLocaleDateString("ar-EG",{month:"short"}) : a.date.split("،")[0].slice(0,4)}</div>
+              <div className="mono" style={{fontSize:11,opacity:.8,fontWeight:500}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? new Date(a.date).toLocaleDateString("ar-EG-u-nu-latn",{month:"short"}) : a.date.split("،")[0].slice(0,4)}</div>
               <div className="mono" style={{fontSize:22,fontWeight:600,lineHeight:1}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? a.date.slice(8,10) : (a.date.match(/\d+/)?.[0] || "—")}</div>
             </div>
             <div style={{flex:1,minWidth:200}}>
@@ -6948,7 +6965,7 @@ function PatientAppointments({ onBook }) {
           <div key={i} className="rgrid pvisit-row" style={{padding:"14px 18px","--gtc":"140px 1fr 100px 110px 90px",alignItems:"center",gap:12,borderBottom:i<past.length-1?"1px solid var(--ink-100)":"none"}}>
             <div>
               <div style={{fontSize:13,fontWeight:500}}>{a.date}</div>
-              <div className="mono" style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.time} · {a.dur}m</div>
+              <div className="mono" style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.time} · {a.dur} د</div>
             </div>
             <div>
               <div style={{fontSize:13}}>{a.type}</div>
@@ -7032,11 +7049,11 @@ function PatientBills() {
       <div className="rgrid c-sm" style={{"--gtc":"repeat(3,1fr)",gap:14,marginBottom:24}}>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>مدفوع هذه السنة</div>
-          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>EGP {paidThisYear.toLocaleString()}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>EGP {paidThisYear.toLocaleString("en-US")}</div>
         </div>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>معلّق</div>
-          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4,color:pending>0?"var(--red)":"var(--green)"}}>EGP {pending.toLocaleString()}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4,color:pending>0?"var(--red)":"var(--green)"}}>EGP {pending.toLocaleString("en-US")}</div>
         </div>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>جلسات متبقية</div>
@@ -7047,7 +7064,7 @@ function PatientBills() {
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
         <table className="tbl">
-          <thead><tr><th>فاتورة</th><th>التاريخ</th><th>البند</th><th>المبلغ</th><th>الطريقة</th><th>الحالة</th><th></th></tr></thead>
+          <thead><tr><th>فاتورة</th><th>التاريخ</th><th>البند</th><th>المبلغ</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {bills.length===0 && (
               <tr><td colSpan={7}><EmptyState icon={<I.FileText size={22}/>} title="لا فواتير بعد" body="ستظهر فواتيرك هنا بعد أول عملية دفع."/></td></tr>
@@ -7057,7 +7074,7 @@ function PatientBills() {
                 <td className="mono">{b.id}</td>
                 <td>{b.date}</td>
                 <td>{b.desc}</td>
-                <td className="mono" style={{fontWeight:600}}>EGP {b.amount.toLocaleString()}</td>
+                <td className="mono" style={{fontWeight:600}}>EGP {b.amount.toLocaleString("en-US")}</td>
                 <td>{b.method}</td>
                 <td><PayBadge s={b.status}/></td>
                 <td><button className="btn btn-ghost btn-icon" onClick={()=>{
@@ -7219,19 +7236,33 @@ function PatientBookingFlow({ onClose, onDone }) {
     time: "",
   });
   const [confirming, setConfirming] = React.useState(false);
+  // A dialog like Modal (docs/04): role=dialog named by its title, focus
+  // kept inside, Esc closes it, focus back to «احجز زيارة».
+  const boxRef = React.useRef(null);
+  const titleId = useDialogFocus(boxRef, true, confirming ? null : onClose);
+  // A step's buttons leave with it: keep the focus in the dialog.
+  React.useEffect(() => {
+    const box = boxRef.current;
+    if (box && !box.contains(document.activeElement)) __focusEl(box);
+  }, [step, confirming]);
 
-  function next() {
+  // `patch`: a choice made by the same click that moves on (a reason or a
+  // specialist card); React applies setPicks() on the next render, so the
+  // step is checked against picks + patch.
+  function next(patch) {
+    const cur = patch ? { ...picks, ...patch } : picks;
+    if (patch) setPicks(cur);
     // Validate the current step before advancing so incomplete state can't
     // silently slip through to booking. Each step guards its own field.
-    if (step === 1 && !picks.reason) { if (window.showToast) window.showToast("اختر سبب الزيارة", "error"); return; }
-    if (step === 2 && !picks.therapist) { if (window.showToast) window.showToast("اختر المعالج", "error"); return; }
-    if (step === 3 && (!picks.date || !picks.time)) { if (window.showToast) window.showToast("اختر التاريخ والوقت", "error"); return; }
+    if (step === 1 && !cur.reason) { if (window.showToast) window.showToast("اختر سبب الزيارة", "error"); return; }
+    if (step === 2 && !cur.therapist) { if (window.showToast) window.showToast("اختر المعالج", "error"); return; }
+    if (step === 3 && (!cur.date || !cur.time)) { if (window.showToast) window.showToast("اختر التاريخ والوقت", "error"); return; }
     // Reject past dates/times before persisting so the DB never sees them.
     if (step === 3) {
       const now = new Date(nowTick);
       const todayIso = __bkIso(now);
       const nowHM = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-      if (picks.date < todayIso || (picks.date === todayIso && picks.time <= nowHM)) {
+      if (cur.date < todayIso || (cur.date === todayIso && cur.time <= nowHM)) {
         if (window.showToast) window.showToast("لا يمكن الحجز في وقت سابق", "error");
         return;
       }
@@ -7241,46 +7272,48 @@ function PatientBookingFlow({ onClose, onDone }) {
     const me = getPatientMe();
     // Persist the booking so it appears in Appointments after the modal closes.
     if (window.KineticData) {
-      const therapistRow = (DATA.therapists || []).find(t => t.name === picks.therapist);
+      const therapistRow = (DATA.therapists || []).find(t => t.name === cur.therapist);
       const bookingId = newRecordId("B-");
       window.KineticData.upsert("appts", {
         booking_id: bookingId,
         id: bookingId,
         patient_id: me.file,
         therapist_id: (therapistRow && (therapistRow.staff_id || therapistRow.id)) || null,
-        th: picks.therapist || null,
-        date: picks.date,
-        time: picks.time,
+        th: cur.therapist || null,
+        date: cur.date,
+        time: cur.time,
         status: "مؤكد",
-        notes: picks.reason || "",
+        notes: cur.reason || "",
       }).catch(e => console.warn("booking persist failed", e));
     }
     setTimeout(()=>{
-      onDone(picks);
+      onDone(cur);
     }, 1100);
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" style={{width:760,maxWidth:"calc(100% - 40px)",maxHeight:"calc(100vh - 60px)",padding:0,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={confirming ? undefined : onClose}>
+      <DialogFocusGuard boxRef={boxRef} at="start"/>
+      <div ref={boxRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+        style={{width:760,maxWidth:"calc(100% - 40px)",maxHeight:"calc(100vh - 60px)",padding:0,overflow:"hidden",outline:"none"}} onClick={e=>e.stopPropagation()}>
         {/* Header */}
         <div style={{padding:"18px 24px",borderBottom:"1px solid var(--ink-100)",display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:34,height:34,borderRadius:10,background:"var(--blue-100)",color:"var(--blue-700)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div aria-hidden="true" style={{width:34,height:34,borderRadius:10,background:"var(--blue-100)",color:"var(--blue-700)",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <I.Calendar size={17}/>
           </div>
           <div style={{flex:1}}>
-            <div className="h3">احجز زيارة</div>
+            <h2 className="h3" id={titleId}>احجز زيارة</h2>
             <div className="muted" style={{fontSize:12}}>خطوة {step} من 4 — تستغرق عادةً 30 ثانية</div>
           </div>
-          <button className="btn btn-ghost btn-icon" onClick={onClose}><I.X size={16}/></button>
+          <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={onClose} disabled={confirming}><I.X size={16}/></button>
         </div>
 
         {/* Stepper */}
-        <div style={{padding:"14px 24px",background:"var(--ink-50)",borderBottom:"1px solid var(--ink-100)",display:"flex",gap:6}}>
+        <div aria-hidden="true" style={{padding:"14px 24px",background:"var(--ink-50)",borderBottom:"1px solid var(--ink-100)",display:"flex",gap:6}}>
           {[1,2,3,4].map(n=>(
             <div key={n} style={{
               flex:1,height:5,borderRadius:999,
-              background: n<step?"var(--green)":n===step?"var(--blue-500)":"var(--ink-200)",
+              background: n<step?"var(--green)":n===step?"var(--blue-700)":"var(--ink-200)",
               transition:"background .25s"
             }}/>
           ))}
@@ -7294,12 +7327,12 @@ function PatientBookingFlow({ onClose, onDone }) {
                 <I.Check size={28}/>
               </div>
               <div className="serif" style={{fontSize:30,marginBottom:6}}>تم حجزك!</div>
-              <div className="muted">Confirmation sent to {PATIENT_ME.phone} via واتساب.</div>
+              <div className="muted" role="status">سيصلك التأكيد عبر واتساب على <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi>.</div>
             </div>
           ) : step===1 ? (
             <div>
               <div className="serif" style={{fontSize:26,marginBottom:6}}>ما الذي يحضرك إلينا؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>This helps us match you مع the right therapist.</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>يساعدنا ذلك على اختيار الأخصائي المناسب لك.</div>
 
               <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                 {[
@@ -7308,8 +7341,8 @@ function PatientBookingFlow({ onClose, onDone }) {
                   { id:"followup", l:"متابعة مع الطبيب", sub:PATIENT_ME.doctor&&PATIENT_ME.doctor!=="—"?`متابعة مع ${PATIENT_ME.doctor}`:"متابعة مع طبيبك",                                   ic:<I.Stethoscope size={18}/> },
                   { id:"assess",   l:"تقييم أولي",   sub:"أول زيارة",                                                  ic:<I.Sparkle size={18}/> },
                 ].map(o=>(
-                  <button key={o.id} onClick={()=>{setPicks({...picks,reason:o.id}); next();}} style={{
-                    padding:18,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                  <button type="button" key={o.id} aria-pressed={picks.reason===o.id ? "true" : "false"} onClick={()=>next({ reason:o.id })} style={{
+                    padding:18,textAlign:"start",cursor:"pointer",fontFamily:"inherit",
                     border:`1px solid ${picks.reason===o.id?"var(--blue-500)":"var(--ink-200)"}`,
                     background:picks.reason===o.id||o.primary?"var(--blue-50)":"#fff",
                     borderRadius:14,display:"flex",alignItems:"center",gap:14,transition:"all .15s"
@@ -7321,7 +7354,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                       <div style={{fontWeight:600,fontSize:14}}>{o.l} {o.primary && <span className="badge b-blue" style={{marginLeft:4,fontSize:10}}>موصى به</span>}</div>
                       <div className="muted" style={{fontSize:12,marginTop:3}}>{o.sub}</div>
                     </div>
-                    <I.ArrowRight size={14} style={{color:"var(--ink-400)"}}/>
+                    <I.ArrowLeft size={14} style={{color:"var(--ink-500)"}}/>
                   </button>
                 ))}
               </div>
@@ -7336,8 +7369,8 @@ function PatientBookingFlow({ onClose, onDone }) {
                   ...DATA.therapists.filter(t=>t.active!==false).map(t=>({ name:t.name, spec:t.spec||"", color:t.color||"#7BBDE8", yourUsual: t.name===PATIENT_ME.therapist })),
                   { name:"أي أخصائي", spec:"الأقرب توفرًا", color:"#BDD8E9", any:true },
                 ].map((t,i)=>(
-                  <button key={i} onClick={()=>{setPicks({...picks,therapist:t.name}); next();}} style={{
-                    padding:16,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                  <button type="button" key={i} aria-pressed={picks.therapist===t.name ? "true" : "false"} onClick={()=>next({ therapist:t.name })} style={{
+                    padding:16,textAlign:"start",cursor:"pointer",fontFamily:"inherit",
                     border:`1px solid ${picks.therapist===t.name?"var(--blue-500)":"var(--ink-200)"}`,
                     background: picks.therapist===t.name?"var(--blue-50)":"#fff",
                     borderRadius:14,display:"flex",alignItems:"center",gap:12,transition:"all .15s"
@@ -7347,7 +7380,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                         <I.Users size={18}/>
                       </div>
                     ) : (
-                      <div className="av lg" style={{background:t.color+"33",color:t.color}}>{t.name.split(" ").map(x=>x[0]).join("")}</div>
+                      <div className="av lg" aria-hidden="true" style={{background:t.color+"33",color:"var(--ink-900)"}}>{t.name.split(" ").map(x=>x[0]).join("")}</div>
                     )}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -7363,7 +7396,7 @@ function PatientBookingFlow({ onClose, onDone }) {
           ) : step===3 ? (
             <div>
               <div className="serif" style={{fontSize:26,marginBottom:6}}>ما الوقت المناسب لك؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>Showing live availability for {picks.therapist}.</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>المواعيد المتاحة الآن مع {picks.therapist}.</div>
 
               {(() => {
                 const bookingDays = __bkDays(7, picks.therapist, null);
@@ -7378,17 +7411,17 @@ function PatientBookingFlow({ onClose, onDone }) {
                         const sel = picks.date === d.iso;
                         const full = d.slots === 0;
                         return (
-                          <button key={d.iso} disabled={full} onClick={()=> !full && setPicks({...picks,date:d.iso})} style={{
+                          <button type="button" key={d.iso} disabled={full} aria-pressed={sel ? "true" : "false"} onClick={()=> !full && setPicks({...picks,date:d.iso})} style={{
                             padding:"10px 6px",cursor:full?"not-allowed":"pointer",fontFamily:"inherit",
-                            border:`1px solid ${sel?"var(--blue-500)":"var(--ink-200)"}`,
-                            background:sel?"var(--blue-500)":full?"var(--ink-50)":"#fff",
-                            color:sel?"#fff":full?"var(--ink-400)":"var(--ink-900)",borderRadius:10,
+                            border:`1px solid ${sel?"var(--blue-700)":"var(--ink-200)"}`,
+                            background:sel?"var(--blue-700)":full?"var(--ink-50)":"#fff",
+                            color:sel?"#fff":full?"var(--ink-500)":"var(--ink-900)",borderRadius:10,
                             opacity: full ? .6 : 1,
                           }}>
                             <div style={{fontWeight:600,fontSize:13}}>{d.weekday}</div>
                             <div className="mono" style={{fontSize:10.5,opacity:.7}}>{d.day} {d.month}</div>
-                            <div style={{fontSize:10,marginTop:3,color:sel?"#fff":full?"var(--ink-400)":"var(--green)"}}>
-                              ● {full ? "ممتلئ" : `${d.slots} متاح`}
+                            <div style={{fontSize:10,marginTop:3,color:sel?"#fff":full?"var(--ink-500)":"#2C8067"}}>
+                              {full ? "ممتلئ" : `متاح: ${d.slots}`}
                             </div>
                           </button>
                         );
@@ -7403,13 +7436,13 @@ function PatientBookingFlow({ onClose, onDone }) {
                         const unavail = isPast || isTaken;
                         const sel     = picks.time === t && !unavail;
                         return (
-                          <button key={t} disabled={unavail} onClick={()=> !unavail && setPicks({...picks,time:t})}
+                          <button type="button" key={t} disabled={unavail} aria-pressed={sel ? "true" : "false"} onClick={()=> !unavail && setPicks({...picks,time:t})}
                             title={isPast?"وقت سابق":isTaken?"محجوز":""}
                             style={{
-                              padding:"8px 14px",fontFamily:"inherit",cursor:unavail?"not-allowed":"pointer",
-                              border:`1px solid ${sel?"var(--blue-500)":"var(--ink-200)"}`,
-                              background:sel?"var(--blue-500)":unavail?"var(--ink-100)":"#fff",
-                              color:sel?"#fff":unavail?"var(--ink-300)":"var(--ink-900)",
+                              padding:"8px 14px",minHeight:40,fontFamily:"inherit",cursor:unavail?"not-allowed":"pointer",
+                              border:`1px solid ${sel?"var(--blue-700)":"var(--ink-200)"}`,
+                              background:sel?"var(--blue-700)":unavail?"var(--ink-100)":"#fff",
+                              color:sel?"#fff":unavail?"var(--ink-500)":"var(--ink-900)",
                               textDecoration:unavail?"line-through":"none",
                               borderRadius:9,fontSize:13,fontWeight:500
                             }} className="mono">{t}</button>
@@ -7423,7 +7456,7 @@ function PatientBookingFlow({ onClose, onDone }) {
           ) : (
             <div>
               <div className="serif" style={{fontSize:26,marginBottom:6}}>هل يبدو جيدًا؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>مراجعة and confirm. You can reschedule or cancel up to 4 hours before.</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>راجع التفاصيل ثم أكّد. يمكنك إعادة الجدولة أو الإلغاء حتى 4 ساعات قبل الموعد.</div>
 
               <div style={{
                 padding:20,
@@ -7432,9 +7465,9 @@ function PatientBookingFlow({ onClose, onDone }) {
               }}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
                   <div>
-                    <div className="mono" style={{fontSize:10.5,letterSpacing:".06em",textTransform:"uppercase",color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
-                    <div className="serif" style={{fontSize:30,lineHeight:1.05}}>{picks.date}</div>
-                    <div className="mono" style={{fontSize:18,marginTop:4,color:"var(--blue-700)",fontWeight:600}}>{picks.time} · 45 minutes</div>
+                    <div style={{fontSize:11,color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
+                    <div className="mono" style={{fontSize:26,lineHeight:1.1}}>{picks.date}</div>
+                    <div style={{fontSize:18,marginTop:4,color:"var(--blue-900)",fontWeight:600}}><span className="mono">{picks.time}</span> · {(window.calendarConfig ? window.calendarConfig().slotMinutes : 45)} دقيقة</div>
                   </div>
                   <I.Calendar size={28} style={{color:"var(--blue-500)"}}/>
                 </div>
@@ -7446,11 +7479,11 @@ function PatientBookingFlow({ onClose, onDone }) {
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>النوع</div>
-                    <div style={{fontWeight:500}}>{picks.reason==="new"?"مشكلة جديدة assessment":picks.reason==="followup"?"الطبيب follow-up":picks.reason==="assess"?"تقييم أولي":"علاج يدوي"}</div>
+                    <div style={{fontWeight:500}}>{picks.reason==="new"?"تقييم مشكلة جديدة":picks.reason==="followup"?"متابعة مع الطبيب":picks.reason==="assess"?"تقييم أولي":"متابعة خطة العلاج"}</div>
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>المكان</div>
-                    <div style={{fontWeight:500}}>Kinetic مصر الجديدة · غرفة 2</div>
+                    <div style={{fontWeight:500}}>{(typeof activeBranchName === "function" && activeBranchName()) || (window.CLINIC && window.CLINIC.name) || "—"}</div>
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>التكلفة</div>
@@ -7461,7 +7494,7 @@ function PatientBookingFlow({ onClose, onDone }) {
 
               <label style={{display:"flex",alignItems:"flex-start",gap:10,padding:14,background:"var(--ink-50)",borderRadius:10,fontSize:12.5,cursor:"pointer"}}>
                 <input type="checkbox" defaultChecked style={{marginTop:2}}/>
-                <span>Send me a واتساب reminder 24 hours before this visit at <span className="mono">{PATIENT_ME.phone}</span>.</span>
+                <span>أرسل لي تذكيرًا عبر واتساب قبل الزيارة بـ 24 ساعة على <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi>.</span>
               </label>
             </div>
           )}
@@ -7470,22 +7503,23 @@ function PatientBookingFlow({ onClose, onDone }) {
         {/* Footer */}
         {!confirming && (
           <div style={{padding:"14px 24px",borderTop:"1px solid var(--ink-100)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",flexWrap:"wrap",gap:8}}>
-            <button className="btn btn-ghost" onClick={step===1?onClose:()=>setStep(step-1)}>
-              <I.ArrowLeft size={13}/> {step===1?"إلغاء":"رجوع"}
+            <button type="button" className="btn btn-ghost" onClick={step===1?onClose:()=>setStep(step-1)}>
+              {step===1 ? "إلغاء" : <><I.ArrowLeft size={13}/> رجوع</>}
             </button>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
               {step>=3 && (
-                <span className="muted" style={{fontSize:12}}>
+                <span className="muted mono" style={{fontSize:12}}>
                   {picks.date} · {picks.time}
                 </span>
               )}
-              <button className="btn btn-blue" onClick={next} disabled={step===1 && !picks.reason}>
+              <button type="button" className="btn btn-blue" onClick={()=>next()} disabled={step===1 && !picks.reason}>
                 {step<4 ? "متابعة" : "تأكيد الحجز"} <I.ArrowRight size={13}/>
               </button>
             </div>
           </div>
         )}
       </div>
+      <DialogFocusGuard boxRef={boxRef} at="end"/>
     </div>
   );
 }
@@ -7713,7 +7747,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                             <I.Users size={18}/>
                           </div>
                         ) : (
-                          <div className="av lg" style={{background:t.color+"33",color:t.color}}>{t.name.split(" ").map(x=>x[0]).join("")}</div>
+                          <div className="av lg" aria-hidden="true" style={{background:t.color+"33",color:"var(--ink-900)"}}>{t.name.split(" ").map(x=>x[0]).join("")}</div>
                         )}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
