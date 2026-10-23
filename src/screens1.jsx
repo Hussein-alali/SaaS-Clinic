@@ -12,6 +12,8 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
+// The message is for the patient, so it stays as written (Arabic) whatever
+// the interface language is.
 function buildWhatsAppUrl(phone, msg) {
   return `https://wa.me/${(phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(msg || "")}`;
 }
@@ -20,24 +22,27 @@ function buildTelUrl(phone) {
   return `tel:${phone}`;
 }
 
+// «23/10/2026» — the browser's default numeric date, in the interface language.
+const NUMERIC_DATE = { year: "numeric", month: "numeric", day: "numeric" };
+
 // ── Dashboard ─────────────────────────────────────────────────
 // Shared palette for computed category charts.
 const CHART_COLORS = ["#7BBDE8","#3A7FB5","#BDD8E9","#7E6BD3","#3FA984","#1E4A6E","#D49044"];
-// Long Arabic date for page subtitles ("الأحد، 24 مايو").
+// Long date for page subtitles («الأحد، 24 مايو» / «Sunday 24 May»).
 function todayLabelAr() {
-  try { return new Date().toLocaleDateString("ar-EG-u-nu-latn", { weekday:"long", day:"numeric", month:"long" }); }
-  catch { return new Date().toISOString().slice(0,10); }
+  return fmtDate(new Date(), "weekdayDate");
 }
 // Active branch name (settings-driven; falls back to a neutral label).
 function activeBranchName() {
   const b = (window.BRANCHES || []).find(x => x.id === window.ACTIVE_BRANCH_ID) || (window.BRANCHES || [])[0];
-  return (b && b.name) || "عيادتك";
+  return (b && b.name) || tt("عيادتك");
 }
 const invoiceDateOf = (p) => String(p.date || p.created_at || "").slice(0, 10);
 
 // ── Dashboard time filter ─────────────────────────────────────
-// Given a range preset (اليوم / هذا الأسبوع / الشهر / الربع), returns
-// the [from, to] window (YYYY-MM-DD, inclusive) plus a `bucket` telling
+// Given a range preset (اليوم / هذا الأسبوع / الشهر / الربع — stored
+// values, saved in localStorage), returns the [from, to] window
+// (YYYY-MM-DD, inclusive), the translated `label`, and a `bucket` telling
 // widgets whether to group by hour, day, or month. The clinic week
 // starts on Saturday to match the Calendar module.
 function __dashPad(n){ return String(n).padStart(2,"0"); }
@@ -53,23 +58,23 @@ function dashboardPeriod(range) {
   const y = now.getFullYear(), m = now.getMonth();
   switch (range) {
     case "اليوم":
-      return { from: __dashIso(now), to: __dashIso(now), bucket: "hour", label: "اليوم" };
+      return { from: __dashIso(now), to: __dashIso(now), bucket: "hour", label: tt("اليوم") };
     case "هذا الأسبوع": {
       const s = __dashStartOfWeek(now);
       const e = new Date(s); e.setDate(s.getDate()+6);
-      return { from: __dashIso(s), to: __dashIso(e), bucket: "day", label: "هذا الأسبوع" };
+      return { from: __dashIso(s), to: __dashIso(e), bucket: "day", label: tt("هذا الأسبوع") };
     }
     case "الشهر": {
       const s = new Date(y, m, 1), e = new Date(y, m+1, 0);
-      return { from: __dashIso(s), to: __dashIso(e), bucket: "day", label: "الشهر" };
+      return { from: __dashIso(s), to: __dashIso(e), bucket: "day", label: tt("الشهر") };
     }
     case "الربع": {
       const q = Math.floor(m/3);            // 0-3
       const s = new Date(y, q*3, 1), e = new Date(y, q*3+3, 0);
-      return { from: __dashIso(s), to: __dashIso(e), bucket: "month", label: "الربع" };
+      return { from: __dashIso(s), to: __dashIso(e), bucket: "month", label: tt("الربع") };
     }
     default:
-      return { from: __dashIso(now), to: __dashIso(now), bucket: "hour", label: range };
+      return { from: __dashIso(now), to: __dashIso(now), bucket: "hour", label: tt(range) };
   }
 }
 function inPeriod(dateStr, from, to) {
@@ -105,7 +110,6 @@ function enumerateMonths(from, to){
   while (cur <= e) { out.push(`${cur.getFullYear()}-${__dashPad(cur.getMonth()+1)}`); cur.setMonth(cur.getMonth()+1); }
   return out;
 }
-const fmtEGP = (v) => v >= 1000 ? `EGP ${(v/1000).toFixed(1)}K` : `EGP ${Math.round(v||0).toLocaleString("en-US")}`;
 
 function Dashboard({ go }) {
   window.useDataVersion && window.useDataVersion();
@@ -190,7 +194,7 @@ function Dashboard({ go }) {
     const typeCounts = {};
     periodAppts.forEach(a => { if (a.type) typeCounts[a.type] = (typeCounts[a.type]||0)+1; });
     return Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]).slice(0,4)
-      .map(([label, v], i) => ({ label, v, color: CHART_COLORS[i] }));
+      .map(([label, v], i) => ({ label: apptTypeLabel(label), v, color: CHART_COLORS[i] }));
   }, [periodAppts]);
   const methodsTotal = methodsData.reduce((s,d)=>s+d.v, 0);
 
@@ -214,11 +218,11 @@ function Dashboard({ go }) {
   // the user picked "الشهر". We keep the visual layout untouched.
   const labels = React.useMemo(() => {
     switch (range) {
-      case "اليوم":       return { patients:"مرضى اليوم",   appts:"مواعيد اليوم",   rev:"إيرادات اليوم",   patRange:"اليوم" };
-      case "هذا الأسبوع": return { patients:"مرضى الأسبوع", appts:"مواعيد الأسبوع", rev:"إيرادات الأسبوع", patRange:"هذا الأسبوع" };
-      case "الشهر":       return { patients:"مرضى الشهر",   appts:"مواعيد الشهر",   rev:"إيرادات الشهر",   patRange:"هذا الشهر" };
-      case "الربع":       return { patients:"مرضى الربع",   appts:"مواعيد الربع",   rev:"إيرادات الربع",   patRange:"هذا الربع" };
-      default:            return { patients:"المرضى",       appts:"المواعيد",       rev:"الإيرادات",       patRange:range };
+      case "اليوم":       return { patients:tt("مرضى اليوم"),   appts:tt("مواعيد اليوم"),   rev:tt("إيرادات اليوم"),   patRange:tt("اليوم") };
+      case "هذا الأسبوع": return { patients:tt("مرضى الأسبوع"), appts:tt("مواعيد الأسبوع"), rev:tt("إيرادات الأسبوع"), patRange:tt("هذا الأسبوع") };
+      case "الشهر":       return { patients:tt("مرضى الشهر"),   appts:tt("مواعيد الشهر"),   rev:tt("إيرادات الشهر"),   patRange:tt("هذا الشهر") };
+      case "الربع":       return { patients:tt("مرضى الربع"),   appts:tt("مواعيد الربع"),   rev:tt("إيرادات الربع"),   patRange:tt("هذا الربع") };
+      default:            return { patients:tt("المرضى"),       appts:tt("المواعيد"),       rev:tt("الإيرادات"),       patRange:tt(range) };
     }
   }, [range]);
 
@@ -245,35 +249,32 @@ function Dashboard({ go }) {
   // ── Handlers ──
   function handleExportCsv() {
     const rows = [
-      `البيان,القيمة (الفترة: ${period.label})`,
+      `${tt("البيان")},${tt("القيمة (الفترة: {period})", { period: period.label })}`,
       `${labels.patients},${uniquePatients}`,
       `${labels.appts},${booked.length}/${periodAppts.length}`,
       `${labels.rev},${periodRevenue}`,
-      `الإيرادات الشهرية,${monthRevenue}`,
-      `مستحقات معلقة,${outstanding}`,
-      `مرضى جدد,${newPatients}`,
+      `${tt("الإيرادات الشهرية")},${monthRevenue}`,
+      `${tt("مستحقات معلقة")},${outstanding}`,
+      `${tt("مرضى جدد")},${newPatients}`,
     ];
     downloadCsv(rows, "dashboard.csv");
-    if (window.showToast) window.showToast("تم تصدير البيانات", "success");
+    if (window.showToast) window.showToast(tt("تم تصدير البيانات"), "success");
   }
 
   return (
     <Page>
       <div className="page-head" style={{marginBottom:22}}>
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>لوحة التحكم</span></div>
-          <h1 className="h1">صباح الخير{window.ME && window.ME.name ? `، ${window.ME.name.split(" ")[0]}` : ""} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{todayLabelAr()} — أداء {activeBranchName()} اليوم.</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("لوحة التحكم")}</span></div>
+          <h1 className="h1">{window.ME && window.ME.name ? tt("صباح الخير، {name}", { name: window.ME.name.split(" ")[0] }) : tt("صباح الخير")} <span style={{display:"inline-block",transform:"translateY(-2px)"}}>👋🏼</span></h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("{date} — أداء {branch} اليوم.", { date: todayLabelAr(), branch: activeBranchName() })}</div>
         </div>
         <div className="page-actions">
-          <div className="seg">
-            {["اليوم","هذا الأسبوع","الشهر","الربع"].map(r=>(
-              <button key={r} className={range===r?"on":""} onClick={()=>setRange(r)}>{r}</button>
-            ))}
-          </div>
-          <button className="btn btn-secondary" onClick={handleExportCsv}><I.Download size={14}/> تصدير</button>
-          <button className="btn btn-secondary" onClick={()=>setQuickPayOpen(true)}><I.CreditCard size={14}/> دفع سريع</button>
-          <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={14}/> موعد جديد</button>
+          <Segmented label={tt("الفترة")} value={range} onChange={setRange}
+            options={["اليوم","هذا الأسبوع","الشهر","الربع"].map(r => ({ value: r, label: tt(r) }))}/>
+          <button className="btn btn-secondary" onClick={handleExportCsv}><I.Download size={14}/> {tt("تصدير")}</button>
+          <button className="btn btn-secondary" onClick={()=>setQuickPayOpen(true)}><I.CreditCard size={14}/> {tt("دفع سريع")}</button>
+          <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={14}/> {tt("موعد جديد")}</button>
         </div>
       </div>
 
@@ -284,10 +285,10 @@ function Dashboard({ go }) {
       <div className="grid-stats" style={{marginBottom:18}}>
         <StatCard label={labels.patients}    value={String(uniquePatients)} accent="#7BBDE8" icon={<I.Users size={15}/>}/>
         <StatCard label={labels.appts} value={`${booked.length}/${periodAppts.length}`} accent="#3A7FB5" icon={<I.Calendar size={15}/>}/>
-        <StatCard label={labels.rev}   value={fmtEGP(periodRevenue)} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
-        <StatCard label="الإيرادات الشهرية"   value={fmtEGP(monthRevenue)} accent="#7E6BD3" icon={<I.Chart size={15}/>}/>
-        <StatCard label="الأخصائيون النشطون" value={`${(DATA.therapists||[]).filter(t=>t.active!==false).length}/${(DATA.therapists||[]).length}`} accent="#D49044" icon={<I.Stethoscope size={15}/>}/>
-        <StatCard label="الجلسات المتبقية" value={remainTotal.toLocaleString("en-US")} accent="#D8665A" icon={<I.Activity size={15}/>}/>
+        <StatCard label={labels.rev}   value={fmtMoneyShort(periodRevenue)} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
+        <StatCard label={tt("الإيرادات الشهرية")}   value={fmtMoneyShort(monthRevenue)} accent="#7E6BD3" icon={<I.Chart size={15}/>}/>
+        <StatCard label={tt("الأخصائيون النشطون")} value={`${(DATA.therapists||[]).filter(t=>t.active!==false).length}/${(DATA.therapists||[]).length}`} accent="#D49044" icon={<I.Stethoscope size={15}/>}/>
+        <StatCard label={tt("الجلسات المتبقية")} value={fmtNumber(remainTotal)} accent="#D8665A" icon={<I.Activity size={15}/>}/>
       </div>
 
       {/* main two cols */}
@@ -296,14 +297,14 @@ function Dashboard({ go }) {
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
             <div>
-              <div className="h2">اتجاه الإيرادات</div>
+              <div className="h2">{tt("اتجاه الإيرادات")}</div>
               <div className="muted" style={{fontSize:12.5,marginTop:2}}>
-                {period.bucket==="hour" ? "الساعات · ج.م" : period.bucket==="month" ? "الأشهر · ج.م" : "الأيام · ج.م"} — {period.label}
+                {period.bucket==="hour" ? tt("الساعات · ج.م") : period.bucket==="month" ? tt("الأشهر · ج.م") : tt("الأيام · ج.م")} — {period.label}
               </div>
             </div>
             <div style={{display:"flex",gap:14,fontSize:12}}>
-              <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:9,height:9,borderRadius:3,background:"#7BBDE8"}}></span>مقبوض</span>
-              <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--ink-500)"}} className="mono">{fmtEGP(periodRevenue)}</span>
+              <span style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:9,height:9,borderRadius:3,background:"#7BBDE8"}}></span>{tt("مقبوض")}</span>
+              <span style={{display:"flex",alignItems:"center",gap:6,color:"var(--ink-500)"}} className="mono">{fmtMoneyShort(periodRevenue)}</span>
             </div>
           </div>
           <AreaChart data={revenueData} height={220} formatY={(v)=>v>=1000?`${Number((v/1000).toFixed(1))}K`:v}/>
@@ -313,23 +314,23 @@ function Dashboard({ go }) {
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
             <div>
-              <div className="h2">جدول اليوم</div>
-              <div className="muted" style={{fontSize:12.5,marginTop:2}}>{confirmed.length} من {booked.length} مؤكد</div>
+              <div className="h2">{tt("جدول اليوم")}</div>
+              <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("{n} من {total} مؤكد", { n: confirmed.length, total: booked.length })}</div>
             </div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>عرض التقويم <I.ArrowRight size={12}/></button>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("appointments")}>{tt("عرض التقويم")} <I.ArrowRight size={12}/></button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:268,overflowY:"auto"}}>
-            {scheduleList.length===0 && <div className="muted" style={{fontSize:13,padding:"24px 0",textAlign:"center"}}>لا مواعيد ضمن الفترة المحددة.</div>}
+            {scheduleList.length===0 && <div className="muted" style={{fontSize:13,padding:"24px 0",textAlign:"center"}}>{tt("لا مواعيد ضمن الفترة المحددة.")}</div>}
             {scheduleList.map(a=>(
               <div key={a.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12,background:a.status==="قيد التنفيذ"?"var(--blue-50)":"#fff"}}>
                 <div style={{textAlign:"center",minWidth:48}}>
                   <div className="mono" style={{fontSize:13,fontWeight:600}}>{a.time}</div>
-                  <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> د</div>
+                  <div style={{fontSize:10.5,color:"var(--ink-500)"}}><span className="mono">{a.dur}</span> {tt("د")}</div>
                 </div>
                 <div style={{width:1,height:30,background:"var(--ink-200)"}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.patient}</div>
-                  <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.th} · {a.type || "—"} · {apptDayOf(a).slice(5)}</div>
+                  <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.th} · {apptTypeLabel(a.type) || "—"} · {apptDayOf(a).slice(5)}</div>
                 </div>
                 <ApptBadge s={a.status}/>
               </div>
@@ -342,26 +343,26 @@ function Dashboard({ go }) {
       <div className="rgrid half-lg c-sm" style={{"--gtc":"repeat(3,1fr)"}}>
         {/* Appointment trend */}
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:4}}>حجم المواعيد</div>
+          <div className="h2" style={{marginBottom:4}}>{tt("حجم المواعيد")}</div>
           <div className="muted" style={{fontSize:12.5,marginBottom:14}}>
-            {period.bucket==="hour" ? "جلسات/ساعة" : period.bucket==="month" ? "جلسات/شهر" : "جلسات/يوم"} · {period.label}
+            {period.bucket==="hour" ? tt("جلسات/ساعة") : period.bucket==="month" ? tt("جلسات/شهر") : tt("جلسات/يوم")} · {period.label}
           </div>
           <BarChart data={apptData} height={170}/>
         </div>
 
         {/* طرق العلاج */}
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:4}}>طرق العلاج</div>
-          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>نسبة الجلسات · {period.label}</div>
-          <DonutChart data={methodsData} size={150} centerLabel="الجلسات" centerValue={String(methodsTotal)}/>
+          <div className="h2" style={{marginBottom:4}}>{tt("طرق العلاج")}</div>
+          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>{tt("نسبة الجلسات · {period}", { period: period.label })}</div>
+          <DonutChart data={methodsData} size={150} centerLabel={tt("الجلسات")} centerValue={String(methodsTotal)}/>
         </div>
 
         {/* حمل الأخصائيين */}
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:4}}>حمل الأخصائيين</div>
-          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>حجوزات {period.label}</div>
+          <div className="h2" style={{marginBottom:4}}>{tt("حمل الأخصائيين")}</div>
+          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>{tt("حجوزات {period}", { period: period.label })}</div>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            {DATA.therapists.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>لا أخصائيين مسجّلين بعد.</div>}
+            {DATA.therapists.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>{tt("لا أخصائيين مسجّلين بعد.")}</div>}
             {DATA.therapists.map(t=>{
               const load = (workloadByTh[t.id] || 0) + (workloadByTh[t.name] || 0);
               const cap = Math.max(t.max || 8, 1);
@@ -391,13 +392,13 @@ function Dashboard({ go }) {
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div>
-              <div className="h2">مرضى جدد</div>
-              <div className="muted" style={{fontSize:12.5,marginTop:2}}>مسجّلون · {labels.patRange}</div>
+              <div className="h2">{tt("مرضى جدد")}</div>
+              <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("مسجّلون · {range}", { range: labels.patRange })}</div>
             </div>
-            <span className="badge b-blue">{newPatients} جديد</span>
+            <span className="badge b-blue">{tt("{n} جديد", { n: newPatients })}</span>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {periodPatients.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>لا مرضى مسجّلين ضمن الفترة.</div>}
+            {periodPatients.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>{tt("لا مرضى مسجّلين ضمن الفترة.")}</div>}
             {periodPatients.slice(0,4).map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0"}}>
                 <div className="av md">{p.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
@@ -405,7 +406,7 @@ function Dashboard({ go }) {
                   <div style={{fontSize:13,fontWeight:500}}>{p.name}</div>
                   <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{p.diag}</div>
                 </div>
-                <button type="button" className="btn btn-ghost" aria-label={`فتح ملف ${p.name}`} style={{fontSize:11.5,padding:"4px 8px",minWidth:40,justifyContent:"center"}} onClick={()=>go("patients")}>فتح</button>
+                <button type="button" className="btn btn-ghost" aria-label={tt("فتح ملف {name}", { name: p.name })} style={{fontSize:11.5,padding:"4px 8px",minWidth:40,justifyContent:"center"}} onClick={()=>go("patients")}>{tt("فتح")}</button>
               </div>
             ))}
           </div>
@@ -413,8 +414,8 @@ function Dashboard({ go }) {
 
         {/* استخدام الباقات */}
         <div className="card card-pad">
-          <div className="h2" style={{marginBottom:4}}>استخدام الباقات</div>
-          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>اشتراكات نشطة</div>
+          <div className="h2" style={{marginBottom:4}}>{tt("استخدام الباقات")}</div>
+          <div className="muted" style={{fontSize:12.5,marginBottom:14}}>{tt("اشتراكات نشطة")}</div>
           <BarChart data={packageData} height={170}/>
         </div>
 
@@ -422,21 +423,21 @@ function Dashboard({ go }) {
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
             <div>
-              <div className="h2">مدفوعات معلقة</div>
-              <div className="muted" style={{fontSize:12.5,marginTop:2}}>يحتاج متابعة · {period.label}</div>
+              <div className="h2">{tt("مدفوعات معلقة")}</div>
+              <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("يحتاج متابعة · {period}", { period: period.label })}</div>
             </div>
-            <span className="badge b-amber"><span className="dot"></span>{fmtEGP(outstanding)}</span>
+            <span className="badge b-amber"><span className="dot"></span>{fmtMoneyShort(outstanding)}</span>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {pendingPayments.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>لا مدفوعات معلقة.</div>}
+            {pendingPayments.length===0 && <div className="muted" style={{fontSize:13,padding:"18px 0",textAlign:"center"}}>{tt("لا مدفوعات معلقة.")}</div>}
             {pendingPayments.slice(0,4).map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12.5,fontWeight:500}}>{p.patient}</div>
                   <div style={{fontSize:11,color:"var(--ink-500)"}} className="mono">{p.id} · {p.date}</div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div className="mono" style={{fontSize:12.5,fontWeight:600}}>EGP {(p.amount-p.paid).toLocaleString("en-US")}</div>
+                <div style={{textAlign:"start"}}>
+                  <div className="mono" style={{fontSize:12.5,fontWeight:600}}>{fmtMoney(p.amount-p.paid)}</div>
                   <PayBadge s={p.status}/>
                 </div>
               </div>
@@ -456,30 +457,31 @@ function Dashboard({ go }) {
 }
 
 // ── Reused badges ──────────────────────────────────────────────
+// `s` is the stored (Arabic) status; only the label is translated.
 function ApptBadge({ s }) {
   const map = {
-    "معلّق":     { c:"b-amber",  d:"معلّق" },
-    "مؤكد":   { c:"b-blue",   d:"مؤكد" },
-    "مكتمل":   { c:"b-green",  d:"مكتمل" },
-    "قيد التنفيذ": { c:"b-violet", d:"في الجلسة" },
-    "ملغي":   { c:"b-red",    d:"ملغي" },
-    "لم يحضر":     { c:"b-red",    d:"لم يحضر" },
-    "متاح":   { c:"b-grey",   d:"موعد متاح" },
+    "معلّق":     { c:"b-amber",  d:tt("معلّق") },
+    "مؤكد":   { c:"b-blue",   d:tt("مؤكد") },
+    "مكتمل":   { c:"b-green",  d:tt("مكتمل") },
+    "قيد التنفيذ": { c:"b-violet", d:tt("في الجلسة") },
+    "ملغي":   { c:"b-red",    d:tt("ملغي") },
+    "لم يحضر":     { c:"b-red",    d:tt("لم يحضر") },
+    "متاح":   { c:"b-grey",   d:tt("موعد متاح") },
   };
-  const m = map[s] || { c:"b-grey", d:s };
+  const m = map[s] || { c:"b-grey", d:tt(s) };
   return <span className={"badge " + m.c}><span className="dot"></span>{m.d}</span>;
 }
 function PayBadge({ s }) {
   const map = {
-    "مدفوع":    { c:"b-green",  d:"مدفوع" },
-    "جزئي": { c:"b-amber",  d:"جزئي" },
-    "معلّق": { c:"b-grey",   d:"معلّق" },
-    "متأخر": { c:"b-red",    d:"متأخر" },
+    "مدفوع":    { c:"b-green",  d:tt("مدفوع") },
+    "جزئي": { c:"b-amber",  d:tt("جزئي") },
+    "معلّق": { c:"b-grey",   d:tt("معلّق") },
+    "متأخر": { c:"b-red",    d:tt("متأخر") },
   };
   // Rows written by the API carry the English status codes.
   const codes = { paid:"مدفوع", partial:"جزئي", pending:"معلّق", unpaid:"معلّق", overdue:"متأخر" };
   const key = codes[String(s || "").toLowerCase()] || s;
-  const m = map[key] || { c:"b-grey", d:s === "cancelled" ? "ملغاة" : s };
+  const m = map[key] || { c:"b-grey", d:s === "cancelled" ? tt("ملغاة") : tt(s) };
   return <span className={"badge " + m.c}><span className="dot"></span>{m.d}</span>;
 }
 
@@ -489,11 +491,12 @@ Object.assign(window, { Dashboard, ApptBadge, PayBadge, todayLabelAr, activeBran
 // ===== src/مريض.jsx =====
 // المريض management — list, details, add/edit
 
-// «أنثى» / «ذكر» for the stored codes (F/M; older rows: Female/Male).
-function genderAr(g) {
+// «أنثى» / «ذكر» (Female / Male) for the stored codes (F/M; older rows:
+// Female/Male or the Arabic word). The stored value never changes.
+function genderLabel(g) {
   const v = String(g || "").trim().toLowerCase();
-  if (v === "f" || v === "female" || v === "أنثى") return "أنثى";
-  if (v === "m" || v === "male" || v === "ذكر") return "ذكر";
+  if (v === "f" || v === "female" || v === "أنثى") return tt("أنثى");
+  if (v === "m" || v === "male" || v === "ذكر") return tt("ذكر");
   return "";
 }
 
@@ -541,68 +544,64 @@ function Patients({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المرضى</span></div>
-          <h1 className="h1">المرضى</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>السجلات: {myPatients.length} · النشطة: {activeCount}</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("المرضى")}</span></div>
+          <h1 className="h1">{tt("المرضى")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("السجلات: {n} · النشطة: {active}", { n: myPatients.length, active: activeCount })}</div>
         </div>
         <div className="page-actions">
           <input ref={csvRef} type="file" accept=".csv" style={{display:"none"}} onChange={e=>{
-            if(e.target.files[0]){if(window.showToast)window.showToast(`تم استيراد ${e.target.files[0].name}`,"success");}
+            if(e.target.files[0]){if(window.showToast)window.showToast(tt("تم استيراد {name}", { name: e.target.files[0].name }),"success");}
             e.target.value="";
           }}/>
-          <button className="btn btn-secondary" onClick={()=>csvRef.current&&csvRef.current.click()}><I.Upload size={14}/> استيراد CSV</button>
-          <button className="btn btn-blue" onClick={()=>setView("add")}><I.Plus size={14}/> مريض جديد</button>
+          <button className="btn btn-secondary" onClick={()=>csvRef.current&&csvRef.current.click()}><I.Upload size={14}/> {tt("استيراد CSV")}</button>
+          <button className="btn btn-blue" onClick={()=>setView("add")}><I.Plus size={14}/> {tt("مريض جديد")}</button>
         </div>
       </div>
 
       {/* Filters */}
       <div className="card" style={{padding:14,marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:"1 1 320px",maxWidth:380}}>
-          <I.Search size={14} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-          <input className="input" placeholder="ابحث بالاسم، رقم الملف، التشخيص…" value={search} onChange={e=>setSearch(e.target.value)} style={{paddingLeft:32}}/>
+          <I.Search size={14} style={{position:"absolute",insetInlineEnd:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+          <input className="input" placeholder={tt("ابحث بالاسم، رقم الملف، التشخيص…")} value={search} onChange={e=>setSearch(e.target.value)} style={{paddingInlineEnd:32}}/>
         </div>
-        <div className="seg">
-          {["الكل","نشط","غير نشط",INCOMPLETE_STATUS].map(s=>(
-            <button key={s} className={statusFilter===s?"on":""} onClick={()=>setStatusFilter(s)}>{s===INCOMPLETE_STATUS?"غير مكتمل":s}</button>
-          ))}
-        </div>
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
-          <span className="muted" style={{fontSize:12}} role="status">النتائج: {filtered.length}</span>
-          <div className="seg">
-            <button className={layout==="table"?"on":""} onClick={()=>setLayout("table")}>جدول</button>
-            <button className={layout==="grid"?"on":""}  onClick={()=>setLayout("grid")}>بطاقات</button>
-          </div>
+        {/* Filter values are the stored statuses; only the labels are translated. */}
+        <Segmented label={tt("حالة الملف")} value={statusFilter} onChange={setStatusFilter}
+          options={["الكل","نشط","غير نشط",INCOMPLETE_STATUS].map(s => ({ value: s, label: s===INCOMPLETE_STATUS ? tt("غير مكتمل") : tt(s) }))}/>
+        <div style={{marginInlineEnd:"auto",display:"flex",alignItems:"center",gap:10}}>
+          <span className="muted" style={{fontSize:12}} role="status">{tt("النتائج: {n}", { n: filtered.length })}</span>
+          <Segmented label={tt("طريقة العرض")} value={layout} onChange={setLayout}
+            options={[{ value:"table", label:tt("جدول") }, { value:"grid", label:tt("بطاقات") }]}/>
         </div>
       </div>
 
       {layout==="table" ? (
         <div className="card" style={{overflow:"hidden"}}>
           <div className="tbl-scroll">
-          <table className="tbl">
+          <CardTable>
             <thead>
               <tr>
-                <th style={{width:36}}><input type="checkbox" aria-label="تحديد كل المرضى"/></th>
-                <th>المريض</th>
-                <th>رقم الملف</th>
-                <th>التشخيص</th>
-                <th>الطبيب</th>
-                <th>الأخصائي</th>
-                <th>متبقي</th>
-                <th>آخر زيارة</th>
-                <th>الدفع</th>
-                <th style={{width:90}}><span className="sr-only">إجراءات</span></th>
+                <th style={{width:36}}><input type="checkbox" aria-label={tt("تحديد كل المرضى")}/></th>
+                <th>{tt("المريض")}</th>
+                <th>{tt("رقم الملف")}</th>
+                <th>{tt("التشخيص")}</th>
+                <th>{tt("الطبيب")}</th>
+                <th>{tt("الأخصائي")}</th>
+                <th>{tt("متبقي")}</th>
+                <th>{tt("آخر زيارة")}</th>
+                <th>{tt("الدفع")}</th>
+                <th style={{width:90}}><span className="sr-only">{tt("إجراءات")}</span></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p=>(
                 <tr key={p.id} data-clickable="true" tabIndex={0} onClick={()=>{setSelected(p);setView("detail")}} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelected(p);setView("detail");} }}>
-                  <td onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={`تحديد ${p.name}`}/></td>
+                  <td onClick={e=>e.stopPropagation()}><input type="checkbox" aria-label={tt("تحديد {name}", { name: p.name })}/></td>
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:10}}>
                       <div className="av md">{p.name.split(" ").map(x=>x[0]).join("").slice(0,2)}</div>
                       <div>
                         <div style={{fontWeight:500}}>{p.name}</div>
-                        <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{[p.age ? `${p.age} سنة` : "", genderAr(p.gender), p.job && p.job !== "—" ? p.job : ""].filter(Boolean).join(" · ") || "—"}</div>
+                        <div style={{fontSize:11.5,color:"var(--ink-500)"}}>{[p.age ? tt("{n} سنة", { n: p.age }) : "", genderLabel(p.gender), p.job && p.job !== "—" ? p.job : ""].filter(Boolean).join(" · ") || "—"}</div>
                       </div>
                     </div>
                   </td>
@@ -612,7 +611,7 @@ function Patients({ go }) {
                   <td><span style={{fontSize:12.5}}>{p.th}</span></td>
                   <td>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span className="mono" style={{fontSize:12.5,fontWeight:600,minWidth:18,textAlign:"right"}}>{p.remain ?? "—"}</span>
+                      <span className="mono" style={{fontSize:12.5,fontWeight:600,minWidth:18,textAlign:"start"}}>{p.remain ?? "—"}</span>
                       <div style={{flex:1,maxWidth:60,height:4,background:"var(--ink-100)",borderRadius:999,overflow:"hidden"}}>
                         <div style={{height:"100%",width:`${Math.min(100,(p.remain||0)/12*100)}%`,background:"var(--blue-500)"}}/>
                       </div>
@@ -621,18 +620,18 @@ function Patients({ go }) {
                   <td className="muted mono" style={{fontSize:12.5,whiteSpace:"nowrap"}}>{p.visited}</td>
                   <td><PayBadge s={p.payment}/></td>
                   <td onClick={e=>e.stopPropagation()} style={{whiteSpace:"nowrap"}}>
-                    <button type="button" className="btn btn-ghost btn-icon" title="عرض الملف" aria-label={`عرض ملف ${p.name}`} onClick={()=>{setSelected(p);setView("detail")}}><I.Eye size={14}/></button>
-                    <button type="button" className="btn btn-ghost btn-icon" title="تعديل بيانات المريض" aria-label={`تعديل بيانات ${p.name}`} onClick={()=>setEditing(p)}><I.Edit size={14}/></button>
-                    <button type="button" className="btn btn-ghost btn-icon" title="حذف المريض" aria-label={`حذف ${p.name}`} onClick={()=>setConfirmDelete(p)} style={{color:"#A8443A"}}><I.Trash size={14}/></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title={tt("عرض الملف")} aria-label={tt("عرض ملف {name}", { name: p.name })} onClick={()=>{setSelected(p);setView("detail")}}><I.Eye size={14}/></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title={tt("تعديل بيانات المريض")} aria-label={tt("تعديل بيانات {name}", { name: p.name })} onClick={()=>setEditing(p)}><I.Edit size={14}/></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title={tt("حذف المريض")} aria-label={tt("حذف {name}", { name: p.name })} onClick={()=>setConfirmDelete(p)} style={{color:"#A8443A"}}><I.Trash size={14}/></button>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </CardTable>
           </div>
           {/* footer */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",borderTop:"1px solid var(--ink-100)",background:"var(--ink-50)",flexWrap:"wrap",gap:10}}>
-            <span className="muted" style={{fontSize:12}}>عرض 1–{filtered.length} من {myPatients.length}</span>
+            <span className="muted" style={{fontSize:12}}>{tt("عرض 1–{n} من {total}", { n: filtered.length, total: myPatients.length })}</span>
             <div style={{display:"flex",gap:6}}>
               {Array.from({length: Math.max(1, Math.ceil(filtered.length/25))},(_,i)=>i+1).slice(0,8).map(n=>(
                 <button key={n} className={"btn " + (page===n?"btn-primary":"btn-secondary")} style={{padding:"5px 11px",minWidth:32}} onClick={()=>setPage(n)}>{n}</button>
@@ -653,17 +652,17 @@ function Patients({ go }) {
                 <PayBadge s={p.payment}/>
               </div>
               <div style={{padding:"10px 12px",background:"var(--ink-50)",borderRadius:10,fontSize:12,marginBottom:10}}>
-                <div style={{color:"var(--ink-500)",fontSize:11,marginBottom:3}}>التشخيص</div>
+                <div style={{color:"var(--ink-500)",fontSize:11,marginBottom:3}}>{tt("التشخيص")}</div>
                 <div>{p.diag}</div>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
                 <div>
-                  <div className="muted" style={{fontSize:10.5}}>الأخصائي</div>
+                  <div className="muted" style={{fontSize:10.5}}>{tt("الأخصائي")}</div>
                   <div>{p.th}</div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div className="muted" style={{fontSize:10.5}}>متبقي</div>
-                  <div>{p.remain ?? "—"} جلسات</div>
+                <div style={{textAlign:"start"}}>
+                  <div className="muted" style={{fontSize:10.5}}>{tt("متبقي")}</div>
+                  <div>{tt("{n} جلسات", { n: p.remain ?? "—" })}</div>
                 </div>
               </div>
               <div style={{marginTop:12,display:"flex"}}>
@@ -675,9 +674,9 @@ function Patients({ go }) {
       )}
 
       {/* delete modal */}
-      <Modal open={!!confirmDelete} onClose={()=>setConfirmDelete(null)} title="حذف سجل المريض؟"
+      <Modal open={!!confirmDelete} onClose={()=>setConfirmDelete(null)} title={tt("حذف سجل المريض؟")}
         footer={<>
-          <button className="btn btn-secondary" onClick={()=>setConfirmDelete(null)}>إلغاء</button>
+          <button className="btn btn-secondary" onClick={()=>setConfirmDelete(null)}>{tt("إلغاء")}</button>
           <button className="btn" style={{background:"var(--red)",color:"#fff"}} onClick={async()=>{
             const target = confirmDelete;
             if (!target) return;
@@ -685,15 +684,15 @@ function Patients({ go }) {
             try {
               const pid = target.patient_id || target.id;
               if (window.KineticData) await window.KineticData.remove("patients", pid);
-              if (window.showToast) window.showToast("تم حذف المريض", "success");
+              if (window.showToast) window.showToast(tt("تم حذف المريض"), "success");
             } catch (e) {
               console.warn("delete patient failed", e);
-              if (window.showToast) window.showToast("تعذّر الحذف", "error");
+              if (window.showToast) window.showToast(tt("تعذّر الحذف"), "error");
             }
-          }}>حذف نهائي</button>
+          }}>{tt("حذف نهائي")}</button>
         </>}>
-        <p>أنت على وشك حذف <strong>{confirmDelete?.name}</strong> ({confirmDelete?.id}). This will remove all Sessions, invoices and uploads associated مع this patient.</p>
-        <p className="muted" style={{fontSize:12.5,marginTop:8}}>لا يمكن التراجع عن هذا الإجراء. فكّر في أرشفة المريض بدلًا من حذفه.</p>
+        <p>{ttx("أنت على وشك حذف {name} ({id}). This will remove all Sessions, invoices and uploads associated مع this patient.", { name: <strong>{confirmDelete?.name}</strong>, id: confirmDelete?.id })}</p>
+        <p className="muted" style={{fontSize:12.5,marginTop:8}}>{tt("لا يمكن التراجع عن هذا الإجراء. فكّر في أرشفة المريض بدلًا من حذفه.")}</p>
       </Modal>
 
       {editing && (
@@ -781,22 +780,22 @@ function PatientEditModal({ patient, onClose, onSaved }) {
 
   function validate() {
     const e = {};
-    if (!form.name || !form.name.trim()) e.name = "الاسم مطلوب";
-    if (!form.phone || !form.phone.trim()) e.phone = "الهاتف مطلوب";
-    else if (!/^[+\d][\d\s\-()]{6,}$/.test(form.phone.trim())) e.phone = "رقم هاتف غير صحيح";
-    if (form.whatsapp && !/^[+\d][\d\s\-()]{6,}$/.test(form.whatsapp.trim())) e.whatsapp = "رقم واتساب غير صحيح";
-    if (form.emergency_phone && !/^[+\d][\d\s\-()]{6,}$/.test(form.emergency_phone.trim())) e.emergency_phone = "رقم طوارئ غير صحيح";
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "بريد إلكتروني غير صحيح";
+    if (!form.name || !form.name.trim()) e.name = tt("الاسم مطلوب");
+    if (!form.phone || !form.phone.trim()) e.phone = tt("الهاتف مطلوب");
+    else if (!/^[+\d][\d\s\-()]{6,}$/.test(form.phone.trim())) e.phone = tt("رقم هاتف غير صحيح");
+    if (form.whatsapp && !/^[+\d][\d\s\-()]{6,}$/.test(form.whatsapp.trim())) e.whatsapp = tt("رقم واتساب غير صحيح");
+    if (form.emergency_phone && !/^[+\d][\d\s\-()]{6,}$/.test(form.emergency_phone.trim())) e.emergency_phone = tt("رقم طوارئ غير صحيح");
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = tt("بريد إلكتروني غير صحيح");
     // Duplicate-check across the local cache — the DB unique index gives us
     // the authoritative rejection on save, but this catches it earlier.
     const others = ((window.DATA && window.DATA.patients) || []).filter(x => (x.patient_id || x.id) !== pid);
     if (form.national_id && form.national_id.trim() &&
         others.some(x => (x.national_id || "").trim() === form.national_id.trim())) {
-      e.national_id = "الرقم القومي مستخدم لمريض آخر";
+      e.national_id = tt("الرقم القومي مستخدم لمريض آخر");
     }
     if (form.medical_file_no && form.medical_file_no.trim() &&
         others.some(x => (x.medical_file_no || "").trim() === form.medical_file_no.trim())) {
-      e.medical_file_no = "رقم الملف مستخدم لمريض آخر";
+      e.medical_file_no = tt("رقم الملف مستخدم لمريض آخر");
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -804,7 +803,7 @@ function PatientEditModal({ patient, onClose, onSaved }) {
 
   async function save() {
     if (!validate()) {
-      if (window.showToast) window.showToast("راجع الحقول المُظللة", "error");
+      if (window.showToast) window.showToast(tt("راجع الحقول المُظللة"), "error");
       return;
     }
     setBusy(true);
@@ -817,7 +816,7 @@ function PatientEditModal({ patient, onClose, onSaved }) {
         if (a !== b) changed[k] = { old: original[k] ?? null, new: form[k] ?? null };
       }
       if (Object.keys(changed).length === 0) {
-        if (window.showToast) window.showToast("لا تغييرات للحفظ", "info");
+        if (window.showToast) window.showToast(tt("لا تغييرات للحفظ"), "info");
         setBusy(false); return;
       }
 
@@ -885,11 +884,11 @@ function PatientEditModal({ patient, onClose, onSaved }) {
         console.warn("audit write failed (non-fatal)", auditErr);
       }
 
-      if (window.showToast) window.showToast("تم حفظ بيانات المريض", "success");
+      if (window.showToast) window.showToast(tt("تم حفظ بيانات المريض"), "success");
       onSaved && onSaved(row);
     } catch (e) {
       console.warn("patient edit failed", e);
-      const msg = (e && e.message) || "تعذّر الحفظ";
+      const msg = (e && e.message) ? tt(e.message) : tt("تعذّر الحفظ");
       // Keep the modal open with the user's changes intact so nothing is
       // lost after a failed save.
       if (window.showToast) window.showToast(msg, "error");
@@ -900,8 +899,8 @@ function PatientEditModal({ patient, onClose, onSaved }) {
 
   if (loading || !form) {
     return (
-      <Modal open onClose={onClose} title="تعديل بيانات المريض" width={780}>
-        <div className="muted" style={{padding:20,textAlign:"center"}}>جارٍ تحميل البيانات من قاعدة البيانات…</div>
+      <Modal open onClose={onClose} title={tt("تعديل بيانات المريض")} width={780}>
+        <div className="muted" style={{padding:20,textAlign:"center"}}>{tt("جارٍ تحميل البيانات من قاعدة البيانات…")}</div>
       </Modal>
     );
   }
@@ -919,140 +918,140 @@ function PatientEditModal({ patient, onClose, onSaved }) {
   const errStyle = (k) => errors[k] ? { border:"1px solid var(--red)" } : {};
 
   return (
-    <Modal open onClose={onClose} title={`تعديل بيانات المريض · ${form.name || pid}`} width={860}
+    <Modal open onClose={onClose} title={tt("تعديل بيانات المريض · {name}", { name: form.name || pid })} width={860}
       footer={<>
-        <button className="btn btn-secondary" onClick={onClose} disabled={busy}>إلغاء</button>
+        <button className="btn btn-secondary" onClick={onClose} disabled={busy}>{tt("إلغاء")}</button>
         <button className="btn btn-blue" onClick={save} disabled={busy}>
-          {busy ? "جارٍ الحفظ…" : (<><I.Check size={13}/> حفظ التغييرات</>)}
+          {busy ? tt("جارٍ الحفظ…") : (<><I.Check size={13}/> {tt("حفظ التغييرات")}</>)}
         </button>
       </>}>
       <div className="muted" style={{fontSize:12,marginBottom:14}}>
-        الدور: <strong>{role}</strong> · الحقول غير المسموح لك بتعديلها معطلة.
+        {ttx("الدور: {role} · الحقول غير المسموح لك بتعديلها معطلة.", { role: <strong>{tt(role)}</strong> })}
       </div>
 
-      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>معرفات</div>
+      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>{tt("معرفات")}</div>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12,marginBottom:18}}>
-        <Field label="رقم المريض"><input className="input mono" value={pid} readOnly {...dis(false)}/></Field>
-        <Field label="رقم الملف الطبي">
+        <Field label={tt("رقم المريض")}><input className="input mono" value={pid} readOnly {...dis(false)}/></Field>
+        <Field label={tt("رقم الملف الطبي")}>
           <input className="input" value={form.medical_file_no || ""} onChange={e=>set("medical_file_no", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("medical_file_no")}/>
           {errors.medical_file_no && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.medical_file_no}</div>}
         </Field>
-        <Field label="الرقم القومي / جواز السفر">
+        <Field label={tt("الرقم القومي / جواز السفر")}>
           <input className="input" value={form.national_id || ""} onChange={e=>set("national_id", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("national_id")}/>
           {errors.national_id && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.national_id}</div>}
         </Field>
-        <Field label="الحالة">
+        <Field label={tt("الحالة")}>
           <select className="input" value={form.status || "نشط"} onChange={e=>set("status", e.target.value)}
                   {...dis(canEdit.therapy)}>
-            {["نشط","غير نشط","مؤرشف","غير مكتمل"].map(s=><option key={s}>{s}</option>)}
+            {["نشط","غير نشط","مؤرشف","غير مكتمل"].map(s=><option key={s} value={s}>{tt(s)}</option>)}
           </select>
         </Field>
       </div>
 
-      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>البيانات الشخصية والاتصال</div>
+      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>{tt("البيانات الشخصية والاتصال")}</div>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12,marginBottom:18}}>
-        <Field label="الاسم الكامل" required span={2}>
+        <Field label={tt("الاسم الكامل")} required span={2}>
           <input className="input" value={form.name || ""} onChange={e=>set("name", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("name")}/>
           {errors.name && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.name}</div>}
         </Field>
-        <Field label="الهاتف" required>
+        <Field label={tt("الهاتف")} required>
           <input className="input" value={form.phone || ""} onChange={e=>set("phone", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("phone")}/>
           {errors.phone && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.phone}</div>}
         </Field>
-        <Field label="واتساب">
+        <Field label={tt("واتساب")}>
           <input className="input" value={form.whatsapp || ""} onChange={e=>set("whatsapp", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("whatsapp")}/>
           {errors.whatsapp && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.whatsapp}</div>}
         </Field>
-        <Field label="البريد الإلكتروني">
+        <Field label={tt("البريد الإلكتروني")}>
           <input className="input" type="email" value={form.email || ""} onChange={e=>set("email", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("email")}/>
           {errors.email && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.email}</div>}
         </Field>
-        <Field label="الجنس">
+        <Field label={tt("الجنس")}>
           <select className="input" value={form.gender || ""} onChange={e=>set("gender", e.target.value)}
                   {...dis(canEdit.demographics)}>
             <option value="">—</option>
-            <option value="F">أنثى</option>
-            <option value="M">ذكر</option>
+            <option value="F">{tt("أنثى")}</option>
+            <option value="M">{tt("ذكر")}</option>
           </select>
         </Field>
-        <Field label="تاريخ الميلاد">
+        <Field label={tt("تاريخ الميلاد")}>
           <input className="input" type="date" value={form.date_of_birth || ""} onChange={e=>set("date_of_birth", e.target.value)}
                  {...dis(canEdit.demographics)}/>
         </Field>
-        <Field label="العمر" hint={derivedAge ? `مشتق من تاريخ الميلاد: ${derivedAge}` : ""}>
+        <Field label={tt("العمر")} hint={derivedAge ? tt("مشتق من تاريخ الميلاد: {age}", { age: derivedAge }) : ""}>
           <input className="input" type="number" value={form.age || ""} onChange={e=>set("age", e.target.value)}
                  {...dis(canEdit.demographics)}/>
         </Field>
-        <Field label="المهنة">
+        <Field label={tt("المهنة")}>
           <input className="input" value={form.occupation || ""} onChange={e=>set("occupation", e.target.value)}
                  {...dis(canEdit.demographics)}/>
         </Field>
-        <Field label="العنوان" span={2}>
+        <Field label={tt("العنوان")} span={2}>
           <input className="input" value={form.address || ""} onChange={e=>set("address", e.target.value)}
                  {...dis(canEdit.demographics)}/>
         </Field>
-        <Field label="جهة الطوارئ">
+        <Field label={tt("جهة الطوارئ")}>
           <input className="input" value={form.emergency_name || ""} onChange={e=>set("emergency_name", e.target.value)}
                  {...dis(canEdit.demographics)}/>
         </Field>
-        <Field label="هاتف الطوارئ">
+        <Field label={tt("هاتف الطوارئ")}>
           <input className="input" value={form.emergency_phone || ""} onChange={e=>set("emergency_phone", e.target.value)}
                  {...dis(canEdit.demographics)} style={errStyle("emergency_phone")}/>
           {errors.emergency_phone && <div style={{color:"#A8443A",fontSize:11,marginTop:3}}>{errors.emergency_phone}</div>}
         </Field>
       </div>
 
-      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>الطاقم المعالج والتشخيص</div>
+      <div className="h3" style={{marginBottom:10,fontSize:13,letterSpacing:".05em",textTransform:"uppercase",color:"var(--ink-500)"}}>{tt("الطاقم المعالج والتشخيص")}</div>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12,marginBottom:18}}>
-        <Field label="الطبيب المسؤول">
+        <Field label={tt("الطبيب المسؤول")}>
           <select className="input" value={form.doctor_id || ""} onChange={e=>{
             const id = e.target.value;
             const d = doctors.find(x => x.id === id);
             set("doctor_id", id); if (d) set("dr", d.name);
           }} {...dis(canEdit.therapy)}>
-            <option value="">— بدون —</option>
+            <option value="">{tt("— بدون —")}</option>
             {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </Field>
-        <Field label="الأخصائي المسؤول">
+        <Field label={tt("الأخصائي المسؤول")}>
           <select className="input" value={form.therapist_id || ""} onChange={e=>{
             const id = e.target.value;
             const t = therapists.find(x => (x.staff_id || x.id) === id);
             set("therapist_id", id); if (t) set("th", t.name);
           }} {...dis(canEdit.therapy)}>
-            <option value="">— بدون —</option>
+            <option value="">{tt("— بدون —")}</option>
             {therapists.map(t => <option key={t.staff_id||t.id} value={t.staff_id||t.id}>{t.name}</option>)}
           </select>
         </Field>
-        <Field label="التشخيص" span={2}>
+        <Field label={tt("التشخيص")} span={2}>
           <window.DiagnosisAutocomplete value={form.diagnosis || ""}
             onChange={e=>set("diagnosis", e.target.value)}
             {...dis(canEdit.medical)}/>
         </Field>
-        <Field label="التاريخ المرضي" span={2}>
+        <Field label={tt("التاريخ المرضي")} span={2}>
           <textarea className="input" style={{minHeight:60,padding:10,resize:"vertical"}}
                     value={form.medical_history || ""} onChange={e=>set("medical_history", e.target.value)}
                     {...dis(canEdit.medical)}/>
         </Field>
-        <Field label="الحساسية">
+        <Field label={tt("الحساسية")}>
           <input className="input" value={form.allergies || ""} onChange={e=>set("allergies", e.target.value)}
                  {...dis(canEdit.medical)}/>
         </Field>
-        <Field label="الأدوية الحالية">
+        <Field label={tt("الأدوية الحالية")}>
           <input className="input" value={form.medications || ""} onChange={e=>set("medications", e.target.value)}
                  {...dis(canEdit.medical)}/>
         </Field>
-        <Field label="التأمين" span={2}>
+        <Field label={tt("التأمين")} span={2}>
           <input className="input" value={form.insurance_info || ""} onChange={e=>set("insurance_info", e.target.value)}
                  {...dis(canEdit.medical)}/>
         </Field>
-        <Field label="ملاحظات العلاج / متابعة الجلسات" span={2}>
+        <Field label={tt("ملاحظات العلاج / متابعة الجلسات")} span={2}>
           <textarea className="input" style={{minHeight:70,padding:10,resize:"vertical"}}
                     value={form.notes || ""} onChange={e=>set("notes", e.target.value)}
                     {...dis(canEdit.therapy)}/>
@@ -1130,15 +1129,15 @@ function PatientDetail({ p: pIn, onBack, go }) {
   return (
     <Page>
       <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}>
-        <span>المرضى</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{p.name}</span>
+        <span>{tt("المرضى")}</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{p.name}</span>
       </div>
 
       {p.status === INCOMPLETE_STATUS && (
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",marginTop:8,
           background:"#FBF3E6",border:"1px solid #F0D9A8",borderRadius:12,color:"#8A5A00"}}>
           <I.Bell size={16}/>
-          <div style={{flex:1,fontSize:13,fontWeight:500}}>معلومات المريض غير مكتملة — أُنشئ هذا الملف عبر الحجز السريع. أكمل البيانات الناقصة.</div>
-          {mayEdit && <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>setEditOpen(true)}>إكمال البيانات</button>}
+          <div style={{flex:1,fontSize:13,fontWeight:500}}>{tt("معلومات المريض غير مكتملة — أُنشئ هذا الملف عبر الحجز السريع. أكمل البيانات الناقصة.")}</div>
+          {mayEdit && <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>setEditOpen(true)}>{tt("إكمال البيانات")}</button>}
         </div>
       )}
 
@@ -1153,39 +1152,40 @@ function PatientDetail({ p: pIn, onBack, go }) {
             <div style={{flex:1,position:"relative",minWidth:220}}>
               <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                 <h1 className="h1" style={{fontSize:24}}>{p.name}</h1>
-                <span className={"badge " + (p.status===INCOMPLETE_STATUS?"b-amber":"b-green")}><span className="dot"></span>{p.status}</span>
+                <span className={"badge " + (p.status===INCOMPLETE_STATUS?"b-amber":"b-green")}><span className="dot"></span>{tt(p.status)}</span>
                 <span className="mono" style={{fontSize:11,color:"var(--ink-500)",border:"1px solid var(--ink-200)",padding:"2px 8px",borderRadius:6}}>{p.id}</span>
               </div>
               <div style={{display:"flex",gap:"8px 18px",marginTop:8,fontSize:12.5,color:"var(--ink-500)",flexWrap:"wrap"}}>
-                <span style={{display:"flex",alignItems:"center",gap:6}}><I.User size={13}/> {[p.age ? `${p.age} سنة` : "", genderAr(p.gender)].filter(Boolean).join(" · ") || "—"}</span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}><I.User size={13}/> {[p.age ? tt("{n} سنة", { n: p.age }) : "", genderLabel(p.gender)].filter(Boolean).join(" · ") || "—"}</span>
                 <span style={{display:"flex",alignItems:"center",gap:6}}><I.Phone size={13}/> <bdi dir="ltr">{p.phone}</bdi></span>
                 <span style={{display:"flex",alignItems:"center",gap:6}}><I.MapPin size={13}/> {p.address || "—"}</span>
-                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Clock size={13}/> سُجّل في <bdi dir="ltr" className="mono">{p.registered}</bdi></span>
+                <span style={{display:"flex",alignItems:"center",gap:6}}><I.Clock size={13}/> {ttx("سُجّل في {date}", { date: <bdi dir="ltr" className="mono">{p.registered}</bdi> })}</span>
               </div>
             </div>
             <div style={{display:"flex",gap:8,position:"relative",flexWrap:"wrap"}}>
-              <button className="btn btn-secondary" onClick={()=>window.open(buildTelUrl(p.phone))}><I.Phone size={13}/> اتصال</button>
-              <button className="btn btn-secondary" onClick={()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank")}><I.WhatsApp size={13}/> واتساب</button>
+              <button className="btn btn-secondary" onClick={()=>window.open(buildTelUrl(p.phone))}><I.Phone size={13}/> {tt("اتصال")}</button>
+              <button className="btn btn-secondary" onClick={()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank")}><I.WhatsApp size={13}/> {tt("واتساب")}</button>
               <WaReminderButton patient={p}/>
-              <button className="btn btn-secondary" onClick={()=>setSchedOpen(true)}><I.Calendar size={13}/> الجدول الثابت</button>
-              <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={13}/> حجز</button>
+              <button className="btn btn-secondary" onClick={()=>setSchedOpen(true)}><I.Calendar size={13}/> {tt("الجدول الثابت")}</button>
+              <button className="btn btn-blue" onClick={()=>go("appointments")}><I.Plus size={13}/> {tt("حجز")}</button>
               <RowMenu size={15} items={[
-                ...(mayEdit ? [{ label:"تعديل", icon:<I.Edit size={13}/>, onClick:()=>setEditOpen(true) }] : []),
-                { label:"طباعة الملف", icon:<I.Print size={13}/>, onClick:()=>window.print() },
-                { label:"تصدير CSV", icon:<I.Download size={13}/>, onClick:()=>{
-                  const rows=["ID,الاسم,الهاتف,العمر,التشخيص,الحالة",`${p.id},${p.name},${p.phone},${p.age},${p.diag||""},${p.status||""}`];
+                ...(mayEdit ? [{ label:tt("تعديل"), icon:<I.Edit size={13}/>, onClick:()=>setEditOpen(true) }] : []),
+                { label:tt("طباعة الملف"), icon:<I.Print size={13}/>, onClick:()=>window.print() },
+                { label:tt("تصدير CSV"), icon:<I.Download size={13}/>, onClick:()=>{
+                  const head=["ID",tt("الاسم"),tt("الهاتف"),tt("العمر"),tt("التشخيص"),tt("الحالة")].join(",");
+                  const rows=[head,`${p.id},${p.name},${p.phone},${p.age},${p.diag||""},${p.status ? tt(p.status) : ""}`];
                   const blob=new Blob([rows.join("\n")],{type:"text/csv;charset=utf-8;"});
                   const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`${p.id}.csv`;a.click();URL.revokeObjectURL(url);
-                  if(window.showToast)window.showToast("تم تصدير الملف","success");
+                  if(window.showToast)window.showToast(tt("تم تصدير الملف"),"success");
                 }},
-                { label:"إرسال واتساب", icon:<I.WhatsApp size={13}/>, onClick:()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank") },
-                { label:"حذف المريض", icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
-                  if (!window.confirm(`حذف ملف ${p.name}؟ لا يمكن التراجع.`)) return;
+                { label:tt("إرسال واتساب"), icon:<I.WhatsApp size={13}/>, onClick:()=>window.open(buildWhatsAppUrl(p.phone, `مرحبًا+${p.name}`),"_blank") },
+                { label:tt("حذف المريض"), icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
+                  if (!window.confirm(tt("حذف ملف {name}؟ لا يمكن التراجع.", { name: p.name }))) return;
                   try {
                     if (window.KineticData) await window.KineticData.remove("patients", p.patient_id || p.id);
-                    if (window.showToast) window.showToast("تم حذف المريض","success");
+                    if (window.showToast) window.showToast(tt("تم حذف المريض"),"success");
                     onBack && onBack();
-                  } catch (e) { console.warn("delete patient failed", e); if (window.showToast) window.showToast("تعذّر الحذف","error"); }
+                  } catch (e) { console.warn("delete patient failed", e); if (window.showToast) window.showToast(tt("تعذّر الحذف"),"error"); }
                 }},
               ]}/>
             </div>
@@ -1200,8 +1200,8 @@ function PatientDetail({ p: pIn, onBack, go }) {
                   fontSize:13,fontWeight:500,whiteSpace:"nowrap",flexShrink:0,
                   color: tab===t?"var(--ink-900)":"var(--ink-500)",
                   borderBottom: tab===t?"2px solid var(--blue-500)":"2px solid transparent",
-                  cursor:"pointer", textTransform:"capitalize"
-                }}>{t}</button>
+                  cursor:"pointer"
+                }}>{tt(t)}</button>
               ))}
             </div>
 
@@ -1219,50 +1219,50 @@ function PatientDetail({ p: pIn, onBack, go }) {
         {/* aside */}
         <div style={{display:"flex",flexDirection:"column",gap:18}}>
           <div className="card card-pad">
-            <div className="h3" style={{marginBottom:12}}>تقدّم العلاج</div>
+            <div className="h3" style={{marginBottom:12}}>{tt("تقدّم العلاج")}</div>
             <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
               <span className="mono" style={{fontSize:32,fontWeight:600}}>{doneSessions}</span>
-              <span className="muted">من {pkgTotal} Sessions</span>
+              <span className="muted">{tt("من {n} Sessions", { n: pkgTotal })}</span>
             </div>
             <div style={{height:8,background:"var(--ink-100)",borderRadius:999,overflow:"hidden"}}>
               <div style={{height:"100%",width:`${Math.min(100, doneSessions/pkgTotal*100)}%`,background:"linear-gradient(90deg, var(--blue-500), var(--blue-700))",borderRadius:999}}/>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",marginTop:14,fontSize:12}}>
-              <div><div className="muted">الجلسة القادمة</div><div style={{fontWeight:500}}>{nextAppt ? `${nextAppt.date || "اليوم"} ${nextAppt.time || ""}` : "—"}</div></div>
-              <div style={{textAlign:"right"}}><div className="muted">الألم (متوسط)</div><div className="mono">{avgPain != null ? `${avgPain} / 10` : "—"}</div></div>
+              <div><div className="muted">{tt("الجلسة القادمة")}</div><div style={{fontWeight:500}}>{nextAppt ? `${nextAppt.date || tt("اليوم")} ${nextAppt.time || ""}` : "—"}</div></div>
+              <div style={{textAlign:"start"}}><div className="muted">{tt("الألم (متوسط)")}</div><div className="mono">{avgPain != null ? `${avgPain} / 10` : "—"}</div></div>
             </div>
           </div>
 
           <div className="card card-pad">
-            <div className="h3" style={{marginBottom:12}}>البيانات الطبية</div>
-            <InfoRow k="الشكوى الرئيسية" v={p.chief || "—"}/>
-            <InfoRow k="التشخيص" v={p.diag || "—"}/>
-            <InfoRow k="أمراض مزمنة" v={p.chronic.length ? p.chronic.join(", ") : "—"}/>
-            <InfoRow k="العمليات" v={p.surgeries.length ? p.surgeries.join(", ") : "لا يوجد"}/>
+            <div className="h3" style={{marginBottom:12}}>{tt("البيانات الطبية")}</div>
+            <InfoRow k={tt("الشكوى الرئيسية")} v={p.chief || "—"}/>
+            <InfoRow k={tt("التشخيص")} v={p.diag || "—"}/>
+            <InfoRow k={tt("أمراض مزمنة")} v={p.chronic.length ? p.chronic.join(", ") : "—"}/>
+            <InfoRow k={tt("العمليات")} v={p.surgeries.length ? p.surgeries.join(", ") : tt("لا يوجد")}/>
           </div>
 
           <div className="card card-pad">
-            <div className="h3" style={{marginBottom:12}}>فريق الرعاية</div>
+            <div className="h3" style={{marginBottom:12}}>{tt("فريق الرعاية")}</div>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
               <div className="av md" style={{background:"#7E6BD333",color:"#7E6BD3"}}>{initialsOf(p.dr) || "—"}</div>
-              <div><div style={{fontSize:13,fontWeight:500}}>{p.dr || "—"}</div><div className="muted" style={{fontSize:11.5}}>الطبيب المسؤول</div></div>
+              <div><div style={{fontSize:13,fontWeight:500}}>{p.dr || "—"}</div><div className="muted" style={{fontSize:11.5}}>{tt("الطبيب المسؤول")}</div></div>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <div className="av md" style={{background:"var(--blue-100)",color:"var(--blue-700)"}}>{initialsOf(p.th) || "—"}</div>
-              <div><div style={{fontSize:13,fontWeight:500}}>{p.th || "—"}</div><div className="muted" style={{fontSize:11.5}}>الأخصائي الأساسي</div></div>
+              <div><div style={{fontSize:13,fontWeight:500}}>{p.th || "—"}</div><div className="muted" style={{fontSize:11.5}}>{tt("الأخصائي الأساسي")}</div></div>
             </div>
           </div>
 
           <div className="card card-pad">
-            <div className="h3" style={{marginBottom:12}}>إجراءات سريعة</div>
+            <div className="h3" style={{marginBottom:12}}>{tt("إجراءات سريعة")}</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
-              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.print()}><I.FileText size={14}/> إنشاء تقرير تقدّم</button>
-              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.open(buildWhatsAppUrl(p.phone, `تذكير+موعدك+غدًا+الساعة+09:00`),"_blank")}><I.Send size={14}/> إرسال تذكير</button>
+              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.print()}><I.FileText size={14}/> {tt("إنشاء تقرير تقدّم")}</button>
+              <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>window.open(buildWhatsAppUrl(p.phone, `تذكير+موعدك+غدًا+الساعة+09:00`),"_blank")}><I.Send size={14}/> {tt("إرسال تذكير")}</button>
               <button className="btn btn-secondary" style={{justifyContent:"flex-start"}} onClick={()=>{
-                const rows = ["الاسم,رقم الملف,التشخيص,الطبيب,الأخصائي", `${p.name},${p.id},${p.diag},${p.dr},${p.th}`];
+                const rows = [[tt("الاسم"),tt("رقم الملف"),tt("التشخيص"),tt("الطبيب"),tt("الأخصائي")].join(","), `${p.name},${p.id},${p.diag},${p.dr},${p.th}`];
                 downloadCsv(rows, `patient-${p.id}.csv`);
-                if (window.showToast) window.showToast("تم تصدير السجل الطبي", "success");
-              }}><I.Download size={14}/> تصدير السجل الطبي</button>
+                if (window.showToast) window.showToast(tt("تم تصدير السجل الطبي"), "success");
+              }}><I.Download size={14}/> {tt("تصدير السجل الطبي")}</button>
             </div>
           </div>
         </div>
@@ -1294,21 +1294,21 @@ function PatientOverview({ p }) {
   return (
     <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr"}}>
       <div>
-        <div className="h3" style={{marginBottom:10}}>البيانات الشخصية</div>
-        <InfoRow k="رقم الملف" v={<span className="mono">{p.id}</span>}/>
-        <InfoRow k="الاسم الكامل" v={p.name}/>
-        <InfoRow k="الهاتف" v={p.phone}/>
-        <InfoRow k="العمر" v={p.age ? `${p.age} سنة` : "—"}/>
-        <InfoRow k="الجنس" v={genderAr(p.gender) || "—"}/>
-        <InfoRow k="المهنة" v={p.job}/>
-        <InfoRow k="العنوان" v={p.address || "—"}/>
-        <InfoRow k="تاريخ التسجيل" v={p.registered}/>
+        <div className="h3" style={{marginBottom:10}}>{tt("البيانات الشخصية")}</div>
+        <InfoRow k={tt("رقم الملف")} v={<span className="mono">{p.id}</span>}/>
+        <InfoRow k={tt("الاسم الكامل")} v={p.name}/>
+        <InfoRow k={tt("الهاتف")} v={p.phone}/>
+        <InfoRow k={tt("العمر")} v={p.age ? tt("{n} سنة", { n: p.age }) : "—"}/>
+        <InfoRow k={tt("الجنس")} v={genderLabel(p.gender) || "—"}/>
+        <InfoRow k={tt("المهنة")} v={p.job}/>
+        <InfoRow k={tt("العنوان")} v={p.address || "—"}/>
+        <InfoRow k={tt("تاريخ التسجيل")} v={p.registered}/>
       </div>
       <div>
-        <div className="h3" style={{marginBottom:10}}>اللمحة السريرية</div>
+        <div className="h3" style={{marginBottom:10}}>{tt("اللمحة السريرية")}</div>
         <div style={{padding:14,background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12,marginBottom:14}}>
           <div className="serif" style={{fontSize:18,lineHeight:1.4,color:"var(--ink-900)"}}>"{p.chief || p.diag || "—"}"</div>
-          <div className="muted" style={{fontSize:11.5,marginTop:6}}>الشكوى الرئيسية / التشخيص</div>
+          <div className="muted" style={{fontSize:11.5,marginTop:6}}>{tt("الشكوى الرئيسية / التشخيص")}</div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           {(() => {
@@ -1317,10 +1317,10 @@ function PatientOverview({ p }) {
             const sess = DATA.sessions.filter(s => s.patient_id === pid || s.patient === p.name);
             const latest = sess[0];
             return [
-              {l:"مستوى الألم (آخر جلسة)", v: latest ? `${latest.pain ?? latest.pain_score ?? "—"}/10` : "—", sub: latest ? latest.date : "لا جلسات بعد"},
-              {l:"جلسات مسجلة", v: String(sess.length), sub: sess.length ? `آخرها ${latest.date}` : "—"},
-              {l:"آخر زيارة", v: p.visited && p.visited !== "—" ? p.visited : (latest ? latest.date : "—"), sub: ""},
-              {l:"الحالة", v: p.status || "—", sub: p.payment && p.payment !== "—" ? `الدفع: ${p.payment}` : ""},
+              {l:tt("مستوى الألم (آخر جلسة)"), v: latest ? `${latest.pain ?? latest.pain_score ?? "—"}/10` : "—", sub: latest ? latest.date : tt("لا جلسات بعد")},
+              {l:tt("جلسات مسجلة"), v: String(sess.length), sub: sess.length ? tt("آخرها {date}", { date: latest.date }) : "—"},
+              {l:tt("آخر زيارة"), v: p.visited && p.visited !== "—" ? p.visited : (latest ? latest.date : "—"), sub: ""},
+              {l:tt("الحالة"), v: p.status ? tt(p.status) : "—", sub: p.payment && p.payment !== "—" ? tt("الدفع: {status}", { status: tt(p.payment) }) : ""},
             ];
           })().map((m,i)=>(
             <div key={i} style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10}}>
@@ -1343,7 +1343,7 @@ function PatientHistory({ p }) {
   const events = sess.map(s => ({
     date: s.date || "",
     type: "جلسة",
-    title: `الجلسة #${s.session ?? s.session_number ?? "—"}`,
+    title: tt("الجلسة #{n}", { n: s.session ?? s.session_number ?? "—" }),
     by: s.therapist || "—",
     body: s.notes || s.session_notes || "",
   }));
@@ -1351,32 +1351,32 @@ function PatientHistory({ p }) {
     events.push({
       date: p.registered || String(p.created_at).slice(0, 10),
       type: "booking",
-      title: "تسجيل المريض",
-      by: "الاستقبال",
+      title: tt("تسجيل المريض"),
+      by: tt("الاستقبال"),
       body: p.notes || "",
     });
   }
   events.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   if (events.length === 0) {
-    return <EmptyState icon={<I.Clock size={22}/>} title="لا سجل بعد" body="سيظهر السجل الزمني هنا بعد تسجيل الجلسات."/>;
+    return <EmptyState icon={<I.Clock size={22}/>} title={tt("لا سجل بعد")} body={tt("سيظهر السجل الزمني هنا بعد تسجيل الجلسات.")}/>;
   }
   return (
     <div>
       <div style={{marginBottom:14}}>
-        <div className="h3">السجل الزمني</div>
+        <div className="h3">{tt("السجل الزمني")}</div>
       </div>
-      <div style={{position:"relative",paddingLeft:24}}>
-        <div style={{position:"absolute",left:9,top:8,bottom:8,width:2,background:"var(--ink-100)"}}/>
+      <div style={{position:"relative",paddingInlineEnd:24}}>
+        <div style={{position:"absolute",insetInlineEnd:9,top:8,bottom:8,width:2,background:"var(--ink-100)"}}/>
         {events.map((e,i)=>{
           const dotColor = e.type==="جلسة"?"var(--blue-500)":e.type==="intake"?"var(--green)":e.type==="booking"?"var(--violet)":"var(--amber)";
           return (
             <div key={i} style={{position:"relative",paddingBottom:18}}>
-              <div style={{position:"absolute",left:-19,top:5,width:14,height:14,borderRadius:999,background:dotColor,border:"3px solid #fff",boxShadow:"0 0 0 1px var(--ink-200)"}}/>
+              <div style={{position:"absolute",insetInlineEnd:-19,top:5,width:14,height:14,borderRadius:999,background:dotColor,border:"3px solid #fff",boxShadow:"0 0 0 1px var(--ink-200)"}}/>
               <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:3}}>
                 <span style={{fontWeight:600,fontSize:13.5}}>{e.title}</span>
                 <span className="muted mono" style={{fontSize:11}}>{e.date}</span>
               </div>
-              <div className="muted" style={{fontSize:12.5,marginBottom:3}}>بواسطة {e.by}</div>
+              <div className="muted" style={{fontSize:12.5,marginBottom:3}}>{tt("بواسطة {name}", { name: e.by })}</div>
               <div style={{fontSize:13,color:"var(--ink-700)"}}>{e.body}</div>
             </div>
           );
@@ -1426,7 +1426,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
     if (!t || !window.TreatmentsAPI) return false;
     const res = await window.TreatmentsAPI.update(t.treatment_id, payload);
     if (res && res.ok === false) {
-      window.showToast && window.showToast(res.error || "تعذّر الحفظ", "error");
+      window.showToast && window.showToast(tt(res.error || "تعذّر الحفظ"), "error");
       return false;
     }
     window.dispatchEvent(new CustomEvent("kinetic:treatments-updated"));
@@ -1456,7 +1456,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
   // the patient record so lists and the care team reflect it everywhere.
   async function chooseTherapist(row) {
     setThPick(false);
-    if (t) await persist({ therapist_id: row.id }, "تم تعيين الأخصائي");
+    if (t) await persist({ therapist_id: row.id }, tt("تم تعيين الأخصائي"));
     if (pid && window.KineticData) {
       try { await window.KineticData.upsert("patients", { patient_id: pid, id: pid, therapist_id: row.id, th: row.name }); }
       catch (e) { console.warn("assign therapist failed", e); }
@@ -1492,31 +1492,31 @@ function PatientTreatmentPlan({ p, t: tIn }) {
       followup_instructions: editing.followup_instructions,
       estimated_sessions: editing.estimated_sessions === "" ? "" : String(parseInt(editing.estimated_sessions, 10) || 0),
       weekly_frequency: editing.weekly_frequency === "" ? "" : String(parseInt(editing.weekly_frequency, 10) || 0),
-    }, "تم حفظ خطة العلاج");
+    }, tt("تم حفظ خطة العلاج"));
     setSaving(false);
     if (ok) setEditing(null);
   }
 
   if (loading && !t) {
-    return <div className="muted" style={{fontSize:13,padding:"20px 0"}}>جارٍ تحميل خطة العلاج…</div>;
+    return <div className="muted" style={{fontSize:13,padding:"20px 0"}}>{tt("جارٍ تحميل خطة العلاج…")}</div>;
   }
   if (!t) {
     return (
-      <EmptyState icon={<I.Clipboard size={22}/>} title="لا خطة علاج نشطة"
-        body="أنشئ خطة علاج للمريض من شاشة «خطط العلاج» (يدويًا أو من قالب) لتظهر تفاصيلها هنا وتُستخدم في الجلسات."/>
+      <EmptyState icon={<I.Clipboard size={22}/>} title={tt("لا خطة علاج نشطة")}
+        body={tt("أنشئ خطة علاج للمريض من شاشة «خطط العلاج» (يدويًا أو من قالب) لتظهر تفاصيلها هنا وتُستخدم في الجلسات.")}/>
     );
   }
 
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14}}>
-        <div className="h3" style={{margin:0}}>{t.name || "خطة العلاج النشطة"}</div>
+        <div className="h3" style={{margin:0}}>{t.name || tt("خطة العلاج النشطة")}</div>
         <span className={"badge " + (t.status==="completed"?"b-green":t.status==="cancelled"?"b-grey":"b-blue")}>
-          <span className="dot"></span>{t.status==="completed"?"مكتملة":t.status==="cancelled"?"ملغاة":t.status==="draft"?"مسودة":"نشطة"}
+          <span className="dot"></span>{t.status==="completed"?tt("مكتملة"):t.status==="cancelled"?tt("ملغاة"):t.status==="draft"?tt("مسودة"):tt("نشطة")}
         </span>
         {t.template_name && (
           <span className="muted" style={{fontSize:11.5}}>
-            نسخة مستقلة من قالب «{t.template_name}» — تعديلها لا يغيّر القالب.
+            {tt("نسخة مستقلة من قالب «{name}» — تعديلها لا يغيّر القالب.", { name: t.template_name })}
           </span>
         )}
       </div>
@@ -1526,7 +1526,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
       <div className="card" style={{padding:14,marginBottom:16,display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
         <div style={{flex:"1 1 220px"}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
-            <span className="muted">تقدّم الجلسات</span>
+            <span className="muted">{tt("تقدّم الجلسات")}</span>
             <span className="mono">{progress}%</span>
           </div>
           <div style={{height:7,background:"var(--ink-100)",borderRadius:999,overflow:"hidden"}}>
@@ -1534,18 +1534,18 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           </div>
         </div>
         <div style={{display:"flex",gap:18,fontSize:12.5}}>
-          <div><div className="muted" style={{fontSize:11}}>الإجمالي</div><div className="mono" style={{fontWeight:600}}>{total || "—"}</div></div>
-          <div><div className="muted" style={{fontSize:11}}>مكتملة</div><div className="mono" style={{fontWeight:600,color:"var(--green)"}}>{completed}</div></div>
-          <div><div className="muted" style={{fontSize:11}}>متبقية</div><div className="mono" style={{fontWeight:600,color:"var(--blue-700)"}}>{total ? remaining : "—"}</div></div>
-          <div><div className="muted" style={{fontSize:11}}>التكرار</div><div className="mono" style={{fontWeight:600}}>{t.weekly_frequency ? `${t.weekly_frequency}/أسبوع` : "—"}</div></div>
+          <div><div className="muted" style={{fontSize:11}}>{tt("الإجمالي")}</div><div className="mono" style={{fontWeight:600}}>{total || "—"}</div></div>
+          <div><div className="muted" style={{fontSize:11}}>{tt("مكتملة")}</div><div className="mono" style={{fontWeight:600,color:"var(--green)"}}>{completed}</div></div>
+          <div><div className="muted" style={{fontSize:11}}>{tt("متبقية")}</div><div className="mono" style={{fontWeight:600,color:"var(--blue-700)"}}>{total ? remaining : "—"}</div></div>
+          <div><div className="muted" style={{fontSize:11}}>{tt("التكرار")}</div><div className="mono" style={{fontWeight:600}}>{t.weekly_frequency ? tt("{n}/أسبوع", { n: t.weekly_frequency }) : "—"}</div></div>
         </div>
       </div>
 
       <div className="rgrid c-lg" style={{"--gtc":"1.4fr 1fr"}}>
         <div>
-          <div className="label">أهداف الخطة</div>
+          <div className="label">{tt("أهداف الخطة")}</div>
           <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:18}}>
-            {goals.length===0 && <div className="muted" style={{fontSize:12.5,padding:"6px 0"}}>لا أهداف بعد — أضفها من «تعديل الخطة».</div>}
+            {goals.length===0 && <div className="muted" style={{fontSize:12.5,padding:"6px 0"}}>{tt("لا أهداف بعد — أضفها من «تعديل الخطة».")}</div>}
             {goals.map((g,i)=>(
               <label key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",border:"1px solid var(--ink-200)",borderRadius:10,fontSize:13,cursor:"pointer"}}>
                 <input type="checkbox" checked={g.done} onChange={()=>toggleGoal(i)}/>
@@ -1554,7 +1554,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
             ))}
           </div>
 
-          <div className="label">طرق العلاج</div>
+          <div className="label">{tt("طرق العلاج")}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:18}}>
             {methods.length===0 && <span className="muted" style={{fontSize:12.5}}>—</span>}
             {methods.map(m=>(
@@ -1564,15 +1564,15 @@ function PatientTreatmentPlan({ p, t: tIn }) {
 
           {exercises.length > 0 && (
             <>
-              <div className="label">التمارين ({exercises.length})</div>
+              <div className="label">{tt("التمارين ({n})", { n: exercises.length })}</div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:18}}>
                 {exercises.map((e,i)=>(
                   <div key={i} style={{padding:"8px 10px",border:"1px solid var(--ink-200)",borderRadius:10,fontSize:12.5}}>
                     <strong>{i+1}. {e.name || e.title || (typeof e === "string" ? e : "—")}</strong>
                     {e.description && <div className="muted" style={{fontSize:11.5,marginTop:2}}>{e.description}</div>}
                     <div className="muted" style={{fontSize:11.5,marginTop:2}}>
-                      {[e.sets && `${e.sets} مجموعات`, e.reps && `${e.reps} عدّات`, e.duration && `مدّة ${e.duration}`,
-                        e.hold_time && `ثبات ${e.hold_time}`, e.rest_time && `راحة ${e.rest_time}`, e.equipment].filter(Boolean).join(" · ")}
+                      {[e.sets && tt("{n} مجموعات", { n: e.sets }), e.reps && tt("{n} عدّات", { n: e.reps }), e.duration && tt("مدّة {v}", { v: e.duration }),
+                        e.hold_time && tt("ثبات {v}", { v: e.hold_time }), e.rest_time && tt("راحة {v}", { v: e.rest_time }), e.equipment].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                 ))}
@@ -1582,7 +1582,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
 
           {t.home_instructions && (
             <>
-              <div className="label">البرنامج المنزلي</div>
+              <div className="label">{tt("البرنامج المنزلي")}</div>
               <div style={{padding:14,background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap",marginBottom:18}}>
                 {t.home_instructions}
               </div>
@@ -1590,7 +1590,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           )}
           {t.warnings && (
             <>
-              <div className="label" style={{color:"#A8443A"}}>تحذيرات</div>
+              <div className="label" style={{color:"#A8443A"}}>{tt("تحذيرات")}</div>
               <div style={{padding:14,background:"#FDF1F0",border:"1px solid #F2CBC7",borderRadius:12,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap",marginBottom:18}}>
                 {t.warnings}
               </div>
@@ -1598,72 +1598,72 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           )}
           {t.followup_instructions && (
             <>
-              <div className="label">تعليمات المتابعة</div>
+              <div className="label">{tt("تعليمات المتابعة")}</div>
               <div style={{padding:14,background:"var(--ink-50)",borderRadius:12,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap",marginBottom:18}}>
                 {t.followup_instructions}
               </div>
             </>
           )}
 
-          <div className="label">ملاحظات إكلينيكية</div>
+          <div className="label">{tt("ملاحظات إكلينيكية")}</div>
           <div style={{padding:14,background:"var(--ink-50)",borderRadius:12,fontSize:13,lineHeight:1.55,whiteSpace:"pre-wrap"}}>
             {t.notes || "—"}
           </div>
         </div>
         <div>
-          <div className="label">الأخصائي المسؤول</div>
+          <div className="label">{tt("الأخصائي المسؤول")}</div>
           <div style={{display:"flex",alignItems:"center",gap:10,padding:12,border:"1px solid var(--ink-200)",borderRadius:10,marginBottom:14}}>
             <div className="av md" style={{background:"var(--blue-100)",color:"var(--blue-700)"}}>{thName !== "—" ? initialsOf(thName) : "—"}</div>
             <div style={{flex:1}}>
               <div style={{fontSize:13,fontWeight:500}}>{thName}</div>
               <div className="muted" style={{fontSize:11.5}}>{(thRow && thRow.spec) || ""}</div>
             </div>
-            <button className="btn btn-ghost btn-icon" onClick={()=>setThPick(true)} aria-label="تغيير الأخصائي" title="تغيير الأخصائي"><I.Edit size={13}/></button>
+            <button className="btn btn-ghost btn-icon" onClick={()=>setThPick(true)} aria-label={tt("تغيير الأخصائي")} title={tt("تغيير الأخصائي")}><I.Edit size={13}/></button>
           </div>
           {doctorName && (
             <>
-              <div className="label">الطبيب</div>
+              <div className="label">{tt("الطبيب")}</div>
               <div style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10,fontSize:13,marginBottom:14}}>{doctorName}</div>
             </>
           )}
 
-          <div className="label">التشخيص</div>
+          <div className="label">{tt("التشخيص")}</div>
           <div style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10,fontSize:13,marginBottom:14}}>
             {t.diagnosis || "—"}
-            {t.body_part && <div className="muted" style={{fontSize:11.5,marginTop:4}}>الجزء المستهدف: {t.body_part}</div>}
-            {t.category && <div className="muted" style={{fontSize:11.5,marginTop:2}}>الفئة: {t.category}</div>}
+            {t.body_part && <div className="muted" style={{fontSize:11.5,marginTop:4}}>{tt("الجزء المستهدف: {v}", { v: t.body_part })}</div>}
+            {t.category && <div className="muted" style={{fontSize:11.5,marginTop:2}}>{tt("الفئة: {v}", { v: t.category })}</div>}
           </div>
 
           {/* Session timing lives on the APPOINTMENTS — a session simply
               starts when its appointment starts. No fixed session time. */}
-          <div className="label">مواعيد الجلسات</div>
+          <div className="label">{tt("مواعيد الجلسات")}</div>
           <div style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10,fontSize:12.5,lineHeight:1.6,marginBottom:14,color:"var(--ink-500)"}}>
-            توقيت كل جلسة يأتي من موعدها في التقويم — الجلسة تبدأ ببداية الموعد.
-            {t.start_date ? <div style={{marginTop:4}}>بداية الخطة: <span className="mono">{t.start_date}</span></div> : null}
+            {tt("توقيت كل جلسة يأتي من موعدها في التقويم — الجلسة تبدأ ببداية الموعد.")}
+            {t.start_date ? <div style={{marginTop:4}}>{ttx("بداية الخطة: {date}", { date: <span className="mono">{t.start_date}</span> })}</div> : null}
           </div>
 
-          <div className="label">سجل الإنشاء</div>
+          <div className="label">{tt("سجل الإنشاء")}</div>
           <div style={{padding:12,border:"1px solid var(--ink-200)",borderRadius:10,fontSize:12,lineHeight:1.7,marginBottom:14}}>
-            <div><span className="muted">أنشأها: </span>{t.created_by_name || "—"}
-              {t.created_at ? <span className="muted"> · {new Date(t.created_at).toLocaleDateString("ar-EG-u-nu-latn")}</span> : null}</div>
-            <div><span className="muted">آخر تحديث: </span>{t.updated_by_name || "—"}
-              {t.updated_at ? <span className="muted"> · {new Date(t.updated_at).toLocaleDateString("ar-EG-u-nu-latn")}</span> : null}</div>
+            <div><span className="muted">{tt("أنشأها:")} </span>{t.created_by_name || "—"}
+              {t.created_at ? <span className="muted"> · {fmtDate(t.created_at, NUMERIC_DATE)}</span> : null}</div>
+            <div><span className="muted">{tt("آخر تحديث:")} </span>{t.updated_by_name || "—"}
+              {t.updated_at ? <span className="muted"> · {fmtDate(t.updated_at, NUMERIC_DATE)}</span> : null}</div>
           </div>
 
           <button className="btn btn-blue" style={{width:"100%",justifyContent:"center"}} onClick={openEditor}>
-            <I.Edit size={13}/> تعديل الخطة
+            <I.Edit size={13}/> {tt("تعديل الخطة")}
           </button>
           <div className="muted" style={{fontSize:11,marginTop:6,textAlign:"center"}}>
-            التعديل يخص خطة هذا المريض فقط — لا يغيّر القالب ولا خطط المرضى الآخرين.
+            {tt("التعديل يخص خطة هذا المريض فقط — لا يغيّر القالب ولا خطط المرضى الآخرين.")}
           </div>
         </div>
       </div>
 
       {thPick && (
-        <Modal title="تغيير الأخصائي المعالج" onClose={()=>setThPick(false)}
-          footer={<button className="btn btn-ghost" onClick={()=>setThPick(false)}>إغلاق</button>}>
+        <Modal title={tt("تغيير الأخصائي المعالج")} onClose={()=>setThPick(false)}
+          footer={<button className="btn btn-ghost" onClick={()=>setThPick(false)}>{tt("إغلاق")}</button>}>
           {(DATA.therapists||[]).length===0
-            ? <EmptyState icon={<I.Users size={22}/>} title="لا أخصائيين بعد" body="أضف الأخصائيين من الإعدادات."/>
+            ? <EmptyState icon={<I.Users size={22}/>} title={tt("لا أخصائيين بعد")} body={tt("أضف الأخصائيين من الإعدادات.")}/>
             : <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {(DATA.therapists||[]).map(row=>{
                   const on = thName === row.name;
@@ -1674,7 +1674,7 @@ function PatientTreatmentPlan({ p, t: tIn }) {
                       <div className="av md" style={{background:(row.color||"#7BBDE8")+"33",color:row.color||"var(--blue-700)"}}>{initialsOf(row.name)}</div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:600}}>{row.name}</div>
-                        <div className="muted" style={{fontSize:11.5}}>{row.spec}{row.max!=null?` · حمل ${row.load}/${row.max}`:""}</div>
+                        <div className="muted" style={{fontSize:11.5}}>{row.spec}{row.max!=null ? " · " + tt("حمل {load}/{max}", { load: row.load, max: row.max }) : ""}</div>
                       </div>
                       {on && <I.Check size={16} style={{color:"var(--blue-700)"}}/>}
                     </button>
@@ -1685,31 +1685,31 @@ function PatientTreatmentPlan({ p, t: tIn }) {
       )}
 
       {editing && (
-        <Modal title="تعديل خطة العلاج (نسخة المريض فقط)" onClose={()=>setEditing(null)} width={640}
+        <Modal title={tt("تعديل خطة العلاج (نسخة المريض فقط)")} onClose={()=>setEditing(null)} width={640}
           footer={<>
-            <button className="btn btn-ghost" onClick={()=>setEditing(null)}>إلغاء</button>
-            <button className="btn btn-blue" disabled={saving} onClick={saveEditor}><I.Check size={13}/> {saving ? "جارٍ الحفظ…" : "حفظ"}</button>
+            <button className="btn btn-ghost" onClick={()=>setEditing(null)}>{tt("إلغاء")}</button>
+            <button className="btn btn-blue" disabled={saving} onClick={saveEditor}><I.Check size={13}/> {saving ? tt("جارٍ الحفظ…") : tt("حفظ")}</button>
           </>}>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
-            <Field label="التشخيص">
+            <Field label={tt("التشخيص")}>
               <window.DiagnosisAutocomplete value={editing.diagnosis}
                 onChange={e=>setEditing({...editing, diagnosis:e.target.value})}/>
             </Field>
-            <Field label="الجزء المستهدف">
+            <Field label={tt("الجزء المستهدف")}>
               <input className="input" value={editing.body_part} onChange={e=>setEditing({...editing, body_part:e.target.value})}/>
             </Field>
           </div>
 
           <div style={{height:14}}/>
-          <div className="label">أهداف الخطة</div>
+          <div className="label">{tt("أهداف الخطة")}</div>
           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:6}}>
             {editing.goals.map((g,i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
                 <input type="checkbox" checked={g.done}
                   onChange={()=>setEditing({...editing, goals: editing.goals.map((x,ix)=> ix===i ? {...x, done:!x.done} : x)})}/>
-                <input className="input" value={g.g} placeholder="اكتب هدفًا…"
+                <input className="input" value={g.g} placeholder={tt("اكتب هدفًا…")}
                   onChange={e=>setEditing({...editing, goals: editing.goals.map((x,ix)=> ix===i ? {...x, g:e.target.value} : x)})}/>
-                <button className="btn btn-ghost btn-icon" aria-label="حذف"
+                <button className="btn btn-ghost btn-icon" aria-label={tt("حذف")}
                   onClick={()=>setEditing({...editing, goals: editing.goals.filter((_,ix)=>ix!==i)})}>
                   <I.Trash size={13}/>
                 </button>
@@ -1718,16 +1718,16 @@ function PatientTreatmentPlan({ p, t: tIn }) {
           </div>
           <button className="btn btn-secondary" style={{marginBottom:14}}
             onClick={()=>setEditing({...editing, goals:[...editing.goals, {g:"", done:false}]})}>
-            <I.Plus size={13}/> إضافة هدف
+            <I.Plus size={13}/> {tt("إضافة هدف")}
           </button>
 
-          <div className="label">طرق العلاج</div>
+          <div className="label">{tt("طرق العلاج")}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
             {editing.methods.map((m,i)=>(
               <span key={i} className="pill tag-blue" style={{gap:4}}>
                 {m}
                 <button type="button" onClick={()=>setEditing({...editing, methods: editing.methods.filter((_,ix)=>ix!==i)})}
-                  style={{background:"none",border:"none",color:"inherit",cursor:"pointer",padding:0,display:"inline-flex"}} aria-label="إزالة">
+                  style={{background:"none",border:"none",color:"inherit",cursor:"pointer",padding:0,display:"inline-flex"}} aria-label={tt("إزالة")}>
                   <I.X size={12}/>
                 </button>
               </span>
@@ -1737,26 +1737,26 @@ function PatientTreatmentPlan({ p, t: tIn }) {
 
           <div style={{height:14}}/>
           <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
-            <Field label="إجمالي الجلسات"><input className="input" type="number" min="0" value={editing.estimated_sessions}
+            <Field label={tt("إجمالي الجلسات")}><input className="input" type="number" min="0" value={editing.estimated_sessions}
               onChange={e=>setEditing({...editing, estimated_sessions:e.target.value})}/></Field>
-            <Field label="التكرار الأسبوعي"><input className="input" type="number" min="0" value={editing.weekly_frequency}
+            <Field label={tt("التكرار الأسبوعي")}><input className="input" type="number" min="0" value={editing.weekly_frequency}
               onChange={e=>setEditing({...editing, weekly_frequency:e.target.value})}/></Field>
           </div>
 
           <div style={{height:14}}/>
-          <Field label="البرنامج المنزلي">
+          <Field label={tt("البرنامج المنزلي")}>
             <textarea className="input" rows={3} style={{padding:10,resize:"vertical"}}
               value={editing.home_instructions} onChange={e=>setEditing({...editing, home_instructions:e.target.value})}/>
           </Field>
-          <Field label="تحذيرات">
+          <Field label={tt("تحذيرات")}>
             <textarea className="input" rows={2} style={{padding:10,resize:"vertical"}}
               value={editing.warnings} onChange={e=>setEditing({...editing, warnings:e.target.value})}/>
           </Field>
-          <Field label="تعليمات المتابعة">
+          <Field label={tt("تعليمات المتابعة")}>
             <textarea className="input" rows={2} style={{padding:10,resize:"vertical"}}
               value={editing.followup_instructions} onChange={e=>setEditing({...editing, followup_instructions:e.target.value})}/>
           </Field>
-          <Field label="ملاحظات إكلينيكية">
+          <Field label={tt("ملاحظات إكلينيكية")}>
             <textarea className="input" rows={4} style={{padding:10,resize:"vertical"}}
               value={editing.notes} onChange={e=>setEditing({...editing, notes:e.target.value})}/>
           </Field>
@@ -1776,10 +1776,10 @@ function ModalityAdder({ onAdd }) {
   }
   return (
     <div style={{display:"flex",gap:6}}>
-      <input className="input" placeholder="أضف طريقة علاج…" value={v}
+      <input className="input" placeholder={tt("أضف طريقة علاج…")} value={v}
         onChange={e=>setV(e.target.value)}
         onKeyDown={e=>{ if (e.key==="Enter") { e.preventDefault(); submit(); } }}/>
-      <button className="btn btn-secondary" onClick={submit}><I.Plus size={13}/></button>
+      <button className="btn btn-secondary" onClick={submit} aria-label={tt("إضافة طريقة العلاج")}><I.Plus size={13}/></button>
     </div>
   );
 }
@@ -1802,7 +1802,7 @@ function PatientFiles({ p }) {
       setFiles(Array.isArray(rows) ? rows : []);
     } catch (e) {
       console.warn("load patient files failed", e);
-      setError("تعذّر تحميل الملفات");
+      setError(tt("تعذّر تحميل الملفات"));
     } finally { setLoading(false); }
   }, [pid]);
 
@@ -1827,8 +1827,8 @@ function PatientFiles({ p }) {
         else if (!firstErr && res && res.error) firstErr = res.error;
       }
       if (window.showToast) {
-        if (ok) window.showToast(`تم رفع ${ok} ملف`, "success");
-        if (firstErr) window.showToast(firstErr, "error");
+        if (ok) window.showToast(tt("تم رفع {n} ملف", { n: ok }), "success");
+        if (firstErr) window.showToast(tt(firstErr), "error");
       }
     } finally { setUploading(false); reload(); }
   }
@@ -1840,25 +1840,25 @@ function PatientFiles({ p }) {
   async function openFile(f) {
     const url = await resolveUrl(f);
     if (url) { window.open(url, "_blank"); return; }
-    if (window.showToast) window.showToast("لا يوجد ملف متاح للعرض", "error");
+    if (window.showToast) window.showToast(tt("لا يوجد ملف متاح للعرض"), "error");
   }
   async function downloadFile(f) {
     const url = await resolveUrl(f);
-    if (!url) { if (window.showToast) window.showToast("لا يوجد ملف للتنزيل", "error"); return; }
+    if (!url) { if (window.showToast) window.showToast(tt("لا يوجد ملف للتنزيل"), "error"); return; }
     const a = document.createElement("a");
     a.href = url; a.download = f.original_name || f.file_name || "file"; a.target = "_blank";
     a.click();
-    if (window.showToast) window.showToast(`تم فتح ${f.file_name}`, "success");
+    if (window.showToast) window.showToast(tt("تم فتح {name}", { name: f.file_name }), "success");
   }
   const mimeOf = (f) => (f.mime_type || f.file_type || "").toLowerCase();
   const isImage = (f) => mimeOf(f).startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.file_name || "");
   const kindLabel = (f) => {
     const n = (f.file_name || "").toLowerCase();
     const m = mimeOf(f);
-    if (m.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp)$/i.test(n)) return "صورة";
+    if (m.startsWith("image/") || /\.(jpe?g|png|webp|gif|bmp)$/i.test(n)) return tt("صورة");
     if (n.endsWith(".pdf") || m === "application/pdf") return "PDF";
     if (n.endsWith(".dcm") || m === "application/dicom") return "DICOM";
-    return "مستند";
+    return tt("مستند");
   };
   function fmtSize(n) {
     const b = Number(n) || 0;
@@ -1873,10 +1873,10 @@ function PatientFiles({ p }) {
       <input ref={fileRef} type="file" multiple style={{ display: "none" }}
         accept="image/*,application/pdf,.pdf,.doc,.docx,.dcm,.xls,.xlsx,.txt" onChange={handleUpload} />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
-        <div className="h3">ملفات المريض {files.length > 0 && <span className="muted mono" style={{ fontSize: 12 }}>({files.length})</span>}</div>
+        <div className="h3">{tt("ملفات المريض")} {files.length > 0 && <span className="muted mono" style={{ fontSize: 12 }}>({files.length})</span>}</div>
         <button className="btn btn-blue" disabled={uploading || !pid} onClick={() => fileRef.current && fileRef.current.click()}>
           {uploading ? <span className="spin" style={{ width: 13, height: 13, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%" }} /> : <I.Upload size={13} />}
-          {uploading ? "جارٍ الرفع…" : "رفع ملف"}
+          {uploading ? tt("جارٍ الرفع…") : tt("رفع ملف")}
         </button>
       </div>
 
@@ -1889,10 +1889,10 @@ function PatientFiles({ p }) {
           <I.Upload size={18} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 500, fontSize: 13.5 }}>أفلت الأشعة أو صور الرنين أو التقارير أو الصور هنا</div>
-          <div className="muted" style={{ fontSize: 12 }}>JPG, PNG, PDF, DICOM · متعدد</div>
+          <div style={{ fontWeight: 500, fontSize: 13.5 }}>{tt("أفلت الأشعة أو صور الرنين أو التقارير أو الصور هنا")}</div>
+          <div className="muted" style={{ fontSize: 12 }}>{tt("JPG, PNG, PDF, DICOM · متعدد")}</div>
         </div>
-        <button className="btn btn-secondary" onClick={() => fileRef.current && fileRef.current.click()}>تصفّح الملفات</button>
+        <button className="btn btn-secondary" onClick={() => fileRef.current && fileRef.current.click()}>{tt("تصفّح الملفات")}</button>
       </div>
 
       {loading ? (
@@ -1905,11 +1905,11 @@ function PatientFiles({ p }) {
           ))}
         </div>
       ) : error ? (
-        <EmptyState icon={<I.X size={22} />} title="تعذّر تحميل الملفات" body={error}
-          action={<button className="btn btn-secondary" onClick={reload}>إعادة المحاولة</button>} />
+        <EmptyState icon={<I.X size={22} />} title={tt("تعذّر تحميل الملفات")} body={error}
+          action={<button className="btn btn-secondary" onClick={reload}>{tt("إعادة المحاولة")}</button>} />
       ) : files.length === 0 ? (
-        <EmptyState icon={<I.FileText size={22} />} title="لا توجد ملفات بعد"
-          body="ارفع الأشعة أو التقارير أو الصور لتظهر هنا." />
+        <EmptyState icon={<I.FileText size={22} />} title={tt("لا توجد ملفات بعد")}
+          body={tt("ارفع الأشعة أو التقارير أو الصور لتظهر هنا.")} />
       ) : (
         <div className="grid-3">
           {files.map((f) => (
@@ -1933,19 +1933,19 @@ function PatientFiles({ p }) {
                   </div>
                   {f.uploaded_by_name ? (
                     <div className="muted" style={{ fontSize: 10.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      رفعه: {f.uploaded_by_name}
+                      {tt("رفعه: {name}", { name: f.uploaded_by_name })}
                     </div>
                   ) : null}
                 </div>
-                <button className="btn btn-ghost btn-icon" title="تحميل / فتح" onClick={() => downloadFile(f)}><I.Download size={14} /></button>
+                <button className="btn btn-ghost btn-icon" title={tt("تحميل / فتح")} onClick={() => downloadFile(f)}><I.Download size={14} /></button>
                 <RowMenu size={13} items={[
-                  { label: "فتح", icon: <I.Eye size={13} />, onClick: () => openFile(f) },
-                  { label: "تحميل", icon: <I.Download size={13} />, onClick: () => downloadFile(f) },
-                  { label: "حذف", icon: <I.Trash size={13} />, danger: true, onClick: async () => {
-                    if (!window.confirm(`حذف ${f.file_name}؟`)) return;
+                  { label: tt("فتح"), icon: <I.Eye size={13} />, onClick: () => openFile(f) },
+                  { label: tt("تحميل"), icon: <I.Download size={13} />, onClick: () => downloadFile(f) },
+                  { label: tt("حذف"), icon: <I.Trash size={13} />, danger: true, onClick: async () => {
+                    if (!window.confirm(tt("حذف {name}؟", { name: f.file_name }))) return;
                     const res = window.removePatientFile ? await window.removePatientFile(f.file_id) : { ok: false, error: "غير متاح" };
-                    if (res && res.ok) { if (window.showToast) window.showToast("تم حذف الملف", "success"); }
-                    else { if (window.showToast) window.showToast((res && res.error) || "تعذّر الحذف", "error"); }
+                    if (res && res.ok) { if (window.showToast) window.showToast(tt("تم حذف الملف"), "success"); }
+                    else { if (window.showToast) window.showToast(tt((res && res.error) || "تعذّر الحذف"), "error"); }
                   } },
                 ]} />
               </div>
@@ -1964,30 +1964,31 @@ function PatientInvoices({ p }) {
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-        <div className="h3">سجل الفواتير</div>
-        <button className="btn btn-blue" onClick={()=>setNewInvoiceOpen(true)}><I.Plus size={13}/> فاتورة جديدة</button>
+        <div className="h3">{tt("سجل الفواتير")}</div>
+        <button className="btn btn-blue" onClick={()=>setNewInvoiceOpen(true)}><I.Plus size={13}/> {tt("فاتورة جديدة")}</button>
       </div>
       <div className="tbl-scroll">
-      <table className="tbl">
-        <thead><tr><th>فاتورة</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
+      <CardTable>
+        <thead><tr><th>{tt("فاتورة")}</th><th>{tt("التاريخ")}</th><th>{tt("المبلغ")}</th><th>{tt("مدفوع")}</th><th>{tt("الطريقة")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th></tr></thead>
         <tbody>
           {invoices.length ? invoices.map(inv=>(
             <tr key={inv.id}>
               <td className="mono">{inv.id}</td>
               <td>{inv.date}</td>
-              <td className="mono">EGP {inv.amount.toLocaleString("en-US")}</td>
-              <td className="mono">EGP {inv.paid.toLocaleString("en-US")}</td>
-              <td>{inv.method}</td>
+              <td className="mono">{fmtMoney(inv.amount)}</td>
+              <td className="mono">{fmtMoney(inv.paid)}</td>
+              <td>{tt(inv.method)}</td>
               <td><PayBadge s={inv.status}/></td>
-              <td><button className="btn btn-ghost btn-icon" onClick={()=>{
-                const rows = ["فاتورة,التاريخ,المبلغ,مدفوع,الطريقة,الحالة", `${inv.id},${inv.date},${inv.amount},${inv.paid},${inv.method},${inv.status}`];
+              <td><button className="btn btn-ghost btn-icon" aria-label={tt("تحميل الفاتورة {id}", { id: inv.id })} onClick={()=>{
+                const head = [tt("فاتورة"),tt("التاريخ"),tt("المبلغ"),tt("مدفوع"),tt("الطريقة"),tt("الحالة")].join(",");
+                const rows = [head, `${inv.id},${inv.date},${inv.amount},${inv.paid},${tt(inv.method)},${tt(inv.status)}`];
                 downloadCsv(rows, `${inv.id}.csv`);
-                if (window.showToast) window.showToast("تم تحميل الفاتورة", "success");
+                if (window.showToast) window.showToast(tt("تم تحميل الفاتورة"), "success");
               }}><I.Download size={13}/></button></td>
             </tr>
-          )) : <tr><td colSpan={7}><EmptyState icon={<I.FileText size={22}/>} title="لا توجد فواتير بعد" body="invoices appear here once you create them or a جلسة is checked out."/></td></tr>}
+          )) : <tr><td colSpan={7}><EmptyState icon={<I.FileText size={22}/>} title={tt("لا توجد فواتير بعد")} body={tt("invoices appear here once you create them or a جلسة is checked out.")}/></td></tr>}
         </tbody>
-      </table>
+      </CardTable>
       </div>
       {newInvoiceOpen && <NewInvoiceModal onClose={()=>setNewInvoiceOpen(false)}/>}
     </div>
@@ -1997,7 +1998,7 @@ function PatientInvoices({ p }) {
 // ── PatientAdd — multi-step wizard ────────────────────────────
 function PatientAdd({ onCancel, onSave }) {
   const [step, setStep] = React.useState(0);
-  const steps = ["شخصي", "طبي", "المرفقات", "مراجعة"];
+  const steps = [tt("شخصي"), tt("طبي"), tt("المرفقات"), tt("مراجعة")];
   // Controlled state so the review step and the persist call actually
   // see what the user typed. Previously every input was uncontrolled and
   // "إنشاء مريض" saved a hardcoded seed row.
@@ -2015,12 +2016,12 @@ function PatientAdd({ onCancel, onSave }) {
   // let bad rows through to the persist step.
   function validate(current) {
     if (current === 0) {
-      if (!form.patient_id.trim()) return "أدخل رقم الملف";
-      if (!form.name.trim()) return "أدخل الاسم الكامل";
-      if (!form.phone.trim()) return "أدخل رقم الهاتف";
+      if (!form.patient_id.trim()) return tt("أدخل رقم الملف");
+      if (!form.name.trim()) return tt("أدخل الاسم الكامل");
+      if (!form.phone.trim()) return tt("أدخل رقم الهاتف");
     }
     if (current === 1) {
-      if (!form.diagnosis.trim()) return "أدخل التشخيص";
+      if (!form.diagnosis.trim()) return tt("أدخل التشخيص");
     }
     return null;
   }
@@ -2045,11 +2046,11 @@ function PatientAdd({ onCancel, onSave }) {
         remain: 10,
       };
       if (window.KineticData) await window.KineticData.upsert("patients", row);
-      if (window.showToast) window.showToast("تم إنشاء المريض", "success");
+      if (window.showToast) window.showToast(tt("تم إنشاء المريض"), "success");
       onSave && onSave(row);
     } catch (e) {
       console.warn("create patient failed", e);
-      if (window.showToast) window.showToast("تعذّر الحفظ", "error");
+      if (window.showToast) window.showToast(tt("تعذّر الحفظ"), "error");
     }
   }
 
@@ -2061,9 +2062,9 @@ function PatientAdd({ onCancel, onSave }) {
 
   return (
     <Page>
-      <div className="crumb"><span onClick={onCancel} style={{cursor:"pointer"}}>المرضى</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>مريض جديد</span></div>
-      <h1 className="h1" style={{marginBottom:6}}>تسجيل مريض جديد</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:24}}>خطوة {step+1} من {steps.length} — drafts autosave every 5 seconds.</div>
+      <div className="crumb"><span onClick={onCancel} style={{cursor:"pointer"}}>{tt("المرضى")}</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{tt("مريض جديد")}</span></div>
+      <h1 className="h1" style={{marginBottom:6}}>{tt("تسجيل مريض جديد")}</h1>
+      <div className="muted" style={{fontSize:13.5,marginBottom:24}}>{tt("خطوة {n} من {total} — drafts autosave every 5 seconds.", { n: step+1, total: steps.length })}</div>
 
       {/* stepper */}
       <div className="stepper" style={{gap:0,marginBottom:24}}>
@@ -2093,14 +2094,14 @@ function PatientAdd({ onCancel, onSave }) {
 
       <div style={{display:"flex",justifyContent:"space-between",maxWidth:840,flexWrap:"wrap",gap:10}}>
         <button className="btn btn-secondary" onClick={()=>step===0 ? onCancel() : setStep(step-1)}>
-          <I.ArrowLeft size={13}/> {step===0?"إلغاء":"رجوع"}
+          <I.ArrowLeft size={13}/> {step===0?tt("إلغاء"):tt("رجوع")}
         </button>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-          <button className="btn btn-ghost" onClick={()=>{if(window.showToast)window.showToast("تم الحفظ كمسودة","success");onCancel&&onCancel();}}>حفظ كمسودة</button>
+          <button className="btn btn-ghost" onClick={()=>{if(window.showToast)window.showToast(tt("تم الحفظ كمسودة"),"success");onCancel&&onCancel();}}>{tt("حفظ كمسودة")}</button>
           {step<steps.length-1 ? (
-            <button className="btn btn-blue" onClick={next}>متابعة <I.ArrowRight size={13}/></button>
+            <button className="btn btn-blue" onClick={next}>{tt("متابعة")} <I.ArrowRight size={13}/></button>
           ) : (
-            <button className="btn btn-blue" onClick={persist}><I.Check size={13}/> إنشاء مريض</button>
+            <button className="btn btn-blue" onClick={persist}><I.Check size={13}/> {tt("إنشاء مريض")}</button>
           )}
         </div>
       </div>
@@ -2134,26 +2135,26 @@ function Field({ label, children, hint, span = 1, required }) {
 function FormPersonal({ form, setField }) {
   return (
     <div>
-      <div className="h3" style={{marginBottom:14}}>البيانات الشخصية</div>
+      <div className="h3" style={{marginBottom:14}}>{tt("البيانات الشخصية")}</div>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14}}>
-        <Field label="رقم الملف" required><input className="input" value={form.patient_id} onChange={e=>setField("patient_id", e.target.value)}/></Field>
-        <Field label="تاريخ التسجيل"><input className="input" type="date" value={form.created_at} onChange={e=>setField("created_at", e.target.value)}/></Field>
-        <Field label="الاسم الكامل" required span={2}><input className="input" placeholder="مثال: هناء مصطفى" value={form.name} onChange={e=>setField("name", e.target.value)}/></Field>
-        <Field label="الهاتف" required><input className="input" placeholder="+20 …" value={form.phone} onChange={e=>setField("phone", e.target.value)}/></Field>
-        <Field label="البريد الإلكتروني"><input className="input" placeholder="اختياري" value={form.email} onChange={e=>setField("email", e.target.value)}/></Field>
-        <Field label="العمر"><input className="input" type="number" placeholder="34" value={form.age} onChange={e=>setField("age", e.target.value)}/></Field>
-        <Field label="الجنس">
+        <Field label={tt("رقم الملف")} required><input className="input" value={form.patient_id} onChange={e=>setField("patient_id", e.target.value)}/></Field>
+        <Field label={tt("تاريخ التسجيل")}><input className="input" type="date" value={form.created_at} onChange={e=>setField("created_at", e.target.value)}/></Field>
+        <Field label={tt("الاسم الكامل")} required span={2}><input className="input" placeholder={tt("مثال: هناء مصطفى")} value={form.name} onChange={e=>setField("name", e.target.value)}/></Field>
+        <Field label={tt("الهاتف")} required><input className="input" placeholder="+20 …" value={form.phone} onChange={e=>setField("phone", e.target.value)}/></Field>
+        <Field label={tt("البريد الإلكتروني")}><input className="input" placeholder={tt("اختياري")} value={form.email} onChange={e=>setField("email", e.target.value)}/></Field>
+        <Field label={tt("العمر")}><input className="input" type="number" placeholder="34" value={form.age} onChange={e=>setField("age", e.target.value)}/></Field>
+        <Field label={tt("الجنس")}>
           <div style={{display:"flex",gap:6}}>
-            {[["F","أنثى"],["M","ذكر"]].map(([g, l])=>(
+            {[["F",tt("أنثى")],["M",tt("ذكر")]].map(([g, l])=>(
               <button key={g} type="button" aria-pressed={form.gender===g ? "true" : "false"} className={"btn " + (form.gender===g?"btn-primary":"btn-secondary")} style={{flex:1,justifyContent:"center"}} onClick={()=>setField("gender", g)}>{l}</button>
             ))}
           </div>
         </Field>
-        <Field label="المهنة"><input className="input" placeholder="مثال: مهندسة معمارية" value={form.occupation} onChange={e=>setField("occupation", e.target.value)}/></Field>
-        <Field label="الحالة الاجتماعية">
-          <select className="input" value={form.marital} onChange={e=>setField("marital", e.target.value)}><option>أعزب</option><option>متزوج</option><option>أخرى</option></select>
+        <Field label={tt("المهنة")}><input className="input" placeholder={tt("مثال: مهندسة معمارية")} value={form.occupation} onChange={e=>setField("occupation", e.target.value)}/></Field>
+        <Field label={tt("الحالة الاجتماعية")}>
+          <select className="input" value={form.marital} onChange={e=>setField("marital", e.target.value)}>{["أعزب","متزوج","أخرى"].map(v=><option key={v} value={v}>{tt(v)}</option>)}</select>
         </Field>
-        <Field label="العنوان" span={2}><input className="input" placeholder="الشارع، الحي، المدينة" value={form.address} onChange={e=>setField("address", e.target.value)}/></Field>
+        <Field label={tt("العنوان")} span={2}><input className="input" placeholder={tt("الشارع، الحي، المدينة")} value={form.address} onChange={e=>setField("address", e.target.value)}/></Field>
       </div>
     </div>
   );
@@ -2161,19 +2162,20 @@ function FormPersonal({ form, setField }) {
 function FormMedical({ form, setField }) {
   return (
     <div>
-      <div className="h3" style={{marginBottom:14}}>البيانات MedicalInformation</div>
+      <div className="h3" style={{marginBottom:14}}>{tt("البيانات MedicalInformation")}</div>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14}}>
-        <Field label="الشكوى الرئيسية" required span={2}><textarea className="input" style={{height:70,padding:10,resize:"vertical"}} placeholder="e.g. ألم أسفل الظهر يمتد إلى الساق اليسرى, worse in AM" value={form.complaint} onChange={e=>setField("complaint", e.target.value)}/></Field>
-        <Field label="التشخيص" required span={2}><window.DiagnosisAutocomplete placeholder="e.g. L4–L5 disc herniation" value={form.diagnosis} onChange={e=>setField("diagnosis", e.target.value)}/></Field>
-        <Field label="أمراض مزمنة diseases"><input className="input" placeholder="النوع to add tags" value={form.chronic} onChange={e=>setField("chronic", e.target.value)}/></Field>
-        <Field label="عمليات سابقة"><input className="input" placeholder="النوع to add tags" value={form.surgeries} onChange={e=>setField("surgeries", e.target.value)}/></Field>
-        <Field label="حساسية"><input className="input" placeholder="مثال: بنسلين" value={form.allergies} onChange={e=>setField("allergies", e.target.value)}/></Field>
-        <Field label="الأدوية الحالية"><input className="input" placeholder="افصل بفواصل" value={form.meds} onChange={e=>setField("meds", e.target.value)}/></Field>
-        <Field label="التدخين">
-          <select className="input" value={form.smoking} onChange={e=>setField("smoking", e.target.value)}><option>أبدًا</option><option>سابقًا</option><option>حاليًا</option></select>
+        <Field label={tt("الشكوى الرئيسية")} required span={2}><textarea className="input" style={{height:70,padding:10,resize:"vertical"}} placeholder={tt("e.g. ألم أسفل الظهر يمتد إلى الساق اليسرى, worse in AM")} value={form.complaint} onChange={e=>setField("complaint", e.target.value)}/></Field>
+        <Field label={tt("التشخيص")} required span={2}><window.DiagnosisAutocomplete placeholder="e.g. L4–L5 disc herniation" value={form.diagnosis} onChange={e=>setField("diagnosis", e.target.value)}/></Field>
+        <Field label={tt("أمراض مزمنة diseases")}><input className="input" placeholder={tt("النوع to add tags")} value={form.chronic} onChange={e=>setField("chronic", e.target.value)}/></Field>
+        <Field label={tt("عمليات سابقة")}><input className="input" placeholder={tt("النوع to add tags")} value={form.surgeries} onChange={e=>setField("surgeries", e.target.value)}/></Field>
+        <Field label={tt("حساسية")}><input className="input" placeholder={tt("مثال: بنسلين")} value={form.allergies} onChange={e=>setField("allergies", e.target.value)}/></Field>
+        <Field label={tt("الأدوية الحالية")}><input className="input" placeholder={tt("افصل بفواصل")} value={form.meds} onChange={e=>setField("meds", e.target.value)}/></Field>
+        {/* Option values stay Arabic (the stored answer); only the labels are translated. */}
+        <Field label={tt("التدخين")}>
+          <select className="input" value={form.smoking} onChange={e=>setField("smoking", e.target.value)}>{["أبدًا","سابقًا","حاليًا"].map(v=><option key={v} value={v}>{tt(v)}</option>)}</select>
         </Field>
-        <Field label="مستوى النشاط">
-          <select className="input" value={form.activity} onChange={e=>setField("activity", e.target.value)}><option>خامل</option><option>خفيف</option><option>متوسط</option><option>نشط</option></select>
+        <Field label={tt("مستوى النشاط")}>
+          <select className="input" value={form.activity} onChange={e=>setField("activity", e.target.value)}>{["خامل","خفيف","متوسط","نشط"].map(v=><option key={v} value={v}>{tt(v)}</option>)}</select>
         </Field>
       </div>
     </div>
@@ -2182,14 +2184,14 @@ function FormMedical({ form, setField }) {
 function FormUploads() {
   const uploadRefs = React.useRef([React.createRef(), React.createRef(), React.createRef(), React.createRef()]);
   const uploadDefs = [
-    { l:"شخصي photo", h:"JPG/PNG · لبطاقة الملف", accept:"image/*"},
-    { l:"صورة الهوية", h:"أمامي وخلفي", accept:"image/*"},
-    { l:"صور الأشعة", h:"متعدد مسموح", accept:"image/*"},
-    { l:"طبي reports", h:"PDF, JPG, PNG", accept:".pdf,image/*"},
+    { l:tt("شخصي photo"), h:tt("JPG/PNG · لبطاقة الملف"), accept:"image/*"},
+    { l:tt("صورة الهوية"), h:tt("أمامي وخلفي"), accept:"image/*"},
+    { l:tt("صور الأشعة"), h:tt("متعدد مسموح"), accept:"image/*"},
+    { l:tt("طبي reports"), h:"PDF, JPG, PNG", accept:".pdf,image/*"},
   ];
   return (
     <div>
-      <div className="h3" style={{marginBottom:14}}>الملفات والمرفقات</div>
+      <div className="h3" style={{marginBottom:14}}>{tt("الملفات والمرفقات")}</div>
       <div className="grid-2" style={{gap:14}}>
         {uploadDefs.map((u,i)=>(
           <div key={i} style={{
@@ -2197,7 +2199,7 @@ function FormUploads() {
             display:"flex",alignItems:"center",gap:14,background:"var(--ink-50)"
           }}>
             <input ref={uploadRefs.current[i]} type="file" accept={u.accept} style={{display:"none"}} onChange={e=>{
-              if(e.target.files[0]&&window.showToast)window.showToast(`تم رفع ${e.target.files[0].name}`,"success");
+              if(e.target.files[0]&&window.showToast)window.showToast(tt("تم رفع {name}", { name: e.target.files[0].name }),"success");
               e.target.value="";
             }}/>
             <div style={{width:44,height:44,borderRadius:11,background:"#fff",border:"1px solid var(--ink-200)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--blue-700)"}}>
@@ -2207,7 +2209,7 @@ function FormUploads() {
               <div style={{fontWeight:500,fontSize:13.5}}>{u.l}</div>
               <div className="muted" style={{fontSize:11.5}}>{u.h}</div>
             </div>
-            <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>uploadRefs.current[i].current&&uploadRefs.current[i].current.click()}>رفع</button>
+            <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>uploadRefs.current[i].current&&uploadRefs.current[i].current.click()}>{tt("رفع")}</button>
           </div>
         ))}
       </div>
@@ -2218,18 +2220,18 @@ function FormReview({ form }) {
   const f = form || {};
   return (
     <div>
-      <div className="h3" style={{marginBottom:14}}>مراجعة & create</div>
+      <div className="h3" style={{marginBottom:14}}>{tt("مراجعة & create")}</div>
       <div style={{padding:18,background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:12,marginBottom:14}}>
         <div style={{display:"flex",alignItems:"center",gap:10,color:"var(--blue-900)",fontSize:13}}>
-          <I.Check size={15}/> Looks good. المريض will be created مع file # <span className="mono">{f.patient_id || "—"}</span> وتعيينه إلى <strong>{activeBranchName()}</strong>.
+          <I.Check size={15}/> {ttx("Looks good. المريض will be created مع file # {id} وتعيينه إلى {branch}.", { id: <span className="mono">{f.patient_id || "—"}</span>, branch: <strong>{activeBranchName()}</strong> })}
         </div>
       </div>
       <div className="grid-2" style={{gap:18}}>
         {[
-          {h:"شخصي", rows:[["الاسم الكامل", f.name || "—"],["رقم الملف", f.patient_id || "—"],["الهاتف", f.phone || "—"],["العمر والجنس", `${f.age ? f.age + " سنة" : "—"}، ${genderAr(f.gender) || "—"}`]]},
-          {h:"طبي", rows:[["التشخيص", f.diagnosis || "—"],["أمراض مزمنة", f.chronic || "—"],["العمليات", f.surgeries || "—"]]},
-          {h:"المرفقات", rows:[["الملفات","تُرفع من ملف المريض بعد الإنشاء"]]},
-          {h:"التعيينات", rows:[["طبيب", f.doctor || "—"],["الأخصائي", f.therapist || "—"],["الباقة", f.pkg || "—"]]},
+          {h:tt("شخصي"), rows:[[tt("الاسم الكامل"), f.name || "—"],[tt("رقم الملف"), f.patient_id || "—"],[tt("الهاتف"), f.phone || "—"],[tt("العمر والجنس"), tt("{age}، {gender}", { age: f.age ? tt("{n} سنة", { n: f.age }) : "—", gender: genderLabel(f.gender) || "—" })]]},
+          {h:tt("طبي"), rows:[[tt("التشخيص"), f.diagnosis || "—"],[tt("أمراض مزمنة"), f.chronic || "—"],[tt("العمليات"), f.surgeries || "—"]]},
+          {h:tt("المرفقات"), rows:[[tt("الملفات"),tt("تُرفع من ملف المريض بعد الإنشاء")]]},
+          {h:tt("التعيينات"), rows:[[tt("طبيب"), f.doctor || "—"],[tt("الأخصائي"), f.therapist || "—"],[tt("الباقة"), f.pkg || "—"]]},
         ].map((s,i)=>(
           <div key={i} className="card card-pad" style={{padding:14,boxShadow:"none"}}>
             <div className="h3" style={{marginBottom:8}}>{s.h}</div>
@@ -2259,6 +2261,26 @@ const DOCTOR_STATUS = {
   busy:      { l: "مشغول",    c: "#D49044", badge: "b-amber" },
   leave:     { l: "في إجازة", c: "#8898A8", badge: "b-grey" },
 };
+// Department name in the interface language (departments carry name_ar
+// and name_en). Stored values (a booking's `dept` and `type`) keep name_ar.
+function deptLabel(d) {
+  if (!d) return "";
+  return (!IS_RTL && d.name_en) || d.name_ar || "";
+}
+// Appointment types are stored as Arabic text («جلسة علاج طبيعي»,
+// «جلسة + استشارة <القسم>»); this is their label in the interface language.
+// Any other stored type is data and is shown as entered.
+const APPT_TYPE_KEYS = new Set(["جلسة علاج طبيعي", "جلسة"]);
+function apptTypeLabel(type) {
+  if (!type) return type;
+  const consult = /^جلسة \+ استشارة (.+)$/.exec(type);
+  if (consult) {
+    const name = consult[1];
+    const dept = name === "طبيب" ? null : (DATA.departments || []).find(d => d.name_ar === name);
+    return tt("جلسة + استشارة {dept}", { dept: name === "طبيب" ? tt("طبيب") : (dept ? deptLabel(dept) : name) });
+  }
+  return APPT_TYPE_KEYS.has(type) ? tt(type) : type;
+}
 // Departments sorted by their display order, active only.
 function activeDepartments() {
   return (DATA.departments || [])
@@ -2281,7 +2303,7 @@ function findPatientByPhone(phone) {
 }
 
 function Appointments({ go }) {
-  const [tab, setTab] = React.useState("التقويم"); // calendar | list | book
+  const [tab, setTab] = React.useState("التقويم"); // calendar | list | book (values, not labels)
   const [dateOffset, setDateOffset] = React.useState(0);
   const [quickOpen, setQuickOpen] = React.useState(false);
 
@@ -2295,19 +2317,14 @@ function Appointments({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المواعيد</span></div>
-          <h1 className="h1">{scoped ? "جدولي" : "المواعيد"}</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>المحجوزة: {booked} · المتاحة: {free} · بانتظار التأكيد: {pending}</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("المواعيد")}</span></div>
+          <h1 className="h1">{scoped ? tt("جدولي") : tt("المواعيد")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("المحجوزة: {booked} · المتاحة: {free} · بانتظار التأكيد: {pending}", { booked, free, pending })}</div>
         </div>
         <div className="page-actions">
-          <div className="seg">
-            {["التقويم","قائمة","حجز"].map(t=>(
-              <button key={t} type="button" aria-pressed={tab===t ? "true" : "false"} className={tab===t?"on":""} onClick={()=>setTab(t)}>
-                {t==="التقويم" ? "التقويم" : t==="قائمة" ? "قائمة" : "حجز جديد"}
-              </button>
-            ))}
-          </div>
-          <button className="btn btn-blue" onClick={()=>setQuickOpen(true)}><I.Plus size={14}/> حجز سريع</button>
+          <Segmented label={tt("عرض المواعيد")} value={tab} onChange={setTab}
+            options={[{ value:"التقويم", label:tt("التقويم") }, { value:"قائمة", label:tt("قائمة") }, { value:"حجز", label:tt("حجز جديد") }]}/>
+          <button className="btn btn-blue" onClick={()=>setQuickOpen(true)}><I.Plus size={14}/> {tt("حجز سريع")}</button>
         </div>
       </div>
 
@@ -2342,11 +2359,11 @@ function QuickBookingModal({ onClose, onDone }) {
   async function save() {
     const name = form.name.trim();
     const phone = form.phone.trim();
-    if (!name)  return window.showToast && window.showToast("أدخل اسم المريض", "error");
-    if (!phone) return window.showToast && window.showToast("أدخل رقم الهاتف", "error");
-    if (!form.therapistId) return window.showToast && window.showToast("اختر الأخصائي", "error");
-    if (!form.date)     return window.showToast && window.showToast("اختر التاريخ", "error");
-    if (!form.time)     return window.showToast && window.showToast("اختر الوقت", "error");
+    if (!name)  return window.showToast && window.showToast(tt("أدخل اسم المريض"), "error");
+    if (!phone) return window.showToast && window.showToast(tt("أدخل رقم الهاتف"), "error");
+    if (!form.therapistId) return window.showToast && window.showToast(tt("اختر الأخصائي"), "error");
+    if (!form.date)     return window.showToast && window.showToast(tt("اختر التاريخ"), "error");
+    if (!form.time)     return window.showToast && window.showToast(tt("اختر الوقت"), "error");
 
     // Default rule: at least one free day between the patient's sessions.
     // The receptionist can override intentionally (consecutive-day plan).
@@ -2355,7 +2372,7 @@ function QuickBookingModal({ onClose, onDone }) {
       const clash = violatesFreeDayRule(known.patient_id || known.id, form.date);
       if (clash) {
         return window.showToast && window.showToast(
-          `للمريض موعد في ${apptDateIso(clash)} — القاعدة تتطلب يوم راحة بين الجلسات. فعّل «السماح بأيام متتالية» للتجاوز.`,
+          tt("للمريض موعد في {date} — القاعدة تتطلب يوم راحة بين الجلسات. فعّل «السماح بأيام متتالية» للتجاوز.", { date: apptDateIso(clash) }),
           "error");
       }
     }
@@ -2404,13 +2421,13 @@ function QuickBookingModal({ onClose, onDone }) {
       });
 
       window.showToast && window.showToast(
-        createdNew ? "تم الحجز وإنشاء ملف مبدئي للمريض" : "تم الحجز وربطه بملف المريض",
+        createdNew ? tt("تم الحجز وإنشاء ملف مبدئي للمريض") : tt("تم الحجز وربطه بملف المريض"),
         "success"
       );
       onDone && onDone();
     } catch (e) {
       console.warn("quick booking failed", e);
-      window.showToast && window.showToast("تعذّر إتمام الحجز", "error");
+      window.showToast && window.showToast(tt("تعذّر إتمام الحجز"), "error");
     } finally {
       setBusy(false);
     }
@@ -2434,49 +2451,50 @@ function QuickBookingModal({ onClose, onDone }) {
   }
 
   return (
-    <Modal title="حجز سريع" onClose={onClose} width={560}
+    <Modal title={tt("حجز سريع")} onClose={onClose} width={560}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}>
-          {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> تأكيد الحجز</>}
+          {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <><I.Check size={13}/> {tt("تأكيد الحجز")}</>}
         </button>
       </>}>
       <div className="muted" style={{fontSize:12.5,marginBottom:14,lineHeight:1.6,padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
-        للحجوزات الهاتفية والواتساب — أدخل الحد الأدنى من البيانات فقط. يُستكمل ملف المريض لاحقًا.
+        {tt("للحجوزات الهاتفية والواتساب — أدخل الحد الأدنى من البيانات فقط. يُستكمل ملف المريض لاحقًا.")}
       </div>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="اسم المريض" required>
-          <input className="input" value={form.name} onChange={e=>set("name", e.target.value)} placeholder="الاسم الكامل" autoFocus/>
+        <Field label={tt("اسم المريض")} required>
+          <input className="input" value={form.name} onChange={e=>set("name", e.target.value)} placeholder={tt("الاسم الكامل")} autoFocus/>
         </Field>
-        <Field label="رقم الهاتف" required>
-          <input className="input" value={form.phone} onChange={e=>set("phone", e.target.value)} placeholder="+20 1xx xxx xxxx" dir="ltr" style={{textAlign:"right"}}/>
+        <Field label={tt("رقم الهاتف")} required>
+          {/* An LTR number aligned to the page's start side. */}
+          <input className="input" value={form.phone} onChange={e=>set("phone", e.target.value)} placeholder="+20 1xx xxx xxxx" dir="ltr" style={{textAlign:IS_RTL ? "right" : "left"}}/>
         </Field>
       </div>
       {existing && (
         <div style={{fontSize:12,color:"var(--green)",margin:"2px 0 10px",display:"flex",alignItems:"center",gap:6}}>
-          <I.Check size={12}/> رقم معروف — سيُربط الحجز بملف <strong>{existing.name}</strong>
+          <I.Check size={12}/> {ttx("رقم معروف — سيُربط الحجز بملف {name}", { name: <strong>{existing.name}</strong> })}
         </div>
       )}
       {existingSchedule && (
         <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,margin:"2px 0 10px",padding:"8px 10px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
           <I.Clock size={12} style={{color:"var(--blue-700)",flexShrink:0}}/>
-          <span style={{flex:1}}>جدول ثابت: {scheduleDaysLabel(existingSchedule)} · <span className="mono">{existingSchedule.time}</span></span>
-          <button className="btn btn-ghost" style={{fontSize:11.5,padding:"3px 8px"}} onClick={usePreferred}>استخدام الجدول</button>
+          <span style={{flex:1}}>{ttx("جدول ثابت: {days} · {time}", { days: scheduleDaysLabel(existingSchedule), time: <span className="mono">{existingSchedule.time}</span> })}</span>
+          <button className="btn btn-ghost" style={{fontSize:11.5,padding:"3px 8px"}} onClick={usePreferred}>{tt("استخدام الجدول")}</button>
         </div>
       )}
       <div style={{height:2}}/>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="الأخصائي" required>
+        <Field label={tt("الأخصائي")} required>
           <select className="input" value={form.therapistId} onChange={e=>set("therapistId", e.target.value)}>
-            <option value="">اختر الأخصائي…</option>
+            <option value="">{tt("اختر الأخصائي…")}</option>
             {therapists.map(t=>(
               <option key={t.id} value={t.id}>{t.name}{t.spec?` — ${t.spec}`:""}</option>
             ))}
           </select>
         </Field>
-        <Field label="الطبيب (اختياري)">
+        <Field label={tt("الطبيب (اختياري)")}>
           <select className="input" value={form.doctorId} onChange={e=>set("doctorId", e.target.value)}>
-            <option value="">بدون طبيب</option>
+            <option value="">{tt("بدون طبيب")}</option>
             {doctors.map(d=>(
               <option key={d.id} value={d.id}>{d.name}{d.specialization?` — ${d.specialization}`:""}</option>
             ))}
@@ -2484,19 +2502,19 @@ function QuickBookingModal({ onClose, onDone }) {
         </Field>
       </div>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="التاريخ" required>
+        <Field label={tt("التاريخ")} required>
           <input className="input" type="date" value={form.date} onChange={e=>set("date", e.target.value)}/>
         </Field>
-        <Field label="الوقت" required>
+        <Field label={tt("الوقت")} required>
           <input className="input" type="time" value={form.time} onChange={e=>set("time", e.target.value)}/>
         </Field>
       </div>
-      <Field label="ملاحظات (اختياري)">
-        <textarea className="input" rows={2} style={{padding:10,resize:"vertical"}} value={form.notes} onChange={e=>set("notes", e.target.value)} placeholder="سبب الزيارة، تفضيلات الموعد…"/>
+      <Field label={tt("ملاحظات (اختياري)")}>
+        <textarea className="input" rows={2} style={{padding:10,resize:"vertical"}} value={form.notes} onChange={e=>set("notes", e.target.value)} placeholder={tt("سبب الزيارة، تفضيلات الموعد…")}/>
       </Field>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,marginTop:8,cursor:"pointer"}}>
         <input type="checkbox" checked={form.allowConsecutive} onChange={e=>set("allowConsecutive", e.target.checked)}/>
-        السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — بقرار الأخصائي)
+        {tt("السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — بقرار الأخصائي)")}
       </label>
     </Modal>
   );
@@ -2539,7 +2557,9 @@ function isCancelledAppt(a) {
 // A patient can carry one active recurring pattern (weekdays + fixed time
 // + therapist) in patient_schedules. Future bookings are suggested and
 // generated from it; editing it only affects appointments created later.
-const WEEKDAYS_AR = ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
+// Sunday first (Date#getDay). Arabic keeps its spelling «الإثنين»; English
+// takes the names from Intl (weekdayNames, src/i18n.jsx).
+const WEEKDAY_LABELS = IS_RTL ? ["الأحد","الإثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"] : weekdayNames("long");
 function scheduleForPatient(patientId) {
   if (!patientId) return null;
   return (DATA.schedules || []).find(s => s.patient_id === patientId && s.active !== false) || null;
@@ -2554,7 +2574,7 @@ function scheduleDays(s) {
     : [];
 }
 function scheduleDaysLabel(s) {
-  return scheduleDays(s).map(d => WEEKDAYS_AR[d]).join("، ");
+  return scheduleDays(s).map(d => WEEKDAY_LABELS[d]).join(IS_RTL ? "، " : ", ");
 }
 // Default rule: at least one free day between sessions, so the chosen
 // weekday set must not contain (cyclically) adjacent days — Saturday and
@@ -2660,11 +2680,11 @@ function RecurringScheduleModal({ patient, onClose }) {
   const consecutive = daysHaveConsecutive(days);
 
   async function save(generate) {
-    if (!therapistId)  return window.showToast && window.showToast("اختر الأخصائي", "error");
-    if (!days.length)  return window.showToast && window.showToast("اختر يومًا واحدًا على الأقل", "error");
-    if (!time)         return window.showToast && window.showToast("اختر الوقت الثابت", "error");
+    if (!therapistId)  return window.showToast && window.showToast(tt("اختر الأخصائي"), "error");
+    if (!days.length)  return window.showToast && window.showToast(tt("اختر يومًا واحدًا على الأقل"), "error");
+    if (!time)         return window.showToast && window.showToast(tt("اختر الوقت الثابت"), "error");
     if (consecutive && !allowConsecutive)
-      return window.showToast && window.showToast("الأيام المختارة متتالية — القاعدة تتطلب يوم راحة بين الجلسات. فعّل التجاوز أو غيّر الأيام.", "error");
+      return window.showToast && window.showToast(tt("الأيام المختارة متتالية — القاعدة تتطلب يوم راحة بين الجلسات. فعّل التجاوز أو غيّر الأيام."), "error");
     setBusy(true);
     try {
       const row = await window.KineticData.upsert("schedules", {
@@ -2679,44 +2699,43 @@ function RecurringScheduleModal({ patient, onClose }) {
         created_at: (existing && existing.created_at) || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
-      let msg = "تم حفظ الجدول الثابت — يسري على المواعيد المستقبلية فقط";
+      let msg = tt("تم حفظ الجدول الثابت — يسري على المواعيد المستقبلية فقط");
       if (generate) {
         const made = await generateFromSchedule(patient, row, { startIso, sessions: Number(sessions) || 0 });
         msg = made.length
-          ? `تم حفظ الجدول وإنشاء ${made.length} موعدًا قادمًا`
-          : "تم حفظ الجدول — لا مواعيد جديدة (الأيام المطلوبة محجوزة بالفعل)";
+          ? tt("تم حفظ الجدول وإنشاء {n} موعدًا قادمًا", { n: made.length })
+          : tt("تم حفظ الجدول — لا مواعيد جديدة (الأيام المطلوبة محجوزة بالفعل)");
       }
       window.showToast && window.showToast(msg, "success");
       onClose && onClose();
     } catch (e) {
       console.warn("save schedule failed", e);
-      window.showToast && window.showToast("تعذّر حفظ الجدول", "error");
+      window.showToast && window.showToast(tt("تعذّر حفظ الجدول"), "error");
     } finally { setBusy(false); }
   }
 
   return (
-    <Modal title={`الجدول الثابت — ${patient.name || ""}`} onClose={onClose} width={600}
+    <Modal title={tt("الجدول الثابت — {name}", { name: patient.name || "" })} onClose={onClose} width={600}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إغلاق</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إغلاق")}</button>
         <button className="btn btn-secondary" disabled={busy} onClick={()=>save(false)}>
-          <I.Check size={13}/> حفظ الجدول فقط
+          <I.Check size={13}/> {tt("حفظ الجدول فقط")}
         </button>
         <button className="btn btn-blue" disabled={busy} onClick={()=>save(true)}>
           {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/>
-                : <><I.Calendar size={13}/> حفظ وإنشاء المواعيد</>}
+                : <><I.Calendar size={13}/> {tt("حفظ وإنشاء المواعيد")}</>}
         </button>
       </>}>
       <div className="muted" style={{fontSize:12.5,marginBottom:16,lineHeight:1.6,padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
-        يحدد الأخصائي نمطًا أسبوعيًا ثابتًا (أيام + وقت). تُقترح المواعيد القادمة تلقائيًا من هذا النمط،
-        وأي تعديل لاحق يسري على المواعيد المستقبلية فقط — المواعيد السابقة لا تتغير.
+        {tt("يحدد الأخصائي نمطًا أسبوعيًا ثابتًا (أيام + وقت). تُقترح المواعيد القادمة تلقائيًا من هذا النمط، وأي تعديل لاحق يسري على المواعيد المستقبلية فقط — المواعيد السابقة لا تتغير.")}
       </div>
 
-      <Field label="أيام العلاج الأسبوعية" required>
+      <Field label={tt("أيام العلاج الأسبوعية")} required>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {WEEKDAYS_AR.map((label, d) => {
+          {WEEKDAY_LABELS.map((label, d) => {
             const on = days.includes(d);
             return (
-              <button key={d} type="button" onClick={()=>toggleDay(d)}
+              <button key={d} type="button" aria-pressed={on ? "true" : "false"} onClick={()=>toggleDay(d)}
                 style={{
                   padding:"8px 12px",borderRadius:10,fontSize:12.5,cursor:"pointer",
                   border: on ? "1px solid var(--blue-500)" : "1px solid var(--ink-200)",
@@ -2731,18 +2750,18 @@ function RecurringScheduleModal({ patient, onClose }) {
       {consecutive && (
         <div style={{fontSize:12,color: allowConsecutive ? "var(--ink-500)" : "var(--red)",margin:"2px 0 10px"}}>
           {allowConsecutive
-            ? "أيام متتالية مسموحة بقرار الأخصائي (تجاوز مفعّل)."
-            : "تنبيه: توجد أيام متتالية — القاعدة الافتراضية تتطلب يوم راحة بين كل جلستين."}
+            ? tt("أيام متتالية مسموحة بقرار الأخصائي (تجاوز مفعّل).")
+            : tt("تنبيه: توجد أيام متتالية — القاعدة الافتراضية تتطلب يوم راحة بين كل جلستين.")}
         </div>
       )}
 
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-        <Field label="الوقت الثابت" required>
+        <Field label={tt("الوقت الثابت")} required>
           <input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/>
         </Field>
-        <Field label="الأخصائي" required>
+        <Field label={tt("الأخصائي")} required>
           <select className="input" value={therapistId} onChange={e=>setTherapistId(e.target.value)}>
-            <option value="">اختر الأخصائي…</option>
+            <option value="">{tt("اختر الأخصائي…")}</option>
             {therapists.map(t=>(
               <option key={t.id} value={t.id}>{t.name}{t.spec?` — ${t.spec}`:""}</option>
             ))}
@@ -2750,26 +2769,25 @@ function RecurringScheduleModal({ patient, onClose }) {
         </Field>
       </div>
       <div className="muted" style={{fontSize:12,marginBottom:10}}>
-        عدد الجلسات في الأسبوع: <strong>{days.length}</strong>
+        {ttx("عدد الجلسات في الأسبوع: {n}", { n: <strong>{days.length}</strong> })}
       </div>
       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,marginBottom:16,cursor:"pointer"}}>
         <input type="checkbox" checked={allowConsecutive} onChange={e=>setAllowConsecutive(e.target.checked)}/>
-        السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — قرار مقصود من الأخصائي)
+        {tt("السماح بأيام متتالية (تجاوز قاعدة يوم الراحة — قرار مقصود من الأخصائي)")}
       </label>
 
       <div style={{borderTop:"1px solid var(--ink-100)",paddingTop:14}}>
-        <div className="label" style={{marginBottom:8}}>إنشاء المواعيد القادمة تلقائيًا</div>
+        <div className="label" style={{marginBottom:8}}>{tt("إنشاء المواعيد القادمة تلقائيًا")}</div>
         <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
-          <Field label="تاريخ البداية">
+          <Field label={tt("تاريخ البداية")}>
             <input className="input" type="date" value={startIso} min={todayIso()} onChange={e=>setStartIso(e.target.value)}/>
           </Field>
-          <Field label="عدد الجلسات">
+          <Field label={tt("عدد الجلسات")}>
             <input className="input" type="number" min={1} max={60} value={sessions} onChange={e=>setSessions(e.target.value)}/>
           </Field>
         </div>
         <div className="muted" style={{fontSize:12}}>
-          «حفظ وإنشاء المواعيد» يولّد الجلسات القادمة على نفس الأخصائي والوقت حسب الأيام المختارة،
-          ويتخطى الأيام المحجوزة مسبقًا.
+          {tt("«حفظ وإنشاء المواعيد» يولّد الجلسات القادمة على نفس الأخصائي والوقت حسب الأيام المختارة، ويتخطى الأيام المحجوزة مسبقًا.")}
         </div>
       </div>
     </Modal>
@@ -3841,7 +3859,7 @@ function BookingFlow({ onDone }) {
       const clash = violatesFreeDayRule(selectedPatient.patient_id || selectedPatient.id, picks.date);
       if (clash) {
         return window.showToast && window.showToast(
-          `للمريض موعد في ${apptDateIso(clash)} — القاعدة تتطلب يوم راحة بين الجلسات. فعّل «السماح بأيام متتالية» للتجاوز.`,
+          tt("للمريض موعد في {date} — القاعدة تتطلب يوم راحة بين الجلسات. فعّل «السماح بأيام متتالية» للتجاوز.", { date: apptDateIso(clash) }),
           "error");
       }
     }

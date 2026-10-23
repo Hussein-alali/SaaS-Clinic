@@ -52,7 +52,7 @@ function BranchSwitcher({ role }) {
   const activeOff = !!active.id && !isActiveBranch(active);
   const options = branches.filter(b => isActiveBranch(b) || b.id === activeId);
   const isAdmin = role === "مدير";
-  const subLine = (b) => [b.address, `الغرف: ${b.rooms||0}`].filter(Boolean).join(" · ");
+  const subLine = (b) => [b.address, tt("الغرف: {n}", { n: b.rooms||0 })].filter(Boolean).join(" · ");
 
   return (
     <div ref={ref} style={{position:"relative",margin:"4px 14px 10px"}}>
@@ -61,12 +61,12 @@ function BranchSwitcher({ role }) {
         className="branch-switcher"
         aria-haspopup="listbox"
         aria-expanded={open ? "true" : "false"}
-        aria-label={`الفرع الحالي: ${active.name} — تبديل الفرع`}
+        aria-label={tt("الفرع الحالي: {name} — تبديل الفرع", { name: active.name })}
         onClick={()=>setOpen(o=>!o)}
         style={{
           width:"100%", padding:"9px 11px", background:"var(--ink-50)",
           border:"1px solid var(--ink-200)", borderRadius:11, display:"flex",
-          alignItems:"center", gap:10, cursor:"pointer", textAlign:"right"
+          alignItems:"center", gap:10, cursor:"pointer", textAlign:"start"
         }}>
         <div style={{width:26,height:26,borderRadius:7,background:"var(--blue-100)",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <I.MapPin size={13} style={{color:"var(--blue-700)"}}/>
@@ -74,7 +74,7 @@ function BranchSwitcher({ role }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12.5,fontWeight:600,color:"var(--ink-900)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{active.name}</div>
           <div style={{fontSize:10.5,color:activeOff?"#A8443A":"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-            {activeOff ? "فرع معطّل — للعرض فقط" : `الغرف: ${active.rooms||0}`}
+            {activeOff ? tt("فرع معطّل — للعرض فقط") : tt("الغرف: {n}", { n: active.rooms||0 })}
           </div>
         </div>
         <I.ChevronDown size={13} style={{color:"var(--ink-400)",transform:open?"rotate(180deg)":"none",transition:"transform .15s"}}/>
@@ -86,18 +86,18 @@ function BranchSwitcher({ role }) {
           background:"#fff", border:"1px solid var(--ink-200)", borderRadius:11,
           boxShadow:"var(--shadow-md)", zIndex:30, padding:6, maxHeight:320, overflowY:"auto"
         }}>
-          <div role="listbox" aria-label="الفروع">
+          <div role="listbox" aria-label={tt("الفروع")}>
           {options.map(b => {
             const off = !isActiveBranch(b);
             return (
             <div key={b.id} role="option" aria-selected={b.id === activeId ? "true" : "false"} aria-disabled={off ? "true" : undefined}
-              data-branch={b.id} tabIndex={0}
+              data-branch={b.id} tabIndex={0} className="branch-opt"
               onKeyDown={(e)=>{ if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } }}
               onClick={()=>{
                 if (off) return;
                 if (window.setActiveBranch) window.setActiveBranch(b.id);
                 setOpen(false);
-                if (window.showToast && b.id !== activeId) window.showToast(`تم التبديل إلى ${b.name}`, "success");
+                if (window.showToast && b.id !== activeId) window.showToast(tt("تم التبديل إلى {name}", { name: b.name }), "success");
               }}
               style={{
                 display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
@@ -110,14 +110,15 @@ function BranchSwitcher({ role }) {
               <I.MapPin size={12} style={{color:off?"var(--ink-400)":"var(--blue-700)"}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12.5,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.name}</div>
-                <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{off ? "معطّل" : subLine(b)}</div>
+                <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{off ? tt("معطّل") : subLine(b)}</div>
               </div>
               {b.id === activeId && <I.Check size={12} style={{color:"var(--blue-700)"}}/>}
               {isAdmin && (
                 <button
                   type="button"
-                  title="تعديل الفرع"
-                  aria-label={`تعديل ${b.name}`}
+                  className="branch-edit"
+                  title={tt("تعديل الفرع")}
+                  aria-label={tt("تعديل {name}", { name: b.name })}
                   onClick={(e)=>{ e.stopPropagation(); setOpen(false); setEditing(b); }}
                   style={{border:"none",background:"transparent",padding:4,borderRadius:6,cursor:"pointer",color:"var(--ink-500)"}}
                   onMouseEnter={(e)=>e.currentTarget.style.background="var(--ink-100)"}
@@ -134,6 +135,7 @@ function BranchSwitcher({ role }) {
               <div style={{height:1,background:"var(--ink-100)",margin:"6px 4px"}}/>
               <button
                 type="button"
+                className="branch-action"
                 onClick={()=>{ setOpen(false); setAdding(true); }}
                 style={{
                   width:"100%", display:"flex", alignItems:"center", gap:8, padding:"8px 10px",
@@ -143,11 +145,12 @@ function BranchSwitcher({ role }) {
                 onMouseEnter={(e)=>e.currentTarget.style.background="var(--blue-50)"}
                 onMouseLeave={(e)=>e.currentTarget.style.background="transparent"}
               >
-                <I.Plus size={13}/> إضافة فرع جديد
+                <I.Plus size={13}/> {tt("إضافة فرع جديد")}
               </button>
               {window.navigate && (
                 <button
                   type="button"
+                  className="branch-action"
                   onClick={()=>{ setOpen(false); window.navigate("branches"); }}
                   style={{
                     width:"100%", display:"flex", alignItems:"center", gap:8, padding:"8px 10px",
@@ -157,7 +160,7 @@ function BranchSwitcher({ role }) {
                   onMouseEnter={(e)=>e.currentTarget.style.background="var(--ink-50)"}
                   onMouseLeave={(e)=>e.currentTarget.style.background="transparent"}
                 >
-                  <I.Settings size={13}/> إدارة الفروع
+                  <I.Settings size={13}/> {tt("إدارة الفروع")}
                 </button>
               )}
             </>
@@ -176,7 +179,8 @@ function BranchSwitcher({ role }) {
 // weekly working hours ({ "sat": ["09:00","21:00"], … } — an unticked day
 // is closed). Field errors show under the field; a refusal of the server
 // (taken name, the plan's branch limit, no permission) shows as an alert
-// at the top of the form, in Arabic. Used by C07 and the sidebar picker.
+// at the top of the form, in the interface language. Used by C07 and the
+// sidebar picker.
 function branchHoursState(wh, withDefaults) {
   const cfg = window.calendarConfig ? window.calendarConfig() : { start:"09:00", end:"17:00" };
   const out = {};
@@ -188,6 +192,10 @@ function branchHoursState(wh, withDefaults) {
   }
   return out;
 }
+
+// A working day's name as shown (window.BRANCH_DAYS: `ar` is the Arabic
+// name, `label` the one in the interface language).
+const branchDayLabel = (d) => (d && (d.label || tt(d.ar))) || "";
 
 function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
   const isEdit = !!editing;
@@ -215,17 +223,17 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
     const name = form.name.trim();
     const taken = name && (window.BRANCHES || []).some(b =>
       b.id !== (editing && editing.id) && String(b.name || "").trim().toLowerCase() === name.toLowerCase());
-    if (!name) e.name = "اسم الفرع مطلوب";
-    else if (name.length > 80) e.name = "اسم الفرع طويل جدًا (80 حرفًا كحد أقصى)";
-    else if (taken) e.name = "يوجد فرع بهذا الاسم في عيادتك بالفعل — اختر اسمًا آخر";
+    if (!name) e.name = tt("اسم الفرع مطلوب");
+    else if (name.length > 80) e.name = tt("اسم الفرع طويل جدًا (80 حرفًا كحد أقصى)");
+    else if (taken) e.name = tt("يوجد فرع بهذا الاسم في عيادتك بالفعل — اختر اسمًا آخر");
     const rooms = String(form.rooms).trim();
-    if (rooms && (!/^\d{1,3}$/.test(rooms))) e.rooms = "أدخل عددًا صحيحًا من 0 إلى 999";
+    if (rooms && (!/^\d{1,3}$/.test(rooms))) e.rooms = tt("أدخل عددًا صحيحًا من 0 إلى 999");
     const phone = form.phone.trim();
-    if (phone && !/^[0-9+()\-\s]{6,20}$/.test(phone)) e.phone = "رقم هاتف غير صالح (أرقام فقط، 6 إلى 20 خانة)";
+    if (phone && !/^[0-9+()\-\s]{6,20}$/.test(phone)) e.phone = tt("رقم هاتف غير صالح (أرقام فقط، 6 إلى 20 خانة)");
     for (const d of days) {
       const h = form.hours[d.key];
       if (h && h.open && !(h.from && h.to && h.from < h.to)) {
-        e.hours = `${d.ar}: وقت الإغلاق يجب أن يكون بعد وقت الفتح`;
+        e.hours = tt("{day}: وقت الإغلاق يجب أن يكون بعد وقت الفتح", { day: branchDayLabel(d) });
         break;
       }
     }
@@ -254,18 +262,19 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
       let saved;
       if (isEdit) {
         saved = await window.updateBranch(editing.id, payload);
-        if (window.showToast) window.showToast(`تم حفظ ${payload.name}`, "success");
+        if (window.showToast) window.showToast(tt("تم حفظ {name}", { name: payload.name }), "success");
       } else {
         saved = await window.addBranch(payload);
         if (selectAfterAdd && saved && window.setActiveBranch) window.setActiveBranch(saved.id);
-        if (window.showToast) window.showToast(`تمت إضافة ${payload.name}`, "success");
+        if (window.showToast) window.showToast(tt("تمت إضافة {name}", { name: payload.name }), "success");
       }
       if (onSaved) onSaved(saved);
       onClose();
     } catch (err) {
       console.warn("branch save failed", err);
-      // addBranch() / updateBranch() throw an Arabic reason (e.g. the plan's branch limit).
-      const msg = err && /[؀-ۿ]/.test(String(err.message || "")) ? err.message : "تعذّر حفظ الفرع — أعد المحاولة";
+      // addBranch() / updateBranch() throw a reason meant for people (e.g. the
+      // plan's branch limit), marked err.friendly and already translated.
+      const msg = err && (err.friendly || /[؀-ۿ]/.test(String(err.message || ""))) ? err.message : tt("تعذّر حفظ الفرع — أعد المحاولة");
       setServerError(msg);
     } finally { setSaving(false); }
   }
@@ -273,13 +282,13 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
   const errStyle = { fontSize:11.5, color:"#A8443A", marginTop:4 };
   const invalid = (k) => errors[k] ? { borderColor:"var(--red)" } : undefined;
   return (
-    <Modal title={isEdit ? `تعديل ${editing.name}` : "إضافة فرع جديد"} onClose={saving ? undefined : onClose} width={600} footer={<>
-      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>إلغاء</button>
+    <Modal title={isEdit ? tt("تعديل {name}", { name: editing.name }) : tt("إضافة فرع جديد")} onClose={saving ? undefined : onClose} width={600} footer={<>
+      <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>{tt("إلغاء")}</button>
       <button type="button" className="btn btn-blue" disabled={saving} onClick={onSave} aria-busy={saving ? "true" : undefined}>
         {saving
           ? <span className="spin" aria-hidden="true" style={{width:13,height:13,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/>
           : (isEdit ? <I.Check size={13}/> : <I.Plus size={13}/>)}
-        {isEdit ? "حفظ التغييرات" : "إضافة الفرع"}
+        {isEdit ? tt("حفظ التغييرات") : tt("إضافة الفرع")}
       </button>
     </>}>
       <form className="branch-form" onSubmit={(e)=>{ e.preventDefault(); onSave(); }} noValidate>
@@ -288,19 +297,19 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
             <I.X size={14} style={{marginTop:3,flexShrink:0}}/><span>{serverError}</span>
           </div>
         )}
-        <label className="label" htmlFor="branch-name">اسم الفرع <span style={{color:"#A8443A"}}>*</span></label>
-        <input id="branch-name" className="input" placeholder="فرع المعادي" value={form.name} maxLength={120} autoFocus
+        <label className="label" htmlFor="branch-name">{tt("اسم الفرع")} <span style={{color:"#A8443A"}}>*</span></label>
+        <input id="branch-name" className="input" placeholder={tt("فرع المعادي")} value={form.name} maxLength={120} autoFocus
           aria-invalid={errors.name ? "true" : undefined} aria-describedby={errors.name ? "branch-name-err" : undefined}
           style={invalid("name")} onChange={e=>set("name", e.target.value)}/>
         {errors.name && <div id="branch-name-err" style={errStyle}>{errors.name}</div>}
         <div style={{height:12}}/>
         <div className="rgrid c-sm" style={{"--gtc":"2fr 1fr",gap:12}}>
           <div>
-            <label className="label" htmlFor="branch-address">العنوان</label>
-            <input id="branch-address" className="input" placeholder="14 ش صلاح سالم، القاهرة" value={form.address} maxLength={200} onChange={e=>set("address", e.target.value)}/>
+            <label className="label" htmlFor="branch-address">{tt("العنوان")}</label>
+            <input id="branch-address" className="input" placeholder={tt("14 ش صلاح سالم، القاهرة")} value={form.address} maxLength={200} onChange={e=>set("address", e.target.value)}/>
           </div>
           <div>
-            <label className="label" htmlFor="branch-rooms">عدد الغرف</label>
+            <label className="label" htmlFor="branch-rooms">{tt("عدد الغرف")}</label>
             <input id="branch-rooms" className="input" type="number" min="0" max="999" inputMode="numeric" placeholder="4" value={form.rooms}
               aria-invalid={errors.rooms ? "true" : undefined} aria-describedby={errors.rooms ? "branch-rooms-err" : undefined}
               style={invalid("rooms")} onChange={e=>set("rooms", e.target.value)}/>
@@ -308,15 +317,15 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
           </div>
         </div>
         <div style={{height:12}}/>
-        <label className="label" htmlFor="branch-phone">الهاتف</label>
+        <label className="label" htmlFor="branch-phone">{tt("الهاتف")}</label>
         <input id="branch-phone" className="input" dir="ltr" placeholder="+20 2 xxxx xxxx" value={form.phone} maxLength={40}
           aria-invalid={errors.phone ? "true" : undefined} aria-describedby={errors.phone ? "branch-phone-err" : undefined}
-          style={{textAlign:"right", ...(invalid("phone") || {})}} onChange={e=>set("phone", e.target.value)}/>
+          style={{textAlign:IS_RTL ? "right" : "left", ...(invalid("phone") || {})}} onChange={e=>set("phone", e.target.value)}/>
         {errors.phone && <div id="branch-phone-err" style={errStyle}>{errors.phone}</div>}
         <div style={{height:16}}/>
         <fieldset style={{border:"none",margin:0,padding:0}} aria-describedby={errors.hours ? "branch-hours-err" : undefined}>
-          <legend className="label" style={{padding:0}}>ساعات العمل</legend>
-          <div className="muted" style={{fontSize:11.5,marginBottom:8}}>علّم أيام العمل وحدد وقت الفتح والإغلاق؛ الأيام غير المعلّمة مغلقة.</div>
+          <legend className="label" style={{padding:0}}>{tt("ساعات العمل")}</legend>
+          <div className="muted" style={{fontSize:11.5,marginBottom:8}}>{tt("علّم أيام العمل وحدد وقت الفتح والإغلاق؛ الأيام غير المعلّمة مغلقة.")}</div>
           <div style={{border:"1px solid var(--ink-200)",borderRadius:10,overflow:"hidden"}}>
             {days.map((d, i) => {
               const h = form.hours[d.key] || { open:false, from:"09:00", to:"17:00" };
@@ -326,17 +335,17 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
                     borderTop: i ? "1px solid var(--ink-100)" : "none", background: h.open ? "#fff" : "var(--ink-50)"}}>
                   <label style={{display:"flex",alignItems:"center",gap:8,minWidth:110,fontSize:13,cursor:"pointer"}}>
                     <input type="checkbox" checked={!!h.open} onChange={e=>setDay(d.key, { open: e.target.checked })}/>
-                    {d.ar}
+                    {branchDayLabel(d)}
                   </label>
                   {h.open ? (
                     <div style={{display:"flex",alignItems:"center",gap:6,flex:1,minWidth:200}}>
-                      <input type="time" className="input" dir="ltr" aria-label={`${d.ar}: من`} value={h.from} style={{height:32,maxWidth:120}}
+                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: من", { day: branchDayLabel(d) })} value={h.from} style={{height:32,maxWidth:120}}
                         onChange={e=>setDay(d.key, { from: e.target.value })}/>
-                      <span className="muted" style={{fontSize:12}}>إلى</span>
-                      <input type="time" className="input" dir="ltr" aria-label={`${d.ar}: إلى`} value={h.to} style={{height:32,maxWidth:120}}
+                      <span className="muted" style={{fontSize:12}}>{tt("إلى")}</span>
+                      <input type="time" className="input" dir="ltr" aria-label={tt("{day}: إلى", { day: branchDayLabel(d) })} value={h.to} style={{height:32,maxWidth:120}}
                         onChange={e=>setDay(d.key, { to: e.target.value })}/>
                     </div>
-                  ) : <span className="muted" style={{fontSize:12}}>مغلق</span>}
+                  ) : <span className="muted" style={{fontSize:12}}>{tt("مغلق")}</span>}
                 </div>
               );
             })}
@@ -349,7 +358,38 @@ function BranchFormModal({ onClose, editing, onSaved, selectAfterAdd }) {
   );
 }
 
-function Sidebar({ active, onNav, role, user, isOpen }) {
+// True while the media query matches (re-renders when it changes).
+function useMediaQuery(query) {
+  const read = () => !!(typeof window !== "undefined" && window.matchMedia && window.matchMedia(query).matches);
+  const [matches, setMatches] = React.useState(read);
+  React.useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const on = () => setMatches(mq.matches);
+    on();
+    if (mq.addEventListener) mq.addEventListener("change", on); else mq.addListener(on);
+    return () => { if (mq.removeEventListener) mq.removeEventListener("change", on); else mq.removeListener(on); };
+  }, [query]);
+  return matches;
+}
+// The width under which the sidebar is an off-canvas drawer (index.html).
+const SIDEBAR_DRAWER_QUERY = "(max-width: 768px)";
+
+// The clinic's menu. On phones (isOpen, under 768px) it is a drawer that
+// behaves as a dialog (docs/04, task 3.23): named, aria-modal, Tab stays
+// inside, Esc or the close button closes it and focus goes back to the
+// menu button that opened it (useDialogFocus). `onClose` closes it; without
+// one the shell's backdrop is clicked (it closes the drawer).
+function Sidebar({ active, onNav, role, user, isOpen, onClose }) {
+  const onPhone = useMediaQuery(SIDEBAR_DRAWER_QUERY);
+  const drawer = !!isOpen && onPhone;
+  const boxRef = React.useRef(null);
+  const closeDrawer = () => {
+    if (onClose) { onClose(); return; }
+    const backdrop = document.querySelector(".sidebar-backdrop.open");
+    if (backdrop) backdrop.click();
+  };
+  useDialogFocus(boxRef, drawer, closeDrawer);
   // ── Live clinic + custom sections (re-render on updates) ──────
   const [clinic, setClinic] = React.useState(window.CLINIC || {});
   const [customs, setCustoms] = React.useState(window.CUSTOM_SECTIONS || []);
@@ -375,12 +415,12 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
   // and canonical Supabase values ("available").
   const aCount = (window.scopeAppts ? window.scopeAppts(DATA.appts) : DATA.appts)
     .filter(a => a.status !== "متاح" && a.status !== "available").length;
-  const dashLabel = (window.ROLE_DASH_LABEL && window.ROLE_DASH_LABEL[role]) || "لوحة التحكم";
+  const dashLabel = tt((window.ROLE_DASH_LABEL && window.ROLE_DASH_LABEL[role]) || "لوحة التحكم");
 
   // ── Custom section groups (admin-defined) ─────────────────────
   const customGroups = {};
   customs.filter(s=>s.visible!==false).forEach(s=>{
-    const g = s.group || "مخصص";
+    const g = s.group || tt("مخصص");
     if(!customGroups[g]) customGroups[g] = [];
     const iconName = CUSTOM_ICON_WHITELIST.has(s.icon) ? s.icon : "Layers";
     const Ico = I[iconName] || I.Layers;
@@ -392,24 +432,24 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
     { title: null, items: [
       { id:"dashboard", label:dashLabel, icon: <I.Dashboard size={17}/> },
     ]},
-    { title: "الرعاية", items: [
-      { id:"patients",    label:"المرضى",        icon: <I.Users size={17}/>, badge: pCount },
-      { id:"appointments",label:"المواعيد",    icon: <I.Calendar size={17}/>, badge: aCount, badgeKind:"blue" },
-      { id:"treatments",  label:"خطط العلاج", icon: <I.Clipboard size={17}/> },
-      { id:"sessions",    label:"جلسات العلاج",icon: <I.Activity size={17}/> },
+    { title: tt("الرعاية"), items: [
+      { id:"patients",    label:tt("المرضى"),        icon: <I.Users size={17}/>, badge: pCount },
+      { id:"appointments",label:tt("المواعيد"),    icon: <I.Calendar size={17}/>, badge: aCount, badgeKind:"blue" },
+      { id:"treatments",  label:tt("خطط العلاج"), icon: <I.Clipboard size={17}/> },
+      { id:"sessions",    label:tt("جلسات العلاج"),icon: <I.Activity size={17}/> },
     ]},
-    { title: "المالية", items: [
-      { id:"payments", label:"المدفوعات والفواتير", icon: <I.CreditCard size={17}/> },
-      { id:"packages", label:"الباقات",            icon: <I.Package size={17}/> },
+    { title: tt("المالية"), items: [
+      { id:"payments", label:tt("المدفوعات والفواتير"), icon: <I.CreditCard size={17}/> },
+      { id:"packages", label:tt("الباقات"),            icon: <I.Package size={17}/> },
     ]},
-    { title: "النمو", items: [
-      { id:"campaigns", label:"حملات واتساب", icon: <I.Megaphone size={17}/> },
-      { id:"reports",   label:"التقارير",            icon: <I.Chart size={17}/> },
+    { title: tt("النمو"), items: [
+      { id:"campaigns", label:tt("حملات واتساب"), icon: <I.Megaphone size={17}/> },
+      { id:"reports",   label:tt("التقارير"),            icon: <I.Chart size={17}/> },
     ]},
     ...customGroupList,
-    { title: "النظام", items: [
-      { id:"branches", label:"الفروع", icon: <I.MapPin size={17}/> },
-      { id:"settings", label:"الإعدادات", icon: <I.Settings size={17}/> },
+    { title: tt("النظام"), items: [
+      { id:"branches", label:tt("الفروع"), icon: <I.MapPin size={17}/> },
+      { id:"settings", label:tt("الإعدادات"), icon: <I.Settings size={17}/> },
     ]},
   ];
 
@@ -432,22 +472,31 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
   const canSwitchClinic = memberships.length > 1 && !!window.tenantGoRoot;
 
   return (
-    <aside className={"sidebar" + (isOpen ? " open" : "")}>
+    <>
+    {drawer && <DialogFocusGuard boxRef={boxRef} at="start"/>}
+    <aside ref={boxRef} className={"sidebar" + (isOpen ? " open" : "")}
+      {...(drawer ? { role:"dialog", "aria-modal":"true", "aria-label":tt("القائمة"), tabIndex:-1, style:{outline:"none"} } : {})}>
       {/* Brand */}
       <div style={{padding:"18px 20px 14px",display:"flex",alignItems:"center",gap:10}}>
         {clinic.logo
           ? <img src={clinic.logo} alt="" style={{width:30,height:30,borderRadius:9,objectFit:"cover",background:"var(--blue-50)"}}/>
           : <I.Logo size={30}/>}
-        <div style={{display:"flex",flexDirection:"column",lineHeight:1.1}}>
+        <div style={{display:"flex",flexDirection:"column",lineHeight:1.1,minWidth:0}}>
           <span style={{fontWeight:600,fontSize:15,letterSpacing:"-.01em"}}>{clinic.name || "—"}</span>
           <span style={{fontSize:11,color:"var(--ink-500)"}}>{clinic.subtitle || ""}</span>
         </div>
+        {drawer && (
+          <button type="button" className="btn btn-ghost btn-icon sidebar-close" aria-label={tt("إغلاق القائمة")}
+            style={{marginInlineStart:"auto"}} onClick={closeDrawer}>
+            <I.X size={16}/>
+          </button>
+        )}
       </div>
 
       {/* Clinic switcher */}
       <BranchSwitcher role={role}/>
 
-      <nav aria-label="القائمة الرئيسية" style={{flex:1, overflowY:"auto", paddingBottom:14}}>
+      <nav aria-label={tt("القائمة الرئيسية")} style={{flex:1, overflowY:"auto", paddingBottom:14}}>
         {groups.map((g,gi)=>(
           <div key={gi}>
             {g.title && <div className="nav-section">{g.title}</div>}
@@ -478,21 +527,25 @@ function Sidebar({ active, onNav, role, user, isOpen }) {
         <div className="av md" aria-hidden="true" style={{background:"var(--blue-700)",color:"#fff"}}>{uInit}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:12.5,fontWeight:600,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{u.name}</div>
-          <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{role || "مدير"} · <bdi dir="ltr">{u.email}</bdi></div>
+          <div style={{fontSize:10.5,color:"var(--ink-500)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{tt(role || "مدير")} · <bdi dir="ltr">{u.email}</bdi></div>
         </div>
         {canSwitchClinic && (
-          <button className="btn btn-ghost btn-icon" title="تبديل العيادة" aria-label="تبديل العيادة" onClick={()=>window.tenantGoRoot()}>
+          <button className="btn btn-ghost btn-icon" title={tt("تبديل العيادة")} aria-label={tt("تبديل العيادة")} onClick={()=>window.tenantGoRoot()}>
             <I.Layers size={15}/>
           </button>
         )}
-        <button className="btn btn-ghost btn-icon" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={()=>onNav("logout")}>
+        <button className="btn btn-ghost btn-icon" title={tt("تسجيل الخروج")} aria-label={tt("تسجيل الخروج")} onClick={()=>onNav("logout")}>
           <I.Logout size={15}/>
         </button>
       </div>
     </aside>
+    {drawer && <DialogFocusGuard boxRef={boxRef} at="end"/>}
+    </>
   );
 }
 
+// (Not used by the clinic shell, whose top bar lives in ClinicApp,
+// src/screens3.jsx, with the language switch.)
 function TopBar({ title, crumb, right, onSearch, theme, setTheme }) {
   return (
     <div className="topbar">
@@ -509,18 +562,18 @@ function TopBar({ title, crumb, right, onSearch, theme, setTheme }) {
       </div>
 
       <div className="search-wrap" style={{position:"relative",width:"min(320px, 34vw)"}}>
-        <I.Search size={15} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-        <input className="input" placeholder="ابحث عن مرضى، مواعيد، فواتير…"
-          style={{paddingLeft:34,height:36,background:"var(--ink-50)",border:"1px solid transparent"}}
+        <I.Search size={15} style={{position:"absolute",insetInlineEnd:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+        <input className="input" placeholder={tt("ابحث عن مرضى، مواعيد، فواتير…")} aria-label={tt("ابحث عن مرضى، مواعيد، فواتير…")}
+          style={{paddingInlineEnd:34,height:36,background:"var(--ink-50)",border:"1px solid transparent"}}
           onChange={(e)=>onSearch && onSearch(e.target.value)}/>
-        <span className="mono" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-400)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</span>
+        <span className="mono" style={{position:"absolute",insetInlineStart:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-400)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</span>
       </div>
 
-      <button className="btn btn-ghost btn-icon" title="الإشعارات">
+      <button className="btn btn-ghost btn-icon" title={tt("الإشعارات")} aria-label={tt("الإشعارات")}>
         <I.Bell size={17}/>
-        <span style={{position:"absolute",width:6,height:6,background:"var(--red)",borderRadius:"50%",marginLeft:-7,marginTop:-7}}></span>
+        <span style={{position:"absolute",width:6,height:6,background:"var(--red)",borderRadius:"50%",marginInlineEnd:-7,marginTop:-7}}></span>
       </button>
-      <button className="btn btn-ghost btn-icon" title="المظهر" onClick={()=>setTheme && setTheme(theme==="light"?"dark":"light")}>
+      <button className="btn btn-ghost btn-icon" title={tt("المظهر")} aria-label={tt("المظهر")} onClick={()=>setTheme && setTheme(theme==="light"?"dark":"light")}>
         {theme==="dark" ? <I.Sun size={17}/> : <I.Moon size={17}/>}
       </button>
       {right}
@@ -548,7 +601,7 @@ function SkeletonRow({ count=5 }) {
     <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderBottom:"1px solid var(--ink-100)"}}>
       <div className="skel" style={{width:32,height:32,borderRadius:999}}/>
       <div className="skel" style={{height:11,width:`${30+Math.random()*30}%`}}/>
-      <div className="skel" style={{height:11,width:`${15+Math.random()*15}%`,marginLeft:"auto"}}/>
+      <div className="skel" style={{height:11,width:`${15+Math.random()*15}%`,marginInlineEnd:"auto"}}/>
       <div className="skel" style={{height:11,width:60}}/>
     </div>
   ));
@@ -682,7 +735,7 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
         {title && (
           <div style={{padding:"18px 22px",borderBottom:"1px solid var(--ink-100)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div className="h3" id={titleId}>{title}</div>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={onClose}><I.X size={16}/></button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("إغلاق")} onClick={onClose}><I.X size={16}/></button>
           </div>
         )}
         <div style={{padding:"20px 22px"}}>{children}</div>
@@ -694,14 +747,15 @@ function Modal({ open, onClose, children, title, footer, width=560 }) {
 }
 
 // ── Toast ──────────────────────────────────────────────────────
-// Top left under the top bar (docs/04 Components, like the platform's
-// toasts), announced to screen readers, and never in the way of a click.
+// Under the top bar at the inline end: top left in Arabic, top right in
+// English (docs/04 Components, like the platform's toasts), announced to
+// screen readers, and never in the way of a click.
 function Toast({ msg, kind="success" }) {
   if (!msg) return null;
   const color = kind==="success" ? "var(--green)" : kind==="error" ? "var(--red)" : "var(--blue-700)";
   return (
     <div role={kind==="error" ? "alert" : "status"} aria-live={kind==="error" ? "assertive" : "polite"} style={{
-      position:"fixed",top:72,left:16,zIndex:200,maxWidth:"min(380px, calc(100vw - 32px))",
+      position:"fixed",top:72,insetInlineEnd:16,zIndex:200,maxWidth:"min(380px, calc(100vw - 32px))",
       background:"#fff",border:"1px solid var(--ink-200)",borderRadius:12,
       boxShadow:"var(--shadow-lg)",padding:"12px 16px",pointerEvents:"none",
       display:"flex",alignItems:"center",gap:10, animation:"popin .2s"
@@ -777,7 +831,7 @@ function RowMenu({ items = [], size = 13, stopRowClick = true }) {
   const MENU_W = 180;
   return (
     <div ref={ref} style={{position:"relative",display:"inline-block"}}>
-      <button ref={btnRef} type="button" className="btn btn-ghost btn-icon" title="المزيد" aria-label="المزيد" aria-expanded={open ? "true" : "false"} onClick={(e)=>{
+      <button ref={btnRef} type="button" className="btn btn-ghost btn-icon" title={tt("المزيد")} aria-label={tt("المزيد")} aria-expanded={open ? "true" : "false"} onClick={(e)=>{
         if (stopRowClick) e.stopPropagation();
         if (!open) {
           const r = e.currentTarget.getBoundingClientRect();
@@ -851,20 +905,21 @@ function waNormalizePhone(raw) {
   return /^[1-9]\d{9,14}$/.test(s) ? s : null; // E.164: 10–15 digits, no leading zero
 }
 
-// Default reminder template. The therapist line is omitted entirely when
+// Default reminder template, in the interface language (the receptionist
+// reads it before sending). The therapist line is omitted entirely when
 // no therapist/doctor is attached — never rendered empty.
 function waReminderMessage({ patientName, clinicName, date, time, therapistName }) {
   const lines = [
-    `السلام عليكم ${patientName}`,
-    `نذكركم بموعدكم في ${clinicName}.`,
-    `📅 التاريخ: ${date}`,
-    `🕒 الوقت: ${time}`,
+    tt("السلام عليكم {name}", { name: patientName }),
+    tt("نذكركم بموعدكم في {clinic}.", { clinic: clinicName }),
+    "📅 " + tt("التاريخ: {date}", { date }),
+    "🕒 " + tt("الوقت: {time}", { time }),
   ];
   if (therapistName && String(therapistName).trim() && therapistName !== "—") {
-    lines.push(`👨‍⚕️ المعالج: ${therapistName}`);
+    lines.push("👨‍⚕️ " + tt("المعالج: {name}", { name: therapistName }));
   }
-  lines.push("في حال الرغبة بتعديل الموعد، يرجى التواصل معنا.");
-  lines.push("شكراً لكم ونتمنى لكم دوام الصحة.");
+  lines.push(tt("في حال الرغبة بتعديل الموعد، يرجى التواصل معنا."));
+  lines.push(tt("شكراً لكم ونتمنى لكم دوام الصحة."));
   return lines.join("\n");
 }
 
@@ -914,9 +969,9 @@ function waNextAppt(patient) {
 // Why the reminder can't be built from this booking (null when it can).
 // Doubles as the disabled-state tooltip.
 function waReminderDisabledReason(appt) {
-  if (!appt) return "لا يمكن إرسال التذكير — لا يوجد موعد قادم لهذا المريض";
-  if (!waApptDateIso(appt)) return "لا يمكن إرسال التذكير — تاريخ الموعد غير محدد";
-  if (!appt.time) return "لا يمكن إرسال التذكير — وقت الموعد غير محدد";
+  if (!appt) return tt("لا يمكن إرسال التذكير — لا يوجد موعد قادم لهذا المريض");
+  if (!waApptDateIso(appt)) return tt("لا يمكن إرسال التذكير — تاريخ الموعد غير محدد");
+  if (!appt.time) return tt("لا يمكن إرسال التذكير — وقت الموعد غير محدد");
   return null;
 }
 
@@ -924,16 +979,16 @@ function waReminderDisabledReason(appt) {
 function sendWaApptReminder(patient, appt) {
   const toast = window.showToast || (() => {});
   const p = waLivePatient(patient) || waPatientOfAppt(appt);
-  if (!p) return toast("تعذّر العثور على بيانات المريض لهذا الموعد", "error");
+  if (!p) return toast(tt("تعذّر العثور على بيانات المريض لهذا الموعد"), "error");
   const reason = waReminderDisabledReason(appt);
   if (reason) return toast(reason, "error");
   const raw = p.phone || p.whatsapp;
-  if (!raw || !String(raw).trim()) return toast("رقم هاتف المريض غير مسجل — أضِف رقم الهاتف من ملف المريض أولًا", "error");
+  if (!raw || !String(raw).trim()) return toast(tt("رقم هاتف المريض غير مسجل — أضِف رقم الهاتف من ملف المريض أولًا"), "error");
   const phone = waNormalizePhone(raw);
-  if (!phone) return toast(`رقم هاتف المريض غير صالح (${raw}) — صحّح الرقم من ملف المريض أولًا`, "error");
+  if (!phone) return toast(tt("رقم هاتف المريض غير صالح ({phone}) — صحّح الرقم من ملف المريض أولًا", { phone: raw }), "error");
   const msg = waReminderMessage({
     patientName: p.name || "",
-    clinicName: (window.CLINIC && window.CLINIC.name) || "العيادة",
+    clinicName: (window.CLINIC && window.CLINIC.name) || tt("العيادة"),
     date: waApptDateIso(appt),
     time: appt.time,
     therapistName: appt.th || appt.dr || "",
@@ -949,7 +1004,7 @@ function WaReminderButton({ patient, appt, iconOnly = false, className = "btn bt
   window.useDataVersion && window.useDataVersion();
   const target = appt !== undefined ? appt : waNextAppt(patient);
   const reason = waReminderDisabledReason(target);
-  const label = "إرسال تذكير واتساب";
+  const label = tt("إرسال تذكير واتساب");
   return (
     // The title lives on a wrapper so the tooltip still shows over a
     // disabled button (disabled elements swallow hover in some browsers).
@@ -1080,10 +1135,10 @@ function EntityCombobox({
   getAccent,                                     // (item) => color; overrides avatar background
   renderSecondary,                               // (item, hl) => ReactNode; hl(text) highlights query
   // Presentation
-  placeholder = "اختر…",
-  emptyMessage = "لا نتائج",
+  placeholder = tt("اختر…"),
+  emptyMessage = tt("لا نتائج"),
   emptyHint,
-  ariaLabel = "قائمة",
+  ariaLabel = tt("قائمة"),
   disabled = false,
   loading = false,
   countLabel,                                    // (visible, total) => string
@@ -1202,7 +1257,7 @@ function EntityCombobox({
   const panelStyle = rect ? {
     position: "fixed",
     top: Math.min(rect.bottom + 6, window.innerHeight - 60),
-    insetInlineStart: rect.left,
+    left: rect.left,   // viewport coordinates: physical in both directions
     width: rect.width,
     zIndex: 200,
   } : { display: "none" };
@@ -1267,7 +1322,7 @@ function EntityCombobox({
               aria-controls="pcombo-list"
             />
             {query && (
-              <button type="button" className="pcombo-clear" onClick={() => { setQuery(""); inputRef.current && inputRef.current.focus(); }} aria-label="مسح البحث">
+              <button type="button" className="pcombo-clear" onClick={() => { setQuery(""); inputRef.current && inputRef.current.focus(); }} aria-label={tt("مسح البحث")}>
                 <I.X size={12}/>
               </button>
             )}
@@ -1283,7 +1338,7 @@ function EntityCombobox({
             {loading && (
               <div className="pcombo-empty">
                 <span className="spin" style={{width:16, height:16, border:"2px solid var(--ink-200)", borderTopColor:"var(--blue-500)", borderRadius:"50%"}}/>
-                <div>جارٍ التحميل…</div>
+                <div>{tt("جارٍ التحميل…")}</div>
               </div>
             )}
 
@@ -1330,8 +1385,8 @@ function EntityCombobox({
 
           {!loading && filtered.length > 0 && (
             <div className="pcombo-foot">
-              <span>{countLabel ? countLabel(filtered.length, items.length) : `${filtered.length} من ${items.length}`}</span>
-              <span className="pcombo-kbd">↑↓ للتنقل · Enter للاختيار · Esc للإغلاق</span>
+              <span>{countLabel ? countLabel(filtered.length, items.length) : tt("{n} من {total}", { n: filtered.length, total: items.length })}</span>
+              <span className="pcombo-kbd">{tt("↑↓ للتنقل · Enter للاختيار · Esc للإغلاق")}</span>
             </div>
           )}
         </div>
@@ -1359,13 +1414,13 @@ function PatientCombobox({ value, onChange, patients = [], placeholder, disabled
         <>
           <span className="mono">{hl(p.patient_id || p.id || "")}</span>
           {p.phone && <> · <span className="mono">{hl(p.phone)}</span></>}
-          {p.age && <> · {p.age} سنة</>}
+          {p.age && <> · {tt("{n} سنة", { n: p.age })}</>}
         </>
       )}
-      placeholder={placeholder || "ابحث عن مريض بالاسم أو الرقم…"}
-      emptyMessage="لا يوجد مرضى مطابقون"
-      emptyHint="جرّب اسمًا آخر أو رقم ملف"
-      ariaLabel="ابحث عن مريض"
+      placeholder={placeholder || tt("ابحث عن مريض بالاسم أو الرقم…")}
+      emptyMessage={tt("لا يوجد مرضى مطابقون")}
+      emptyHint={tt("جرّب اسمًا آخر أو رقم ملف")}
+      ariaLabel={tt("ابحث عن مريض")}
       disabled={disabled}
       loading={loading}
     />
@@ -1389,13 +1444,13 @@ function TherapistCombobox({ value, onChange, therapists = [], placeholder, disa
         return (
           <>
             {t.spec ? hl(t.spec) : null}
-            {hasLoad && <> · {t.load}/{t.max} حالة</>}
+            {hasLoad && <> · {tt("{load}/{max} حالة", { load: t.load, max: t.max })}</>}
           </>
         );
       }}
-      placeholder={placeholder || "اختر الأخصائي…"}
-      emptyMessage="لا يوجد أخصائيين مطابقون"
-      ariaLabel="ابحث عن الأخصائي"
+      placeholder={placeholder || tt("اختر الأخصائي…")}
+      emptyMessage={tt("لا يوجد أخصائيين مطابقون")}
+      ariaLabel={tt("ابحث عن الأخصائي")}
       disabled={disabled}
       loading={loading}
     />
@@ -1427,7 +1482,7 @@ function CategoryCombobox({ value, onChange, placeholder, disabled }) {
   }, [reload]);
 
   const items = React.useMemo(() => {
-    const list = [{ id: "", name: "بدون فئة", __none: true }];
+    const list = [{ id: "", name: tt("بدون فئة"), __none: true }];
     (cats || []).forEach(c => list.push({
       id: c.name, name: c.name, category_id: c.category_id, description: c.description || null,
     }));
@@ -1446,11 +1501,11 @@ function CategoryCombobox({ value, onChange, placeholder, disabled }) {
       getPrimary={it => it.name}
       getSearchText={it => it.name || ""}
       getInitials={it => it.__none ? "—" : initialsOf2(it.name)}
-      renderSecondary={(it) => it.__custom ? "فئة مخصّصة" : (it.description || null)}
-      placeholder={placeholder || "اختر فئة…"}
-      emptyMessage="لا توجد فئات"
-      emptyHint="أضِف فئات من «إدارة الفئات»"
-      ariaLabel="قائمة الفئات"
+      renderSecondary={(it) => it.__custom ? tt("فئة مخصّصة") : (it.description || null)}
+      placeholder={placeholder || tt("اختر فئة…")}
+      emptyMessage={tt("لا توجد فئات")}
+      emptyHint={tt("أضِف فئات من «إدارة الفئات»")}
+      ariaLabel={tt("قائمة الفئات")}
       disabled={disabled}
     />
   );
@@ -1777,12 +1832,12 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
     e && e.preventDefault();
     if (!isDemoMode() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setBadField("email");
-      refuse("أدخل بريدًا إلكترونيًا صحيحًا");
+      refuse(tt("أدخل بريدًا إلكترونيًا صحيحًا"));
       return;
     }
     if (!pw) {
       setBadField("pw");
-      refuse("أدخل كلمة المرور");
+      refuse(tt("أدخل كلمة المرور"));
       return;
     }
     setBadField("");
@@ -1796,14 +1851,14 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
         const res = await window.signInEmail(email.trim(), pw, { remember });
         if (!res.ok) {
           setBusy(false);
-          refuse(res.error || "البريد الإلكتروني أو كلمة المرور غير صحيحة");
+          refuse(res.error || tt("البريد الإلكتروني أو كلمة المرور غير صحيحة"));
           return;
         }
         // The account is valid; may it enter THIS clinic? (src/tenant.jsx)
         // A non-member or a deactivated member is signed out again.
         const verdict = window.tenantLoginVerdict
           ? window.tenantLoginVerdict(res)
-          : { ok: false, error: "تعذّر التحقق من العضوية" };
+          : { ok: false, error: tt("تعذّر التحقق من العضوية") };
         if (!verdict.ok) {
           try { await window.signOut(); } catch {}
           setBusy(false);
@@ -1816,7 +1871,7 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
         return;
       } catch (err) {
         setBusy(false);
-        refuse(window.friendlyAuthError ? window.friendlyAuthError("network_error") : "تعذّر تسجيل الدخول");
+        refuse(window.friendlyAuthError ? window.friendlyAuthError("network_error") : tt("تعذّر تسجيل الدخول"));
         return;
       }
     }
@@ -1842,10 +1897,13 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
     if (pr) setEmail(pr.email);
   }
 
+  // Role keys (compared in code); their labels are translated where shown.
   const roles = ["مدير","موظف استقبال","طبيب","الأخصائي"];
 
   return (
-    <div className="auth-grid">
+    <div className="auth-grid" style={{position:"relative"}}>
+      {/* The language switch, in the same corner as on the other entry screens (src/tenant.jsx). */}
+      {window.TenantLangCorner && <window.TenantLangCorner/>}
       {/* Left — brand panel (on phones only the clinic's name: index.html) */}
       <div className="auth-brand" style={{
         background:"linear-gradient(155deg, #7BBDE8 0%, #BDD8E9 60%, #E8F1F7 100%)",
@@ -1877,25 +1935,25 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
 
         <div className="auth-brand-extra" style={{position:"relative",maxWidth:440}}>
           <div className="serif" style={{fontSize:"clamp(30px, 5vw, 46px)",lineHeight:1.05,color:"#0F1E2B",letterSpacing:"-.01em",marginBottom:18}}>
-            العيادة التي <em>تتحرك</em> مع مرضاك.
+            {ttx("العيادة التي {em} مع مرضاك.", { em: <em>{tt("تتحرك")}</em> })}
           </div>
           <p style={{fontSize:14.5,color:"#1E4A6E",lineHeight:1.55,opacity:.9}}>
             {isDemoMode()
-              ? "جدول الجلسات، اكتب ملاحظات التقدّم، أدر الباقات وحملات الواتساب — كل هذا من مساحة عمل واحدة هادئة مصممة للعلاج الطبيعي."
-              : "المواعيد، والمرضى، والفواتير، والفروع — كل هذا من مساحة عمل واحدة هادئة لعيادتك."}
+              ? tt("جدول الجلسات، اكتب ملاحظات التقدّم، أدر الباقات وحملات الواتساب — كل هذا من مساحة عمل واحدة هادئة مصممة للعلاج الطبيعي.")
+              : tt("المواعيد، والمرضى، والفواتير، والفروع — كل هذا من مساحة عمل واحدة هادئة لعيادتك.")}
           </p>
 
           {/* stat tiles — demo shows sample figures; production shows the
               clinic's real counts (blank-safe on a fresh database). */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:10,marginTop:28}}>
             {(isDemoMode() ? [
-              {k:"المرضى",v:"248"},
-              {k:"جلسات/شهر",v:"1,420"},
-              {k:"معدّل الالتزام",v:"97%"},
+              {k:tt("المرضى"),v:"248"},
+              {k:tt("جلسات/شهر"),v:"1,420"},
+              {k:tt("معدّل الالتزام"),v:"97%"},
             ] : [
-              {k:"جدولة الجلسات",v:"✓"},
-              {k:"الفواتير والباقات",v:"✓"},
-              {k:"حملات واتساب",v:"✓"},
+              {k:tt("جدولة الجلسات"),v:"✓"},
+              {k:tt("الفواتير والباقات"),v:"✓"},
+              {k:tt("حملات واتساب"),v:"✓"},
             ]).map((s,i)=>(
               <div key={i} style={{background:"rgba(255,255,255,.55)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.6)",padding:"12px 14px",borderRadius:14}}>
                 <div style={{fontSize:11,color:"#1E4A6E"}}>{s.k}</div>
@@ -1915,19 +1973,19 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
         <div style={{width:"100%",maxWidth:420, animation: shake?"shake .35s":""}}>
           {mode==="login" && (
             <>
-              <h1 className="h1" style={{fontSize:30,marginBottom:6}}>أهلاً بعودتك</h1>
+              <h1 className="h1" style={{fontSize:30,marginBottom:6}}>{tt("أهلاً بعودتك")}</h1>
               <div className="muted" style={{fontSize:14,marginBottom:28}}>
-                سجّل الدخول للمتابعة إلى مساحة {clinic.name ? <strong style={{color:"var(--ink-700)"}}>{clinic.name}</strong> : "عيادتك"}.
+                {ttx("سجّل الدخول للمتابعة إلى مساحة {clinic}.", { clinic: clinic.name ? <strong style={{color:"var(--ink-700)"}}>{clinic.name}</strong> : tt("عيادتك") })}
               </div>
               <div id="login-notice">{window.TenantNotice && <window.TenantNotice notice={notice}/>}</div>
 
               {/* الدور picker — demo only; production resolves the role from
                   the Supabase account, so picking one here would mislead. */}
               {isDemoMode() && <>
-              <div className="label">سجّل الدخول بصفة</div>
-              <div className="rgrid half-sm" style={{"--gtc":"repeat(4,1fr)",gap:6,marginBottom:18}}>
+              <div className="label" id="login-role-label">{tt("سجّل الدخول بصفة")}</div>
+              <div className="rgrid half-sm" role="group" aria-labelledby="login-role-label" style={{"--gtc":"repeat(4,1fr)",gap:6,marginBottom:18}}>
                 {roles.map(r=>(
-                  <button key={r} type="button"
+                  <button key={r} type="button" aria-pressed={role===r ? "true" : "false"}
                     onClick={()=>handleRolePick(r)}
                     style={{
                       padding:"8px 4px",border:`1px solid ${role===r?"var(--blue-500)":"var(--ink-200)"}`,
@@ -1935,36 +1993,38 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
                       color: role===r?"var(--blue-900)":"var(--ink-700)",
                       borderRadius:10,fontSize:11.5,fontWeight:500,cursor:"pointer",
                       transition:"all .12s"
-                    }}>{r}</button>
+                    }}>{tt(r)}</button>
                 ))}
               </div>
               </>}
 
               <form onSubmit={submit} noValidate>
-                <label className="label" htmlFor="login-email" style={{display:"block"}}>البريد الإلكتروني</label>
+                <label className="label" htmlFor="login-email" style={{display:"block"}}>{tt("البريد الإلكتروني")}</label>
                 <input id="login-email" className="input" type="email" dir="ltr" autoComplete="username" value={email} onChange={e=>{ setEmail(e.target.value); if (badField === "email") setBadField(""); }} placeholder="you@clinic.com"
                   aria-invalid={badField === "email" ? "true" : undefined} aria-describedby={badField === "email" ? "login-notice" : undefined}
                   style={{marginBottom:14,height:42,borderColor:badField === "email" ? "var(--red)" : undefined}}/>
 
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <label className="label" htmlFor="login-password">كلمة المرور</label>
-                  <button type="button" className="auth-link" onClick={()=>{ setNotice(null); setMode("forgot"); }} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>نسيت؟</button>
-                </div>
+                <label className="label" htmlFor="login-password" style={{display:"block"}}>{tt("كلمة المرور")}</label>
                 <div style={{position:"relative"}}>
                   <input id="login-password" className="input" type={showPw?"text":"password"} autoComplete="current-password" value={pw} onChange={e=>{ setPw(e.target.value); if (badField === "pw") setBadField(""); }}
                     aria-invalid={badField === "pw" ? "true" : undefined} aria-describedby={badField === "pw" ? "login-notice" : undefined}
                     style={{height:42,paddingRight:42,borderColor:badField === "pw" ? "var(--red)" : undefined}}/>
-                  <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={showPw ? "true" : "false"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:1,top:1,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",padding:0,border:"none",borderRadius:9,background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
+                  <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} aria-pressed={showPw ? "true" : "false"} onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:1,top:1,width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",padding:0,border:"none",borderRadius:9,background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}>
                     <I.Eye size={15}/>
                   </button>
                 </div>
 
-                <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--ink-700)",marginTop:14}}>
-                  <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> أبقني مسجلاً لمدة 30 يومًا
-                </label>
+                {/* Under the password field (task 3.22), so Tab goes e-mail →
+                    password → show password → keep me signed in → forgot → sign in. */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginTop:14}}>
+                  <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--ink-700)"}}>
+                    <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}/> {tt("أبقني مسجلاً لمدة 30 يومًا")}
+                  </label>
+                  <button type="button" className="auth-link" onClick={()=>{ setNotice(null); setMode("forgot"); }} style={{background:"none",border:"none",color:"var(--blue-700)",fontSize:12,cursor:"pointer",padding:0}}>{tt("نسيت؟")}</button>
+                </div>
 
                 <button type="submit" disabled={busy} aria-busy={busy ? "true" : undefined} className="btn btn-blue" style={{width:"100%",height:44,justifyContent:"center",marginTop:18,fontSize:14}}>
-                  {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : "تسجيل الدخول"}
+                  {busy ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : tt("تسجيل الدخول")}
                   {!busy && <I.ArrowRight size={15}/>}
                 </button>
               </form>
@@ -1995,15 +2055,15 @@ function AuthScreen({ onLogin, onBookAsGuest, notice: noticeProp }) {
                   <I.Calendar size={17}/>
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:13.5,color:"var(--ink-900)"}}>هل أنت مريض؟ احجز زيارة ←</div>
-                  <div className="muted" style={{fontSize:11.5,marginTop:2}}>لا حاجة لحساب · 30 ثانية</div>
+                  <div style={{fontWeight:600,fontSize:13.5,color:"var(--ink-900)"}}>{tt("هل أنت مريض؟ احجز زيارة ←")}</div>
+                  <div className="muted" style={{fontSize:11.5,marginTop:2}}>{tt("لا حاجة لحساب · 30 ثانية")}</div>
                 </div>
               </button>}
 
               <div className="muted" style={{textAlign:"center",fontSize:11.5,marginTop:18}}>
                 {isDemoMode()
-                  ? <>تحتاج حساب عيادة؟ <a href="#" style={{color:"var(--blue-700)",fontWeight:500}}>تواصل مع المبيعات</a></>
-                  : "ليس لديك حساب؟ يُنشأ الحساب بدعوة من مدير العيادة."}
+                  ? ttx("تحتاج حساب عيادة؟ {link}", { link: <a href="#" style={{color:"var(--blue-700)",fontWeight:500}}>{tt("تواصل مع المبيعات")}</a> })
+                  : tt("ليس لديك حساب؟ يُنشأ الحساب بدعوة من مدير العيادة.")}
               </div>
             </>
           )}
@@ -2069,27 +2129,27 @@ function CommandPalette({ open, onClose, onNav }) {
   }));
   appts.forEach(a => items.push({
     kind: "appointment", route: "appointments", id: a.id,
-    title: `${a.patient} — ${a.time}`, sub: [a.id, a.dr || a.th, a.status].filter(Boolean).join(" · "),
+    title: `${a.patient} — ${a.time}`, sub: [a.id, a.dr || a.th, a.status ? tt(a.status) : ""].filter(Boolean).join(" · "),
     hay: `${a.id} ${a.patient} ${a.time} ${a.dr} ${a.th} ${a.status}`,
     icon: I.Calendar,
   }));
   if (canSeePayments) payments.forEach(v => items.push({
     kind: "invoice", route: "payments", id: v.id,
-    title: `${v.id} — ${v.patient}`, sub: [`EGP ${Number(v.amount || 0).toLocaleString("en-US")}`, v.method, v.status].filter(Boolean).join(" · "),
+    title: `${v.id} — ${v.patient}`, sub: [fmtMoney(v.amount || 0), v.method ? tt(v.method) : "", v.status ? tt(v.status) : ""].filter(Boolean).join(" · "),
     hay: `${v.id} ${v.patient} ${v.method} ${v.status}`,
     icon: I.CreditCard,
   }));
   // Quick-nav actions
   const NAV = [
-    { title: "لوحة التحكم",   route: "dashboard",    icon: I.Dashboard },
-    { title: "المرضى",         route: "patients",     icon: I.Users },
-    { title: "المواعيد",       route: "appointments", icon: I.Calendar },
-    { title: "جلسات العلاج",   route: "sessions",     icon: I.Activity },
-    { title: "المدفوعات",      route: "payments",     icon: I.CreditCard },
-    { title: "الباقات",        route: "packages",     icon: I.Package },
-    { title: "التقارير",       route: "reports",      icon: I.Chart },
-    { title: "الفروع",         route: "branches",     icon: I.MapPin },
-    { title: "الإعدادات",      route: "settings",     icon: I.Settings },
+    { title: tt("لوحة التحكم"),   route: "dashboard",    icon: I.Dashboard },
+    { title: tt("المرضى"),         route: "patients",     icon: I.Users },
+    { title: tt("المواعيد"),       route: "appointments", icon: I.Calendar },
+    { title: tt("جلسات العلاج"),   route: "sessions",     icon: I.Activity },
+    { title: tt("المدفوعات"),      route: "payments",     icon: I.CreditCard },
+    { title: tt("الباقات"),        route: "packages",     icon: I.Package },
+    { title: tt("التقارير"),       route: "reports",      icon: I.Chart },
+    { title: tt("الفروع"),         route: "branches",     icon: I.MapPin },
+    { title: tt("الإعدادات"),      route: "settings",     icon: I.Settings },
   ];
   // Same rules as the sidebar: role routes and the clinic's enabled modules.
   const navAllowed = (route) =>
@@ -2098,13 +2158,13 @@ function CommandPalette({ open, onClose, onNav }) {
   const NAV_OK = NAV.filter(n => navAllowed(n.route));
   NAV_OK.forEach(n => items.push({
     kind: "page", route: n.route, id: n.route,
-    title: n.title, sub: "الانتقال إلى الصفحة",
+    title: n.title, sub: tt("الانتقال إلى الصفحة"),
     hay: `${n.title} ${n.route}`, icon: n.icon,
   }));
 
   const results = query
     ? items.filter(it => norm(it.hay).includes(query)).slice(0, 30)
-    : NAV_OK.map(n => ({ kind: "page", route: n.route, id: n.route, title: n.title, sub: "الانتقال", icon: n.icon }));
+    : NAV_OK.map(n => ({ kind: "page", route: n.route, id: n.route, title: n.title, sub: tt("الانتقال"), icon: n.icon }));
 
   const sel = results[Math.min(i, results.length - 1)];
 
@@ -2123,29 +2183,29 @@ function CommandPalette({ open, onClose, onNav }) {
   }
   const activeIdx = Math.min(i, results.length - 1);
   const optionId = (k) => titleId + "-opt-" + k;
-  const KIND_AR = { patient: "مريض", appointment: "موعد", invoice: "فاتورة", page: "صفحة" };
+  const KIND_LABEL = { patient: tt("مريض"), appointment: tt("موعد"), invoice: tt("فاتورة"), page: tt("صفحة") };
 
   return (
     <div className="modal-backdrop" style={{ alignItems: "flex-start", paddingTop: "min(90px, 10vh)" }} onClick={onClose}>
       <DialogFocusGuard boxRef={boxRef} at="start"/>
       <div ref={boxRef} className="modal cmdk" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         style={{ maxWidth: 640, width: "calc(100% - 40px)", padding: 0, overflow: "hidden", outline: "none" }} onClick={e => e.stopPropagation()}>
-        <h2 id={titleId} className="sr-only">البحث الشامل</h2>
+        <h2 id={titleId} className="sr-only">{tt("البحث الشامل")}</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: "1px solid var(--ink-100)" }}>
           <I.Search size={16} aria-hidden="true" style={{ color: "var(--ink-500)" }} />
           <input data-autofocus="" value={q} onChange={e => { setQ(e.target.value); setI(0); }} onKeyDown={onKey}
             role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls={titleId + "-list"}
             aria-activedescendant={results.length ? optionId(activeIdx) : undefined}
-            aria-label="ابحث عن مريض أو موعد أو فاتورة أو صفحة"
-            placeholder="ابحث عن مريض · موعد · فاتورة · صفحة…"
+            aria-label={tt("ابحث عن مريض أو موعد أو فاتورة أو صفحة")}
+            placeholder={tt("ابحث عن مريض · موعد · فاتورة · صفحة…")}
             style={{ flex: 1, minHeight: 32, border: "none", outline: "none", fontSize: 15, background: "transparent", fontFamily: "inherit" }} />
           <kbd className="mono" aria-hidden="true" style={{ fontSize: 10, color: "var(--ink-500)", border: "1px solid var(--ink-200)", padding: "2px 6px", borderRadius: 5 }}>Esc</kbd>
         </div>
-        <div ref={listRef} id={titleId + "-list"} role="listbox" aria-label="النتائج" tabIndex={-1}
+        <div ref={listRef} id={titleId + "-list"} role="listbox" aria-label={tt("النتائج")} tabIndex={-1}
           style={{ maxHeight: 420, overflowY: "auto", padding: "6px 0", outline: "none" }}>
           {results.length === 0 && (
             <div role="presentation" style={{ padding: "24px 20px", color: "var(--ink-500)", fontSize: 13, textAlign: "center" }}>
-              لا توجد نتائج مطابقة
+              {tt("لا توجد نتائج مطابقة")}
             </div>
           )}
           {results.map((r, k) => {
@@ -2169,14 +2229,14 @@ function CommandPalette({ open, onClose, onNav }) {
                   <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</div>
                   <div style={{ fontSize: 11.5, color: "var(--ink-500)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.sub}</div>
                 </div>
-                <span style={{ fontSize: 11, color: "var(--ink-500)" }}>{KIND_AR[r.kind] || ""}</span>
+                <span style={{ fontSize: 11, color: "var(--ink-500)" }}>{KIND_LABEL[r.kind] || ""}</span>
               </div>
             );
           })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 18px", borderTop: "1px solid var(--ink-100)", fontSize: 11, color: "var(--ink-500)" }}>
-          <span><span className="mono">↑ ↓</span> للتنقل · <span className="mono">Enter</span> للفتح</span>
-          <span role="status">النتائج: <span className="mono">{results.length}</span></span>
+          <span>{ttx("{keys} للتنقل · {enter} للفتح", { keys: <span className="mono">↑ ↓</span>, enter: <span className="mono">Enter</span> })}</span>
+          <span role="status">{ttx("النتائج: {n}", { n: <span className="mono">{results.length}</span> })}</span>
         </div>
       </div>
       <DialogFocusGuard boxRef={boxRef} at="end"/>

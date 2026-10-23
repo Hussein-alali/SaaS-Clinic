@@ -23,7 +23,7 @@
   if (l === "en" && window.KINETIC_LANG_EN) document.write('<script src="' + window.KINETIC_LANG_EN + '"><\/script>');
 })();
 </script>
-<title>Beactive — سيستم عيادة علاج الطبيعي</title>
+<title>ClinicSystem EG</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='9' fill='%237BBDE8'/%3E%3Cpath d='M10 22 L13 14 L16 19 L19 11 L22 22' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3Ccircle cx='22' cy='22' r='1.6' fill='%23fff'/%3E%3C/svg%3E"/>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -78,11 +78,14 @@
 
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;height:100%;background:var(--ink-50);color:var(--ink-900);font-family:var(--font-sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-  body{direction:rtl}
-  /* Flip directional arrows in RTL (continue/back buttons read naturally) */
+  /* The direction comes from <html lang dir> (set before the app runs:
+     rtl in Arabic, ltr in English, src/i18n.jsx); body inherits it. Layout
+     rules use logical properties (inline-start/end) so both read naturally. */
+  /* Arrows in buttons mean forward (ArrowRight) and back (ArrowLeft): drawn
+     for LTR, mirrored only in RTL, so «next» points to where reading goes. */
   [dir="rtl"] .btn svg path[d^="M5 12h14M12 5"],
   [dir="rtl"] .btn svg path[d^="M19 12H5M12 19"]{transform:scaleX(-1);transform-origin:center}
-  /* But not chevrons (used for collapsibles, crumbs) — they auto-flip via dir anyway */
+  /* Chevrons (collapsibles, crumbs) are not mirrored. */
   button{font-family:inherit}
   input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
   a{color:inherit;text-decoration:none}
@@ -141,8 +144,10 @@
     -webkit-appearance:none;-moz-appearance:none;appearance:none;
     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23647686' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
     background-repeat:no-repeat;background-position:left 12px center;background-size:12px 12px;
-    padding-left:32px;padding-right:12px;cursor:pointer;font-weight:500;color:var(--ink-900);
+    padding-inline-end:32px;padding-inline-start:12px;cursor:pointer;font-weight:500;color:var(--ink-900);
   }
+  /* the arrow sits at the inline end: left in Arabic, right in English */
+  html[dir="ltr"] select.input{background-position:right 12px center}
   select.input:hover{border-color:var(--ink-300);background-color:var(--ink-50)}
   select.input:focus{background-color:#fff}
   select.input option{font-weight:500;padding:6px 10px;color:var(--ink-900);background:#fff}
@@ -340,7 +345,7 @@
   .crumb{display:flex;align-items:center;gap:8px;color:var(--ink-500);font-size:12.5px;margin-bottom:8px}
   .crumb svg{color:var(--ink-300)}
 
-  /* toggle */
+  /* toggle (on = knob to the right in both languages, as today) */
   .switch{position:relative;width:34px;height:20px;background:var(--ink-200);border-radius:999px;cursor:pointer;transition:background .15s;flex-shrink:0}
   .switch.on{background:var(--blue-500)}
   .switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left .15s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -484,12 +489,14 @@
       position:fixed;top:0;bottom:0;inset-inline-start:0;
       width:min(84vw, 300px);z-index:100;
       transform:translateX(100%);       /* RTL: hide off the right edge */
-      transition:transform .22s ease;
+      /* closed: out of the Tab order and the accessibility tree too */
+      visibility:hidden;
+      transition:transform .22s ease, visibility 0s linear .22s;
       box-shadow:none;
       height:100dvh;
     }
-    html[dir="ltr"] .sidebar{transform:translateX(-100%)}
-    .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
+    html[dir="ltr"] .sidebar{transform:translateX(-100%)}   /* LTR: off the left edge */
+    .sidebar.open, html[dir="ltr"] .sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg);visibility:visible;transition:transform .22s ease}
     .sidebar-backdrop.open{display:block}
 
     .topbar{height:56px;padding:0 12px;gap:8px}
@@ -522,7 +529,7 @@
     .input{height:42px}
     textarea.input{height:auto;min-height:70px}
     .nav-item{padding:11px 12px}
-    /* touch targets >= 40px (docs/04 Accessibility) */
+    /* touch targets >= 40px on tablets; 44px on phones (block below) */
     .seg button{padding:8px 12px;min-height:40px}
     .mobile-menu-btn{min-width:40px;min-height:40px}
     .slot-btn{min-height:40px}
@@ -549,6 +556,28 @@
     /* patient messages stack: compact list above the thread */
     .chat-list{height:auto;max-height:260px}
     .chat-pane{height:460px}
+  }
+
+  /* ── Phones (< 640px): touch targets >= 44×44px (docs/04 Accessibility,
+     owner decision 3.27). Hit areas grow; the look stays. ───────────── */
+  @media (max-width: 640px){
+    .btn{min-height:44px}
+    .btn-icon{min-width:44px;min-height:44px}
+    .seg button{min-height:44px}
+    .mobile-menu-btn{min-width:44px;min-height:44px}
+    .slot-btn{min-height:44px}
+    .row-menu-item{min-height:44px !important}
+    .nav-item{min-height:44px}
+    .branch-opt,.branch-action{min-height:44px}
+    .branch-edit{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+    .switch::after{inset:-12px -5px}          /* 44x44 hit area around the 34x20 switch */
+    .auth-link{min-height:44px}
+    .input{min-height:44px}
+    input.input[type="time"],input.input[type="date"]{min-height:44px}
+    /* checkbox / radio: a 44px hit area around the 20px box, and the label row */
+    input[type="checkbox"],input[type="radio"]{position:relative}
+    input[type="checkbox"]::after,input[type="radio"]::after{content:"";position:absolute;inset:-12px}
+    label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){min-height:44px}
   }
 </style>
 

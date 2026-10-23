@@ -128,8 +128,14 @@ window.newRecordId = newRecordId;
     return id;
   }
 
+  // The interface language (LANG, src/i18n.jsx): the API writes the e-mails
+  // a request sends (invitations, password resets) with this language first.
+  function currentLang() {
+    return typeof LANG !== "undefined" && LANG === "en" ? "en" : "ar";
+  }
+
   function requestHeaders(hasJsonBody) {
-    var h = { "Accept": "application/json", "X-Requested-With": "clinicsys" };
+    var h = { "Accept": "application/json", "X-Requested-With": "clinicsys", "X-Lang": currentLang() };
     if (hasJsonBody) h["Content-Type"] = "application/json";
     // Ignored by every route except /api/platform/*, and by the server in
     // production (where the admin.<base> host decides).
@@ -583,7 +589,7 @@ window.newRecordId = newRecordId;
       signUp: function () {
         return Promise.resolve({
           data: { user: null, session: null },
-          error: namedError("AuthApiError", "التسجيل الذاتي غير متاح — يُنشأ الحساب بدعوة أو من مدير العيادة",
+          error: namedError("AuthApiError", tt("التسجيل الذاتي غير متاح — يُنشأ الحساب بدعوة أو من مدير العيادة"),
             { status: 403, code: "signup_disabled" }),
         });
       },

@@ -158,75 +158,77 @@
     return window.location.origin + "/?org=" + encodeURIComponent(slug);
   }
 
-  // Arabic text for an API error {message, code, status} (no codes or
+  // The text for an API error {message, code, status} (no codes or
   // internals in the UI, docs/04 "Error"). `names` maps module codes to names.
   function errorText(err, names) {
     if (!err) return "";
     const code = err.code || "";
     const msg = err.message || "";
-    const mods = () => codesIn(msg).map((c) => quote(c, names)).join("، ");
+    const mods = () => joinList(codesIn(msg).map((c) => quote(c, names)));
     switch (code) {
-      case "network_error": return "تعذّر الاتصال بالخادم — تحقق من الاتصال وحاول مرة أخرى";
-      case "invalid_credentials": return "بيانات الدخول غير صحيحة";
-      case "too_many_attempts": return "محاولات دخول كثيرة — انتظر قليلًا ثم حاول مرة أخرى";
-      case "invalid_request": return "أدخل البريد الإلكتروني وكلمة المرور";
-      case "unauthorized": case "invalid_session": case "session_revoked": return "انتهت الجلسة — سجّل الدخول من جديد";
-      case "not_super_admin": return "هذا الحساب ليس من مديري المنصة";
-      case "platform_required": return "تعمل لوحة المنصة من عنوانها الخاص (admin) فقط";
-      case "csrf_header_required": return "تعذّر إرسال الطلب — حدّث الصفحة وحاول مرة أخرى";
-      case "slug_taken": return "هذا الرابط مستخدم لعيادة أخرى — اختر رابطًا آخر";
-      case "slug_reserved": return "هذا الرابط محجوز للنظام — اختر رابطًا آخر";
-      case "invalid_slug": return "الرابط غير صالح: من 3 إلى 32 حرفًا من a-z و 0-9 والشرطة (-)، دون شرطة في البداية أو النهاية";
-      case "invalid_name": return "الاسم مطلوب (من 2 إلى 120 حرفًا)";
-      case "invalid_specialty": return "اختر تخصصًا متاحًا";
-      case "invalid_plan": return "اختر خطة نشطة";
-      case "invalid_email": return "أدخل بريدًا إلكترونيًا صالحًا";
-      case "invalid_role": return "اختر دورًا صالحًا";
-      case "invalid_modules": return "قائمة الوحدات غير صالحة";
-      case "unknown_module": return "وحدات غير معروفة: " + mods();
-      case "module_unavailable": return "وحدات غير متاحة بعد: " + mods();
+      case "network_error": return tt("تعذّر الاتصال بالخادم — تحقق من الاتصال وحاول مرة أخرى");
+      case "invalid_credentials": return tt("بيانات الدخول غير صحيحة");
+      case "too_many_attempts": return tt("محاولات دخول كثيرة — انتظر قليلًا ثم حاول مرة أخرى");
+      case "invalid_request": return tt("أدخل البريد الإلكتروني وكلمة المرور");
+      case "unauthorized": case "invalid_session": case "session_revoked": return tt("انتهت الجلسة — سجّل الدخول من جديد");
+      case "not_super_admin": return tt("هذا الحساب ليس من مديري المنصة");
+      case "platform_required": return tt("تعمل لوحة المنصة من عنوانها الخاص (admin) فقط");
+      case "csrf_header_required": return tt("تعذّر إرسال الطلب — حدّث الصفحة وحاول مرة أخرى");
+      case "slug_taken": return tt("هذا الرابط مستخدم لعيادة أخرى — اختر رابطًا آخر");
+      case "slug_reserved": return tt("هذا الرابط محجوز للنظام — اختر رابطًا آخر");
+      case "invalid_slug": return tt("الرابط غير صالح: من 3 إلى 32 حرفًا من a-z و 0-9 والشرطة (-)، دون شرطة في البداية أو النهاية");
+      case "invalid_name": return tt("الاسم مطلوب (من 2 إلى 120 حرفًا)");
+      case "invalid_specialty": return tt("اختر تخصصًا متاحًا");
+      case "invalid_plan": return tt("اختر خطة نشطة");
+      case "invalid_email": return tt("أدخل بريدًا إلكترونيًا صالحًا");
+      case "invalid_role": return tt("اختر دورًا صالحًا");
+      case "invalid_modules": return tt("قائمة الوحدات غير صالحة");
+      case "unknown_module": return tt("وحدات غير معروفة: {list}", { list: mods() });
+      case "module_unavailable": return tt("وحدات غير متاحة بعد: {list}", { list: mods() });
       case "module_dependency": {
         const pairs = [];
         const re = /([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*) needs ([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)/g;
         let m;
-        while ((m = re.exec(msg))) pairs.push(quote(m[1], names) + " تحتاج " + quote(m[2], names));
-        return "تبعيات الوحدات غير مستوفاة" + (pairs.length ? ": " + pairs.join("؛ ") : "");
+        while ((m = re.exec(msg))) pairs.push(tt("{module} تحتاج {needs}", { module: quote(m[1], names), needs: quote(m[2], names) }));
+        return pairs.length
+          ? tt("تبعيات الوحدات غير مستوفاة: {list}", { list: pairs.join(IS_RTL ? "؛ " : "; ") })
+          : tt("تبعيات الوحدات غير مستوفاة");
       }
-      case "plan_limit_modules": return "خطة العيادة لا تتضمن: " + mods();
-      case "reason_required": return "اكتب سبب الإيقاف أو الإغلاق";
-      case "invalid_reason": return "السبب طويل جدًا (1000 حرف على الأكثر)";
-      case "invalid_transition": return "لا يمكن نقل العيادة إلى هذه الحالة من حالتها الحالية — حدّث الصفحة";
-      case "invalid_status": return "حالة غير صالحة";
-      case "already_member": return "هذا الشخص عضو بالفعل في العيادة";
-      case "invitation_exists": return "توجد دعوة معلقة لهذا البريد — أعد إرسالها بدل إنشاء دعوة جديدة";
-      case "invitation_not_pending": return "لم تعد الدعوة معلقة — حدّث القائمة";
-      case "invitation_not_found": return "الدعوة غير موجودة";
-      case "org_inactive": return "العيادة غير نشطة — لا يمكن إرسال دعوات لها";
-      case "branch_required": return "اختر فرعًا واحدًا على الأقل لهذا الدور";
-      case "invalid_branch": case "invalid_branch_ids": return "فرع غير صالح أو غير نشط";
-      case "plan_limit_users": return "تجاوزت العيادة حد المستخدمين في خطتها";
+      case "plan_limit_modules": return tt("خطة العيادة لا تتضمن: {list}", { list: mods() });
+      case "reason_required": return tt("اكتب سبب الإيقاف أو الإغلاق");
+      case "invalid_reason": return tt("السبب طويل جدًا (1000 حرف على الأكثر)");
+      case "invalid_transition": return tt("لا يمكن نقل العيادة إلى هذه الحالة من حالتها الحالية — حدّث الصفحة");
+      case "invalid_status": return tt("حالة غير صالحة");
+      case "already_member": return tt("هذا الشخص عضو بالفعل في العيادة");
+      case "invitation_exists": return tt("توجد دعوة معلقة لهذا البريد — أعد إرسالها بدل إنشاء دعوة جديدة");
+      case "invitation_not_pending": return tt("لم تعد الدعوة معلقة — حدّث القائمة");
+      case "invitation_not_found": return tt("الدعوة غير موجودة");
+      case "org_inactive": return tt("العيادة غير نشطة — لا يمكن إرسال دعوات لها");
+      case "branch_required": return tt("اختر فرعًا واحدًا على الأقل لهذا الدور");
+      case "invalid_branch": case "invalid_branch_ids": return tt("فرع غير صالح أو غير نشط");
+      case "plan_limit_users": return tt("تجاوزت العيادة حد المستخدمين في خطتها");
       case "PL422":
-        if (/branches/.test(msg)) return "تجاوزت العيادة حد الفروع في خطتها";
-        if (/storage/.test(msg)) return "تجاوزت العيادة حد التخزين في خطتها";
-        return "تجاوزت العيادة حد المستخدمين في خطتها";
-      case "invalid_code": return "الرمز: أحرف لاتينية صغيرة وأرقام و _ أو - (40 حرفًا على الأكثر)";
-      case "plan_code_taken": return "توجد خطة بالرمز نفسه";
-      case "invalid_limit": return "الحدود أعداد صحيحة من 0 فأكثر، أو فارغة لغير محدود";
-      case "invalid_date": return "تاريخ غير صالح — تاريخ النهاية لا يسبق تاريخ البداية";
-      case "invalid_notes": return "الملاحظات طويلة جدًا (2000 حرف على الأكثر)";
-      case "invalid_filter": return "قيمة تصفية غير صالحة — راجع المستخدم أو التاريخ";
-      case "invalid_range": return "رقم صفحة غير صالح";
-      case "nothing_to_update": return "لا توجد تغييرات للحفظ";
-      case "org_not_found": return "العيادة غير موجودة";
-      case "plan_not_found": return "الخطة غير موجودة";
-      case "client_missing": return "تعذّر تحميل عميل الاتصال — حدّث الصفحة";
+        if (/branches/.test(msg)) return tt("تجاوزت العيادة حد الفروع في خطتها");
+        if (/storage/.test(msg)) return tt("تجاوزت العيادة حد التخزين في خطتها");
+        return tt("تجاوزت العيادة حد المستخدمين في خطتها");
+      case "invalid_code": return tt("الرمز: أحرف لاتينية صغيرة وأرقام و _ أو - (40 حرفًا على الأكثر)");
+      case "plan_code_taken": return tt("توجد خطة بالرمز نفسه");
+      case "invalid_limit": return tt("الحدود أعداد صحيحة من 0 فأكثر، أو فارغة لغير محدود");
+      case "invalid_date": return tt("تاريخ غير صالح — تاريخ النهاية لا يسبق تاريخ البداية");
+      case "invalid_notes": return tt("الملاحظات طويلة جدًا (2000 حرف على الأكثر)");
+      case "invalid_filter": return tt("قيمة تصفية غير صالحة — راجع المستخدم أو التاريخ");
+      case "invalid_range": return tt("رقم صفحة غير صالح");
+      case "nothing_to_update": return tt("لا توجد تغييرات للحفظ");
+      case "org_not_found": return tt("العيادة غير موجودة");
+      case "plan_not_found": return tt("الخطة غير موجودة");
+      case "client_missing": return tt("تعذّر تحميل عميل الاتصال — حدّث الصفحة");
       default: break;
     }
-    if (err.status === 429) return "طلبات كثيرة — انتظر قليلًا ثم حاول مرة أخرى";
-    if (err.status >= 500) return "حدث خطأ في الخادم — حاول مرة أخرى";
-    if (err.status === 404) return "العنصر المطلوب غير موجود";
-    if (err.status === 403) return "ليست لديك صلاحية لهذه العملية";
-    return "تعذّر تنفيذ العملية";
+    if (err.status === 429) return tt("طلبات كثيرة — انتظر قليلًا ثم حاول مرة أخرى");
+    if (err.status >= 500) return tt("حدث خطأ في الخادم — حاول مرة أخرى");
+    if (err.status === 404) return tt("العنصر المطلوب غير موجود");
+    if (err.status === 403) return tt("ليست لديك صلاحية لهذه العملية");
+    return tt("تعذّر تنفيذ العملية");
   }
 
   // ── API access ───────────────────────────────────────────────
@@ -337,8 +339,8 @@
   // قيد الإرسال»; 'sent' or no field (older rows / older API) → nothing.
   function InviteEmailBadge({ inv }) {
     const st = inv && inv.email_status;
-    if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed"><I.Mail size={11}/>لم يُرسل البريد</span>;
-    if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending"><I.Mail size={11}/>البريد قيد الإرسال</span>;
+    if (st === "failed") return <span className="badge b-red invite-unsent" data-email-status="failed"><I.Mail size={11}/>{tt("لم يُرسل البريد")}</span>;
+    if (st === "pending") return <span className="badge b-grey invite-sending" data-email-status="pending"><I.Mail size={11}/>{tt("البريد قيد الإرسال")}</span>;
     return null;
   }
 
@@ -393,7 +395,7 @@
 
   function ErrorBox({ error, onRetry, names }) {
     return (
-      <Alert kind="red" action={onRetry && <Btn kind="secondary" onClick={onRetry}><PI.Refresh size={14}/> إعادة المحاولة</Btn>}>
+      <Alert kind="red" action={onRetry && <Btn kind="secondary" onClick={onRetry}><PI.Refresh size={14}/> {tt("إعادة المحاولة")}</Btn>}>
         {errorText(error, names)}
       </Alert>
     );
@@ -407,7 +409,7 @@
 
   function SkeletonRows({ count = 5 }) {
     const S = window.SkeletonRow;
-    return <div aria-busy="true" aria-label="جارٍ التحميل">{S ? <S count={count}/> : <div className="skel" style={{ height: 120 }}/>}</div>;
+    return <div aria-busy="true" aria-label={tt("جارٍ التحميل")}>{S ? <S count={count}/> : <div className="skel" style={{ height: 120 }}/>}</div>;
   }
 
   // Accessible dialog: role=dialog, focus moved inside and trapped, Esc and
@@ -447,7 +449,7 @@
         <div className="modal" ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ width }}>
           <div className="pa-modal-head">
             <div className="h3" id={titleId} style={danger ? { color: "#A8443A" } : undefined}>{title}</div>
-            <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={() => closeRef.current && closeRef.current()}
+            <button type="button" className="btn btn-ghost btn-icon" aria-label={tt("إغلاق")} onClick={() => closeRef.current && closeRef.current()}
               disabled={!onClose}><I.X size={16}/></button>
           </div>
           <div className="pa-modal-body">{children}</div>
@@ -466,7 +468,7 @@
     }
     return (
       <PModal title={title} onClose={busy ? null : onClose} danger={kind === "danger"} footer={<>
-        <Btn kind="secondary" onClick={onClose} disabled={busy}>رجوع</Btn>
+        <Btn kind="secondary" onClick={onClose} disabled={busy}>{tt("رجوع")}</Btn>
         <Btn kind={kind} busy={busy} onClick={go} data-autofocus="">{confirmLabel}</Btn>
       </>}>
         <div style={{ fontSize: 13.5, lineHeight: 1.7 }}>{body}</div>
@@ -474,7 +476,7 @@
     );
   }
 
-  function CopyButton({ text, label = "نسخ الرابط" }) {
+  function CopyButton({ text, label = tt("نسخ الرابط") }) {
     const [done, setDone] = useState(false);
     async function copy() {
       let ok = false;
@@ -486,8 +488,8 @@
           document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove();
         } catch (_) { ok = false; }
       }
-      if (ok) { setDone(true); toast("نُسخ الرابط"); setTimeout(() => setDone(false), 1500); }
-      else toast("تعذّر النسخ — انسخ الرابط يدويًا", "error");
+      if (ok) { setDone(true); toast(tt("نُسخ الرابط")); setTimeout(() => setDone(false), 1500); }
+      else toast(tt("تعذّر النسخ — انسخ الرابط يدويًا"), "error");
     }
     return (
       <button type="button" className="btn btn-ghost btn-icon" aria-label={label} title={label} onClick={copy}>
@@ -501,12 +503,15 @@
     const page = Math.floor(offset / limit) + 1;
     const pages = Math.max(1, Math.ceil(count / limit));
     return (
-      <nav className="pa-pager" aria-label="الصفحات">
-        <span className="muted">عرض <span className="mono">{Math.min(offset + 1, count)}–{Math.min(offset + limit, count)}</span> من <span className="mono">{count}</span></span>
+      <nav className="pa-pager" aria-label={tt("الصفحات")}>
+        <span className="muted">{ttx("عرض {range} من {count}", {
+          range: <span className="mono">{Math.min(offset + 1, count)}–{Math.min(offset + limit, count)}</span>,
+          count: <span className="mono">{count}</span>,
+        })}</span>
         <div className="row gap-2">
-          <Btn kind="secondary" disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>السابق</Btn>
+          <Btn kind="secondary" disabled={page <= 1 || loading} onClick={() => onPage(page - 1)}>{tt("السابق")}</Btn>
           <span className="mono" aria-live="polite">{page} / {pages}</span>
-          <Btn kind="secondary" disabled={page >= pages || loading} onClick={() => onPage(page + 1)}>التالي</Btn>
+          <Btn kind="secondary" disabled={page >= pages || loading} onClick={() => onPage(page + 1)}>{tt("التالي")}</Btn>
         </div>
       </nav>
     );
@@ -523,11 +528,12 @@
   }
 
   const Ltr = ({ children, className }) => <bdi dir="ltr" className={className}>{children}</bdi>;
-  // Dates are isolated left-to-right: after Arabic text the bidi algorithm
-  // would otherwise show 2027-04-22 as 22-04-2027. In plain strings
-  // (toasts) ltrText() adds the Unicode isolates instead.
-  const DateText = ({ value, time }) => <Ltr className="mono pa-nowrap">{time ? fmtDateTime(value) : fmtDate(value)}</Ltr>;
-  const ltrText = (text) => "\u2066" + text + "\u2069";
+  // Dates come from the shared fmtDate() (src/i18n.jsx: «22 أكتوبر 2026» /
+  // «22 October 2026», with the time for `time`), isolated so the text
+  // around them keeps its order. In plain strings (toasts) isolated()
+  // adds the Unicode first-strong isolates instead.
+  const DateText = ({ value, time }) => <bdi className="tnum pa-nowrap">{fmtDate(value, time ? "dateTime" : "date")}</bdi>;
+  const isolated = (text) => "\u2068" + text + "\u2069";
 
   // A .tbl that becomes one card per row on phones (docs/04 "Layout rules":
   // < 640px tables turn into cards). After every render each cell gets its
@@ -570,13 +576,13 @@
       if (!missing.length) return null;
       const fixable = missing.every((c) => byCode.has(c) && byCode.get(c).status === "active");
       return {
-        text: "لا يمكن تفعيل " + quote(code, names) + " قبل تفعيل: " + missing.map((c) => quote(c, names)).join("، "),
+        text: tt("لا يمكن تفعيل {module} قبل تفعيل: {list}", { module: quote(code, names), list: joinList(missing.map((c) => quote(c, names))) }),
         fix: fixable ? missing : null,
       };
     }
     const dependents = catalog.filter((m) => enabled.has(m.code) && (m.depends_on || []).indexOf(code) !== -1).map((m) => m.code);
     if (!dependents.length) return null;
-    return { text: "لا يمكن تعطيل " + quote(code, names) + ": تعتمد عليها وحدات مفعّلة: " + dependents.map((c) => quote(c, names)).join("، "), fix: null };
+    return { text: tt("لا يمكن تعطيل {module}: تعتمد عليها وحدات مفعّلة: {list}", { module: quote(code, names), list: joinList(dependents.map((c) => quote(c, names))) }), fix: null };
   }
 
   // Grouped toggle list (docs/04 "Module toggle list"): core / specialty,
@@ -584,8 +590,8 @@
   function ModuleList({ catalog, enabled, pending, errors, planModules, onToggle, onFix, disabled }) {
     const names = namesOf(catalog);
     const groups = [
-      ["core", "النواة المشتركة", "متاحة لكل التخصصات"],
-      ["specialty", "الوحدات التخصصية", "حسب تخصص العيادة"],
+      ["core", tt("النواة المشتركة"), tt("متاحة لكل التخصصات")],
+      ["specialty", tt("الوحدات التخصصية"), tt("حسب تخصص العيادة")],
     ];
     return (
       <div className="pa-modules">
@@ -618,16 +624,16 @@
                         {isPending && <Spinner size={12}/>}
                       </div>
                       <div id={hintId} className="pa-help">
-                        {(m.depends_on || []).length > 0 && <span>يعتمد على: {(m.depends_on || []).map((d) => (
+                        {(m.depends_on || []).length > 0 && <span>{tt("يعتمد على:")} {(m.depends_on || []).map((d) => (
                           <span key={d} className={"badge " + (on && !enabled.has(d) && !isPending ? "b-red" : "b-grey")} style={{ marginInlineStart: 4 }}>{names[d] || d}</span>
                         ))}</span>}
-                        {unavailable && <span> لم تُطلق بعد ولا يمكن تفعيلها.</span>}
-                        {outsidePlan && <span> غير مشمولة في الخطة.</span>}
+                        {unavailable && <span> {tt("لم تُطلق بعد ولا يمكن تفعيلها.")}</span>}
+                        {outsidePlan && <span> {tt("غير مشمولة في الخطة.")}</span>}
                       </div>
                       {err && (
                         <div className="pa-field-error" role="alert">
                           {err.text}
-                          {err.fix && onFix && <> <button type="button" className="pa-link" onClick={() => onFix(m.code, err.fix)}>فعّلها كلها معًا</button></>}
+                          {err.fix && onFix && <> <button type="button" className="pa-link" onClick={() => onFix(m.code, err.fix)}>{tt("فعّلها كلها معًا")}</button></>}
                         </div>
                       )}
                     </div>
@@ -650,23 +656,23 @@
     const s = stats.data;
     const StatCard = window.StatCard;
     const cards = [
-      { key: "active", label: "عيادات نشطة", value: s && s.organizations.active, accent: "#3FA984", icon: <I.Check size={15}/>, href: "#/clinics?status=active" },
-      { key: "suspended", label: "عيادات موقوفة", value: s && s.organizations.suspended, accent: "#D8665A", icon: <PI.Pause size={14}/>, href: "#/clinics?status=suspended" },
-      { key: "pending_activation", label: "بانتظار التفعيل", value: s && s.organizations.pending_activation, accent: "#D49044", icon: <I.Clock size={15}/>, href: "#/clinics?status=pending_activation" },
-      { key: "pending_invitations", label: "دعوات معلقة", value: s && s.pending_invitations, accent: "#7E6BD3", icon: <I.Mail size={15}/> },
-      { key: "retention_overdue", label: "تجاوزت مدة الاحتفاظ", value: s && s.retention_overdue, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/clinics?status=suspended" },
+      { key: "active", label: tt("عيادات نشطة"), value: s && s.organizations.active, accent: "#3FA984", icon: <I.Check size={15}/>, href: "#/clinics?status=active" },
+      { key: "suspended", label: tt("عيادات موقوفة"), value: s && s.organizations.suspended, accent: "#D8665A", icon: <PI.Pause size={14}/>, href: "#/clinics?status=suspended" },
+      { key: "pending_activation", label: tt("بانتظار التفعيل"), value: s && s.organizations.pending_activation, accent: "#D49044", icon: <I.Clock size={15}/>, href: "#/clinics?status=pending_activation" },
+      { key: "pending_invitations", label: tt("دعوات معلقة"), value: s && s.pending_invitations, accent: "#7E6BD3", icon: <I.Mail size={15}/> },
+      { key: "retention_overdue", label: tt("تجاوزت مدة الاحتفاظ"), value: s && s.retention_overdue, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/clinics?status=suspended" },
     ];
     return (
       <>
         <div className="page-head">
           <div>
-            <h1 className="h1">مؤشرات المنصة</h1>
+            <h1 className="h1">{tt("مؤشرات المنصة")}</h1>
             <div className="muted" style={{ marginTop: 4 }}>
-              {s ? <>إجمالي العيادات: <span className="mono">{s.organizations.total}</span>{s.organizations.closed ? <> · مغلقة: <span className="mono">{s.organizations.closed}</span></> : null}</> : " "}
+              {s ? <>{ttx("إجمالي العيادات: {n}", { n: <span className="mono">{s.organizations.total}</span> })}{s.organizations.closed ? <> · {ttx("مغلقة: {n}", { n: <span className="mono">{s.organizations.closed}</span> })}</> : null}</> : " "}
             </div>
           </div>
           <div className="page-actions">
-            <a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> إنشاء عيادة</a>
+            <a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> {tt("إنشاء عيادة")}</a>
           </div>
         </div>
         {stats.error && <ErrorBox error={stats.error} onRetry={stats.reload}/>}
@@ -683,8 +689,8 @@
         </div>
         <div className="card">
           <div className="pa-card-head">
-            <h2 className="h3">أحدث العمليات</h2>
-            <a href="#/audit" className="pa-link">عرض السجل كاملًا</a>
+            <h2 className="h3">{tt("أحدث العمليات")}</h2>
+            <a href="#/audit" className="pa-link">{tt("عرض السجل كاملًا")}</a>
           </div>
           {recent.error ? <div style={{ padding: 16 }}><ErrorBox error={recent.error} onRetry={recent.reload}/></div>
             : <AuditTable rows={recent.data ? recent.data.data : null} loading={recent.loading && !recent.data} compact/>}
@@ -718,11 +724,7 @@
     }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const list = useApi(P("/organizations") + qs({ q: q || null, status: status || null, specialty: specialty || null, limit: CLINICS_PAGE, offset }));
-    const specName = useMemo(() => {
-      const m = {};
-      (specs.data || []).forEach((s) => { m[s.code] = s.name_ar; });
-      return m;
-    }, [specs.data]);
+    const specName = useMemo(() => specNamesOf(specs.data), [specs.data]);
     const rows = list.data ? list.data.data : null;
     const filtered = !!(q || status || specialty);
     const searchId = React.useId(), statusId = React.useId(), specId = React.useId();
@@ -731,43 +733,45 @@
       <>
         <div className="page-head">
           <div>
-            <h1 className="h1">العيادات</h1>
+            <h1 className="h1">{tt("العيادات")}</h1>
             <div className="muted" style={{ marginTop: 4 }}>
-              {list.data ? <><span className="mono">{list.data.count}</span> عيادة{filtered ? " مطابقة" : ""}</> : " "}
+              {list.data
+                ? (filtered ? ttx("{n} عيادة مطابقة", { n: <span className="mono">{list.data.count}</span> }) : ttx("{n} عيادة", { n: <span className="mono">{list.data.count}</span> }))
+                : " "}
             </div>
           </div>
           <div className="page-actions">
-            <a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> إنشاء عيادة</a>
+            <a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> {tt("إنشاء عيادة")}</a>
           </div>
         </div>
 
         <div className="card">
           <div className="pa-filters" role="search">
             <div className="pa-filter pa-filter-grow">
-              <label className="label" htmlFor={searchId}>بحث بالاسم أو الرابط</label>
+              <label className="label" htmlFor={searchId}>{tt("بحث بالاسم أو الرابط")}</label>
               <div style={{ position: "relative" }}>
                 <I.Search size={15} style={{ position: "absolute", insetInlineStart: 11, top: "50%", transform: "translateY(-50%)", color: "var(--ink-400)" }}/>
                 <input id={searchId} className="input" type="search" value={text} onChange={(e) => setText(e.target.value)}
-                  placeholder="اسم العيادة أو الرابط" style={{ paddingInlineStart: 34 }}/>
+                  placeholder={tt("اسم العيادة أو الرابط")} style={{ paddingInlineStart: 34 }}/>
               </div>
             </div>
             <div className="pa-filter">
-              <label className="label" htmlFor={statusId}>الحالة</label>
+              <label className="label" htmlFor={statusId}>{tt("الحالة")}</label>
               <select id={statusId} className="input" value={status} onChange={(e) => setQuery({ status: e.target.value, page: 1 })}>
-                <option value="">كل الحالات</option>
+                <option value="">{tt("كل الحالات")}</option>
                 {Object.keys(ORG_STATUS).map((k) => <option key={k} value={k}>{ORG_STATUS[k][0]}</option>)}
               </select>
             </div>
             <div className="pa-filter">
-              <label className="label" htmlFor={specId}>التخصص</label>
+              <label className="label" htmlFor={specId}>{tt("التخصص")}</label>
               <select id={specId} className="input" value={specialty} onChange={(e) => setQuery({ specialty: e.target.value, page: 1 })}>
-                <option value="">كل التخصصات</option>
-                {(specs.data || []).map((s) => <option key={s.code} value={s.code}>{s.name_ar}</option>)}
+                <option value="">{tt("كل التخصصات")}</option>
+                {(specs.data || []).map((s) => <option key={s.code} value={s.code}>{specLabel(s)}</option>)}
               </select>
             </div>
             {filtered && (
               <div className="pa-filter" style={{ alignSelf: "flex-end" }}>
-                <Btn kind="ghost" onClick={() => { setText(""); nav.go("#/clinics", { replace: true }); }}><I.X size={14}/> مسح التصفية</Btn>
+                <Btn kind="ghost" onClick={() => { setText(""); nav.go("#/clinics", { replace: true }); }}><I.X size={14}/> {tt("مسح التصفية")}</Btn>
               </div>
             )}
           </div>
@@ -776,17 +780,17 @@
             <div className="tbl-scroll" aria-busy={list.loading ? "true" : undefined}>
               <CardTable>
                 <thead>
-                  <tr><th>العيادة</th><th>التخصص</th><th>الحالة</th><th>الخطة</th><th>الأعضاء</th><th>دعوات معلقة</th><th>أُنشئت</th></tr>
+                  <tr><th>{tt("العيادة")}</th><th>{tt("التخصص")}</th><th>{tt("الحالة")}</th><th>{tt("الخطة")}</th><th>{tt("الأعضاء")}</th><th>{tt("دعوات معلقة")}</th><th>{tt("أُنشئت")}</th></tr>
                 </thead>
                 <tbody>
                   {!rows && <tr><td colSpan={7} style={{ padding: 0 }}><SkeletonRows count={6}/></td></tr>}
                   {rows && rows.length === 0 && (
                     <tr><td colSpan={7} className="tbl-empty">
                       {filtered
-                        ? <Empty icon={<I.Search size={22}/>} title="لا نتائج مطابقة" body="غيّر كلمات البحث أو التصفية."
-                            action={<Btn kind="secondary" onClick={() => { setText(""); nav.go("#/clinics", { replace: true }); }}>مسح التصفية</Btn>}/>
-                        : <Empty icon={<PI.Building size={22}/>} title="لا توجد عيادات بعد" body="أنشئ أول عيادة وأرسل دعوة لمديرها."
-                            action={<a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> أنشئ أول عيادة</a>}/>}
+                        ? <Empty icon={<I.Search size={22}/>} title={tt("لا نتائج مطابقة")} body={tt("غيّر كلمات البحث أو التصفية.")}
+                            action={<Btn kind="secondary" onClick={() => { setText(""); nav.go("#/clinics", { replace: true }); }}>{tt("مسح التصفية")}</Btn>}/>
+                        : <Empty icon={<PI.Building size={22}/>} title={tt("لا توجد عيادات بعد")} body={tt("أنشئ أول عيادة وأرسل دعوة لمديرها.")}
+                            action={<a className="btn pa-btn-primary" href="#/clinics/new"><I.Plus size={15}/> {tt("أنشئ أول عيادة")}</a>}/>}
                     </td></tr>
                   )}
                   {rows && rows.map((o) => (
@@ -802,7 +806,7 @@
                         <Badge map={ORG_STATUS} value={o.status}/>
                         {o.status === "suspended" && o.retention_until && (
                           <div className={new Date(o.retention_until).getTime() < Date.now() ? "pa-bad" : "muted"} style={{ fontSize: 11.5, marginTop: 3 }} data-retention-until="">
-                            محفوظة حتى <DateText value={o.retention_until}/>
+                            {ttx("محفوظة حتى {date}", { date: <DateText value={o.retention_until}/> })}
                           </div>
                         )}
                       </td>
@@ -826,12 +830,12 @@
   // A03 — create a clinic (4-step wizard)
   // ══════════════════════════════════════════════════════════════
   const SLUG_MESSAGES = {
-    checking: ["checking", "جارٍ التحقق من الرابط…"],
-    available: ["ok", "متاح"],
-    taken: ["bad", "مستخدم — اختر رابطًا آخر"],
-    reserved: ["bad", "محجوز للنظام — اختر رابطًا آخر"],
-    invalid: ["bad", "غير صالح: من 3 إلى 32 حرفًا من a-z و 0-9 والشرطة (-)، دون شرطة في البداية أو النهاية"],
-    error: ["bad", "تعذّر التحقق من الرابط — حاول مرة أخرى"],
+    checking: ["checking", tt("جارٍ التحقق من الرابط…")],
+    available: ["ok", tt("متاح")],
+    taken: ["bad", tt("مستخدم — اختر رابطًا آخر")],
+    reserved: ["bad", tt("محجوز للنظام — اختر رابطًا آخر")],
+    invalid: ["bad", tt("غير صالح: من 3 إلى 32 حرفًا من a-z و 0-9 والشرطة (-)، دون شرطة في البداية أو النهاية")],
+    error: ["bad", tt("تعذّر التحقق من الرابط — حاول مرة أخرى")],
   };
 
   // Live availability (docs/03 "فحص الـ slug"): format checked locally, then
@@ -865,7 +869,7 @@
     const bad = (msg && msg[0] === "bad") || !!showError;
     return (
       <div className="pa-field">
-        <label className="label" htmlFor={id}>رابط العيادة<span className="pa-req" aria-hidden="true"> *</span></label>
+        <label className="label" htmlFor={id}>{tt("رابط العيادة")}<span className="pa-req" aria-hidden="true"> *</span></label>
         <div className="pa-slug" dir="ltr">
           <input id={id} className={"input mono" + (bad ? " pa-invalid" : "")} dir="ltr" value={value} autoComplete="off" spellCheck={false}
             inputMode="url" maxLength={63} placeholder="ahmad" aria-invalid={bad ? "true" : undefined}
@@ -876,15 +880,15 @@
           {current === "checking" && <><Spinner size={12}/> {msg[1]}</>}
           {current === "available" && !showError && <span className="pa-ok"><I.Check size={13}/> {msg[1]}</span>}
           {msg && msg[0] === "bad" && <span className="pa-bad"><I.X size={13}/> {msg[1]}</span>}
-          {current === "error" && onRetry && <button type="button" className="pa-link" onClick={onRetry}>إعادة المحاولة</button>}
+          {current === "error" && onRetry && <button type="button" className="pa-link" onClick={onRetry}>{tt("إعادة المحاولة")}</button>}
           {showError && <span className="pa-bad">{error}</span>}
         </div>
-        <div id={id + "-help"} className="pa-help">أحرف لاتينية صغيرة وأرقام وشرطة؛ يصبح عنوان العيادة ولا يتغير لاحقًا بسهولة.</div>
+        <div id={id + "-help"} className="pa-help">{tt("أحرف لاتينية صغيرة وأرقام وشرطة؛ يصبح عنوان العيادة ولا يتغير لاحقًا بسهولة.")}</div>
       </div>
     );
   }
 
-  const WIZARD_STEPS = ["البيانات", "التخصص والميزات", "الخطة", "أول مدير"];
+  const WIZARD_STEPS = [tt("البيانات"), tt("التخصص والميزات"), tt("الخطة"), tt("أول مدير")];
 
   function slugFromName(name) {
     if (!/^[\x20-\x7e]+$/.test(name)) return "";
@@ -979,7 +983,7 @@
       if (s.status !== "active" || s.code === f.specialty) return;
       set({ specialty: s.code, modules: defaultsFor(s) });
       setModErrors({});
-      setSpecNote("اختيرت الوحدات الافتراضية لتخصص «" + s.name_ar + "» — يمكنك تعديلها.");
+      setSpecNote(tt("اختيرت الوحدات الافتراضية لتخصص {name} — يمكنك تعديلها.", { name: quoted(specLabel(s)) }));
     }
     function toggleModule(code, next) {
       const problem = moduleToggleProblem(catalog, f.modules, code, next);
@@ -1000,20 +1004,20 @@
       const e = {};
       if (n === 1) {
         const nm = f.name.trim();
-        if (nm.length < 2 || nm.length > 120) e.name = "اكتب اسم العيادة (من 2 إلى 120 حرفًا)";
-        if (!f.slug) e.slug = "اختر رابط العيادة";
-        else if (slugCheck.slug !== f.slug || slugCheck.state === "checking") e.slug = "انتظر انتهاء التحقق من الرابط";
-        else if (slugCheck.state !== "available") e.slug = SLUG_MESSAGES[slugCheck.state] ? SLUG_MESSAGES[slugCheck.state][1] : "الرابط غير متاح";
+        if (nm.length < 2 || nm.length > 120) e.name = tt("اكتب اسم العيادة (من 2 إلى 120 حرفًا)");
+        if (!f.slug) e.slug = tt("اختر رابط العيادة");
+        else if (slugCheck.slug !== f.slug || slugCheck.state === "checking") e.slug = tt("انتظر انتهاء التحقق من الرابط");
+        else if (slugCheck.state !== "available") e.slug = SLUG_MESSAGES[slugCheck.state] ? SLUG_MESSAGES[slugCheck.state][1] : tt("الرابط غير متاح");
       }
-      if (n === 2 && !f.specialty) e.specialty = "اختر تخصص العيادة";
+      if (n === 2 && !f.specialty) e.specialty = tt("اختر تخصص العيادة");
       if (n === 3) {
-        if (!f.planId) e.plan = "اختر خطة";
+        if (!f.planId) e.plan = tt("اختر خطة");
         else {
           const outside = planOutside(plan, f.modules);
-          if (outside.length) e.plan = "الخطة المختارة لا تتضمن: " + outside.map((c) => quote(c, names)).join("، ") + " — اختر خطة أخرى أو عدّل الميزات";
+          if (outside.length) e.plan = tt("الخطة المختارة لا تتضمن: {list} — اختر خطة أخرى أو عدّل الميزات", { list: joinList(outside.map((c) => quote(c, names))) });
         }
       }
-      if (n === 4 && !EMAIL_RE.test(f.email.trim())) e.email = "أدخل بريدًا إلكترونيًا صالحًا لأول مدير";
+      if (n === 4 && !EMAIL_RE.test(f.email.trim())) e.email = tt("أدخل بريدًا إلكترونيًا صالحًا لأول مدير");
       setErrors(e);
       return !Object.keys(e).length;
     }
@@ -1031,7 +1035,7 @@
       setBusy(false);
       if (res.ok) {
         setDone(res.data);
-        toast("أُنشئت العيادة «" + res.data.organization.name + "»");
+        toast(tt("أُنشئت العيادة {name}", { name: quoted(res.data.organization.name) }));
         return;
       }
       const text = errorText(res.error, names);
@@ -1069,20 +1073,22 @@
         <div className="card pa-wizard" data-wizard-done="">
           <div className="pa-done">
             <div className="pa-done-icon" aria-hidden="true"><I.Check size={26}/></div>
-            <h1 className="h2" tabIndex={-1} ref={headingRef}>أُنشئت العيادة «{o.name}»</h1>
+            <h1 className="h2" tabIndex={-1} ref={headingRef}>{tt("أُنشئت العيادة {name}", { name: quoted(o.name) })}</h1>
             <Kv rows={[
-              ["الرابط", <span className="row gap-2" style={{ flexWrap: "wrap" }}><Ltr className="mono" >{clinicUrl(o.slug)}</Ltr><CopyButton text={clinicUrl(o.slug)}/></span>],
-              dev && ["رابط التطوير", <Ltr className="mono">{dev}</Ltr>],
-              ["الحالة", <Badge map={ORG_STATUS} value={o.status}/>],
-              ["الفرع", (done.branches && done.branches[0] && done.branches[0].name) || "الفرع الرئيسي"],
-              ["الدعوة", done.email_sent === false
-                ? <span className="pa-bad">أُنشئت الدعوة إلى <Ltr>{inv.email}</Ltr> لكن تعذّر إرسال البريد — أعد الإرسال من صفحة العيادة.</span>
-                : <span data-invite-sent="">{done.email_sent === null ? "البريد قيد الإرسال إلى " : "أُرسلت دعوة إلى "}<Ltr className="mono">{inv.email}</Ltr> بدور «مدير العيادة»، صالحة حتى <DateText value={inv.expires_at}/>.</span>],
+              [tt("الرابط"), <span className="row gap-2" style={{ flexWrap: "wrap" }}><Ltr className="mono" >{clinicUrl(o.slug)}</Ltr><CopyButton text={clinicUrl(o.slug)}/></span>],
+              dev && [tt("رابط التطوير"), <Ltr className="mono">{dev}</Ltr>],
+              [tt("الحالة"), <Badge map={ORG_STATUS} value={o.status}/>],
+              [tt("الفرع"), (done.branches && done.branches[0] && done.branches[0].name) || tt("الفرع الرئيسي")],
+              [tt("الدعوة"), done.email_sent === false
+                ? <span className="pa-bad">{ttx("أُنشئت الدعوة إلى {email} لكن تعذّر إرسال البريد — أعد الإرسال من صفحة العيادة.", { email: <Ltr>{inv.email}</Ltr> })}</span>
+                : <span data-invite-sent="">{(done.email_sent === null
+                  ? ttx("البريد قيد الإرسال إلى {email} بدور «مدير العيادة»، صالحة حتى {date}.", { email: <Ltr className="mono">{inv.email}</Ltr>, date: <DateText value={inv.expires_at}/> })
+                  : ttx("أُرسلت دعوة إلى {email} بدور «مدير العيادة»، صالحة حتى {date}.", { email: <Ltr className="mono">{inv.email}</Ltr>, date: <DateText value={inv.expires_at}/> }))}</span>],
             ]}/>
-            <div className="pa-help" style={{ marginTop: 4 }}>تصبح العيادة نشطة عندما يقبل المدير الدعوة ويعيّن كلمة المرور.</div>
+            <div className="pa-help" style={{ marginTop: 4 }}>{tt("تصبح العيادة نشطة عندما يقبل المدير الدعوة ويعيّن كلمة المرور.")}</div>
             <div className="row gap-2" style={{ marginTop: 18, flexWrap: "wrap", justifyContent: "center" }}>
-              <a className="btn pa-btn-primary" href={"#/clinics/" + o.id}>فتح صفحة العيادة</a>
-              <Btn kind="secondary" onClick={reset}><I.Plus size={14}/> إنشاء عيادة أخرى</Btn>
+              <a className="btn pa-btn-primary" href={"#/clinics/" + o.id}>{tt("فتح صفحة العيادة")}</a>
+              <Btn kind="secondary" onClick={reset}><I.Plus size={14}/> {tt("إنشاء عيادة أخرى")}</Btn>
             </div>
           </div>
         </div>
@@ -1092,7 +1098,7 @@
     return (
       <div className="card pa-wizard">
         {/* Focusable: on phones it scrolls sideways. */}
-        <ol className="stepper pa-steps" aria-label="خطوات إنشاء العيادة" tabIndex={0}>
+        <ol className="stepper pa-steps" aria-label={tt("خطوات إنشاء العيادة")} tabIndex={0}>
           {WIZARD_STEPS.map((label, i) => {
             const n = i + 1;
             const state = n < step ? "done" : n === step ? "current" : "next";
@@ -1109,14 +1115,14 @@
           {loadError ? <ErrorBox error={loadError} onRetry={() => { specs.reload(); mods.reload(); plans.reload(); }}/> : loading ? <SkeletonRows count={4}/> : (
             <>
               <h2 className="h2" tabIndex={-1} ref={headingRef} style={{ marginBottom: 14, outline: "none" }}>
-                الخطوة {step} من 4: {WIZARD_STEPS[step - 1]}
+                {tt("الخطوة {n} من 4: {name}", { n: step, name: WIZARD_STEPS[step - 1] })}
               </h2>
               {errors.form && <div style={{ marginBottom: 14 }}><Alert kind="red">{errors.form}</Alert></div>}
 
               {step === 1 && (
                 <div className="rgrid c-sm" style={{ "--gtc": "1fr 1fr" }}>
-                  <Field id={nameId} label="اسم العيادة" required error={errors.name} help="كما يظهر للموظفين في شاشة الدخول.">
-                    <input {...describe(nameId, errors.name, "x")} value={f.name} maxLength={120} onChange={(e) => onName(e.target.value)} placeholder="عيادة د. أحمد للعلاج الطبيعي"/>
+                  <Field id={nameId} label={tt("اسم العيادة")} required error={errors.name} help={tt("كما يظهر للموظفين في شاشة الدخول.")}>
+                    <input {...describe(nameId, errors.name, "x")} value={f.name} maxLength={120} onChange={(e) => onName(e.target.value)} placeholder={tt("عيادة د. أحمد للعلاج الطبيعي")}/>
                   </Field>
                   <SlugField value={f.slug} onChange={onSlug} check={slugCheck} error={errors.slug} onRetry={() => setSlugNonce((n) => n + 1)}/>
                 </div>
@@ -1124,7 +1130,7 @@
 
               {step === 2 && (
                 <>
-                  <div className="label" id="pa-spec-label">التخصص<span className="pa-req" aria-hidden="true"> *</span></div>
+                  <div className="label" id="pa-spec-label">{tt("التخصص")}<span className="pa-req" aria-hidden="true"> *</span></div>
                   <div className="pa-choices" role="radiogroup" aria-labelledby="pa-spec-label">
                     {(specs.data || []).map((s) => {
                       const dis = s.status !== "active";
@@ -1133,17 +1139,17 @@
                         <button key={s.code} type="button" role="radio" aria-checked={f.specialty === s.code ? "true" : "false"}
                           className="pa-choice" disabled={dis} onClick={() => pickSpecialty(s)}>
                           <span className="row gap-2" style={{ justifyContent: "space-between", width: "100%" }}>
-                            <b>{s.name_ar}</b>{dis && <Badge map={CATALOG_STATUS} value={s.status}/>}
+                            <b>{specLabel(s)}</b>{dis && <Badge map={CATALOG_STATUS} value={s.status}/>}
                           </span>
-                          <span className="muted" style={{ fontSize: 12 }}><Ltr>{s.name_en || s.code}</Ltr> · {modulesCount(count)}</span>
+                          <span className="muted" style={{ fontSize: 12 }}>{IS_RTL && <><Ltr>{s.name_en || s.code}</Ltr> · </>}{modulesCount(count)}</span>
                         </button>
                       );
                     })}
                   </div>
                   {errors.specialty && <div className="pa-field-error" role="alert">{errors.specialty}</div>}
                   <div className="row gap-2" style={{ justifyContent: "space-between", margin: "20px 0 8px", flexWrap: "wrap" }}>
-                    <div className="h3">الميزات المفعّلة ({f.modules.size})</div>
-                    {spec && <Btn kind="ghost" onClick={() => { set({ modules: defaultsFor(spec) }); setModErrors({}); setSpecNote("أُعيدت الوحدات الافتراضية للتخصص."); }}><PI.Refresh size={13}/> الوحدات الافتراضية</Btn>}
+                    <div className="h3">{tt("الميزات المفعّلة ({n})", { n: f.modules.size })}</div>
+                    {spec && <Btn kind="ghost" onClick={() => { set({ modules: defaultsFor(spec) }); setModErrors({}); setSpecNote(tt("أُعيدت الوحدات الافتراضية للتخصص.")); }}><PI.Refresh size={13}/> {tt("الوحدات الافتراضية")}</Btn>}
                   </div>
                   {specNote && <div className="pa-help" role="status" style={{ marginBottom: 8 }}>{specNote}</div>}
                   {errors.modules && <div style={{ marginBottom: 8 }}><Alert kind="red">{errors.modules}</Alert></div>}
@@ -1155,8 +1161,8 @@
 
               {step === 3 && (
                 <>
-                  <div className="label" id="pa-plan-label">الخطة<span className="pa-req" aria-hidden="true"> *</span></div>
-                  {activePlans.length === 0 && <Alert kind="amber">لا توجد خطط نشطة — أنشئ خطة من صفحة «الخطط».</Alert>}
+                  <div className="label" id="pa-plan-label">{tt("الخطة")}<span className="pa-req" aria-hidden="true"> *</span></div>
+                  {activePlans.length === 0 && <Alert kind="amber">{tt("لا توجد خطط نشطة — أنشئ خطة من صفحة «الخطط».")}</Alert>}
                   <div className="pa-choices" role="radiogroup" aria-labelledby="pa-plan-label">
                     {activePlans.map((p) => (
                       <button key={p.id} type="button" role="radio" aria-checked={f.planId === p.id ? "true" : "false"}
@@ -1171,7 +1177,7 @@
                   {errors.plan && <div className="pa-field-error" role="alert">{errors.plan}</div>}
                   <div style={{ marginTop: 16 }}>
                     <Alert kind="amber" icon={<I.Clock size={16}/>}>
-                      الحالة عند الإنشاء: <Badge map={ORG_STATUS} value="pending_activation"/> — تصبح العيادة نشطة عندما يقبل أول مدير دعوته.
+                      {ttx("الحالة عند الإنشاء: {status} — تصبح العيادة نشطة عندما يقبل أول مدير دعوته.", { status: <Badge map={ORG_STATUS} value="pending_activation"/> })}
                     </Alert>
                   </div>
                 </>
@@ -1180,22 +1186,22 @@
               {step === 4 && (
                 <div className="rgrid c-lg" style={{ "--gtc": "1fr 1.2fr" }}>
                   <div>
-                    <Field id={emailId} label="بريد أول مدير للعيادة" required error={errors.email} help="تُرسل إليه دعوة بدور «مدير العيادة» صالحة 7 أيام.">
+                    <Field id={emailId} label={tt("بريد أول مدير للعيادة")} required error={errors.email} help={tt("تُرسل إليه دعوة بدور «مدير العيادة» صالحة 7 أيام.")}>
                       <input {...describe(emailId, errors.email, "x")} type="email" dir="ltr" autoComplete="off" value={f.email}
                         onChange={(e) => { set({ email: e.target.value }); if (errors.email) setErrors({}); }}
                         onKeyDown={(e) => { if (e.key === "Enter") create(); }} placeholder="admin@clinic.com"/>
                     </Field>
                   </div>
-                  <div className="pa-summary" aria-label="ملخص قبل الإنشاء">
-                    <div className="h3" style={{ marginBottom: 10 }}>ملخص قبل الإنشاء</div>
+                  <div className="pa-summary" aria-label={tt("ملخص قبل الإنشاء")}>
+                    <div className="h3" style={{ marginBottom: 10 }}>{tt("ملخص قبل الإنشاء")}</div>
                     <Kv rows={[
-                      ["الاسم", f.name.trim()],
-                      ["الرابط", <Ltr className="mono">{f.slug}.{baseDomain()}</Ltr>],
-                      ["التخصص", spec ? spec.name_ar : f.specialty],
-                      ["الميزات", <span className="pa-chips">{[...f.modules].sort().map((c) => <span key={c} className="badge b-blue">{names[c] || c}</span>)}</span>],
-                      ["الخطة", plan ? plan.name : "—"],
-                      ["الحالة", <Badge map={ORG_STATUS} value="pending_activation"/>],
-                      ["الفرع", "الفرع الرئيسي (يُنشأ تلقائيًا)"],
+                      [tt("الاسم"), f.name.trim()],
+                      [tt("الرابط"), <Ltr className="mono">{f.slug}.{baseDomain()}</Ltr>],
+                      [tt("التخصص"), spec ? specLabel(spec) : f.specialty],
+                      [tt("الميزات"), <span className="pa-chips">{[...f.modules].sort().map((c) => <span key={c} className="badge b-blue">{names[c] || c}</span>)}</span>],
+                      [tt("الخطة"), plan ? plan.name : "—"],
+                      [tt("الحالة"), <Badge map={ORG_STATUS} value="pending_activation"/>],
+                      [tt("الفرع"), tt("الفرع الرئيسي (يُنشأ تلقائيًا)")],
                     ]}/>
                   </div>
                 </div>
@@ -1205,18 +1211,19 @@
         </div>
 
         <div className="pa-wizard-foot">
-          {/* LTR icon names: index.html mirrors ArrowLeft/ArrowRight inside .btn in RTL. */}
-          <Btn kind="ghost" onClick={cancel} disabled={busy}>إلغاء</Btn>
+          {/* LTR icon names (back ←, next →): index.html mirrors ArrowLeft /
+              ArrowRight inside .btn in RTL, so they point the reading way in both. */}
+          <Btn kind="ghost" onClick={cancel} disabled={busy}>{tt("إلغاء")}</Btn>
           <div className="row gap-2">
-            {step > 1 && <Btn kind="secondary" onClick={back} disabled={busy}><I.ArrowLeft size={14}/> السابق</Btn>}
-            {step < 4 && <Btn kind="primary" onClick={next} disabled={loading || !!loadError}>التالي <I.ArrowRight size={14}/></Btn>}
-            {step === 4 && <Btn kind="primary" busy={busy} onClick={create}>إنشاء العيادة</Btn>}
+            {step > 1 && <Btn kind="secondary" onClick={back} disabled={busy}><I.ArrowLeft size={14}/> {tt("السابق")}</Btn>}
+            {step < 4 && <Btn kind="primary" onClick={next} disabled={loading || !!loadError}>{tt("التالي")} <I.ArrowRight size={14}/></Btn>}
+            {step === 4 && <Btn kind="primary" busy={busy} onClick={create}>{tt("إنشاء العيادة")}</Btn>}
           </div>
         </div>
 
         {confirmCancel && (
-          <ConfirmModal title="تجاهل التغييرات؟" kind="danger" confirmLabel="تجاهل والخروج"
-            body="لن تُنشأ أي عيادة، وستضيع البيانات التي أدخلتها."
+          <ConfirmModal title={tt("تجاهل التغييرات؟")} kind="danger" confirmLabel={tt("تجاهل والخروج")}
+            body={tt("لن تُنشأ أي عيادة، وستضيع البيانات التي أدخلتها.")}
             onClose={() => setConfirmCancel(false)}
             onConfirm={() => { guardRef.current = null; dirtyRef.current = false; nav.go("#/clinics"); }}/>
         )}
@@ -1228,10 +1235,10 @@
     const specialtyCount = Array.isArray(plan.included_modules) ? plan.included_modules.filter((c) => c.indexOf("core.") !== 0).length : null;
     return (
       <span className="pa-limits">
-        <span>المستخدمون: <b>{fmtLimit(plan.max_users)}</b></span>
-        <span>الفروع: <b>{fmtLimit(plan.max_branches)}</b></span>
-        <span>التخزين: <b><Ltr>{fmtLimit(plan.max_storage_mb, "MB")}</Ltr></b></span>
-        <span>الوحدات: <b>{specialtyCount === null ? "كل الوحدات" : "النواة + " + specialtyCount + " تخصصية"}</b></span>
+        <span>{ttx("المستخدمون: {v}", { v: <b>{fmtLimit(plan.max_users)}</b> })}</span>
+        <span>{ttx("الفروع: {v}", { v: <b>{fmtLimit(plan.max_branches)}</b> })}</span>
+        <span>{ttx("التخزين: {v}", { v: <b><Ltr>{fmtLimit(plan.max_storage_mb, "MB")}</Ltr></b> })}</span>
+        <span>{ttx("الوحدات: {v}", { v: <b>{specialtyCount === null ? tt("كل الوحدات") : tt("النواة + {n} تخصصية", { n: specialtyCount })}</b> })}</span>
       </span>
     );
   }
@@ -1240,16 +1247,16 @@
   // A04 — clinic details
   // ══════════════════════════════════════════════════════════════
   const CLINIC_TABS = [
-    ["general", "عام"], ["modules", "الميزات"], ["branches", "الفروع"],
-    ["members", "الأعضاء والدعوات"], ["subscription", "الاشتراك"], ["audit", "السجل"],
+    ["general", tt("عام")], ["modules", tt("الميزات")], ["branches", tt("الفروع")],
+    ["members", tt("الأعضاء والدعوات")], ["subscription", tt("الاشتراك")], ["audit", tt("السجل")],
   ];
 
   function statusAction(from, to) {
-    if (to === "suspended") return { label: "إيقاف العيادة", kind: "danger", icon: <PI.Pause size={14}/> };
-    if (to === "closed") return { label: "إغلاق نهائي", kind: "danger", icon: <I.Lock size={14}/> };
-    if (to === "active" && from === "suspended") return { label: "إعادة تفعيل", kind: "primary", icon: <PI.Play size={13}/> };
-    if (to === "active") return { label: "تفعيل يدويًا", kind: "secondary", icon: <PI.Play size={13}/> };
-    return { label: "نقل إلى «بانتظار التفعيل»", kind: "secondary", icon: <I.Clock size={14}/> };
+    if (to === "suspended") return { label: tt("إيقاف العيادة"), kind: "danger", icon: <PI.Pause size={14}/> };
+    if (to === "closed") return { label: tt("إغلاق نهائي"), kind: "danger", icon: <I.Lock size={14}/> };
+    if (to === "active" && from === "suspended") return { label: tt("إعادة تفعيل"), kind: "primary", icon: <PI.Play size={13}/> };
+    if (to === "active") return { label: tt("تفعيل يدويًا"), kind: "secondary", icon: <PI.Play size={13}/> };
+    return { label: tt("نقل إلى «بانتظار التفعيل»"), kind: "secondary", icon: <I.Clock size={14}/> };
   }
 
   function ClinicPage({ id, tab }) {
@@ -1263,8 +1270,8 @@
 
     if (det.error && !d) {
       if (det.error.code === "org_not_found" || det.error.status === 404) {
-        return <div className="card"><Empty icon={<PI.Building size={22}/>} title="العيادة غير موجودة" body="ربما حُذف الرابط أو أُدخل خطأ."
-          action={<a className="btn btn-secondary" href="#/clinics">العودة إلى العيادات</a>}/></div>;
+        return <div className="card"><Empty icon={<PI.Building size={22}/>} title={tt("العيادة غير موجودة")} body={tt("ربما حُذف الرابط أو أُدخل خطأ.")}
+          action={<a className="btn btn-secondary" href="#/clinics">{tt("العودة إلى العيادات")}</a>}/></div>;
       }
       return <ErrorBox error={det.error} onRetry={det.reload}/>;
     }
@@ -1278,13 +1285,15 @@
       );
     }
     const o = d.organization;
-    const specName = ((specs.data || []).find((s) => s.code === o.specialty_code) || {}).name_ar || o.specialty_code;
+    const specName = specLabel((specs.data || []).find((s) => s.code === o.specialty_code)) || o.specialty_code;
     const overdue = o.status === "suspended" && o.retention_until && new Date(o.retention_until).getTime() < Date.now();
     const onTabKey = (e, i) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
       e.preventDefault();
-      // RTL: ArrowLeft moves to the next tab.
-      let n = e.key === "Home" ? 0 : e.key === "End" ? CLINIC_TABS.length - 1 : i + (e.key === "ArrowLeft" ? 1 : -1);
+      // The arrow that points the reading way moves to the next tab
+      // (ArrowLeft in Arabic, ArrowRight in English).
+      const forward = IS_RTL ? "ArrowLeft" : "ArrowRight";
+      let n = e.key === "Home" ? 0 : e.key === "End" ? CLINIC_TABS.length - 1 : i + (e.key === forward ? 1 : -1);
       n = (n + CLINIC_TABS.length) % CLINIC_TABS.length;
       const k = CLINIC_TABS[n][0];
       nav.go("#/clinics/" + o.id + "/" + k, { replace: true });
@@ -1293,7 +1302,7 @@
 
     return (
       <>
-        <div className="crumb"><a href="#/clinics">العيادات</a><I.Chevron size={11}/><span>{o.name}</span></div>
+        <div className="crumb"><a href="#/clinics">{tt("العيادات")}</a><I.Chevron size={11} className="pa-crumb-sep"/><span>{o.name}</span></div>
         <div className="page-head" style={{ alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <div className="row gap-2" style={{ flexWrap: "wrap" }}>
@@ -1304,7 +1313,7 @@
             <div className="row gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
               <Ltr className="mono pa-link-text">{o.slug}.{baseDomain()}</Ltr>
               <CopyButton text={clinicUrl(o.slug)}/>
-              {o.plan && <span className="muted" style={{ fontSize: 12.5 }}>الخطة: {o.plan.name}</span>}
+              {o.plan && <span className="muted" style={{ fontSize: 12.5 }}>{tt("الخطة: {name}", { name: o.plan.name })}</span>}
             </div>
           </div>
           <div className="page-actions">
@@ -1318,30 +1327,31 @@
         {o.status === "suspended" && (
           <div style={{ marginBottom: 16 }}>
             <Alert kind="red" icon={<PI.Pause size={16}/>}>
-              <div data-retention="">هذه العيادة موقوفة منذ <DateText value={o.suspended_at}/> — البيانات محفوظة حتى <b><DateText value={o.retention_until}/></b>.</div>
-              {o.status_reason && <div>السبب: {o.status_reason}</div>}
-              {overdue && <div><b>تجاوزت العيادة مدة الاحتفاظ.</b> لا حذف آليًا حتى قرار المالك.</div>}
+              <div data-retention="">{ttx("هذه العيادة موقوفة منذ {since} — البيانات محفوظة حتى {until}.", { since: <DateText value={o.suspended_at}/>, until: <b><DateText value={o.retention_until}/></b> })}</div>
+              {o.status_reason && <div>{tt("السبب: {reason}", { reason: o.status_reason })}</div>}
+              {overdue && <div><b>{tt("تجاوزت العيادة مدة الاحتفاظ.")}</b> {tt("لا حذف آليًا حتى قرار المالك.")}</div>}
             </Alert>
           </div>
         )}
         {o.status === "closed" && (
           <div style={{ marginBottom: 16 }}>
             <Alert kind="grey" icon={<I.Lock size={16}/>}>
-              هذه العيادة مغلقة{o.status_reason ? " — السبب: " + o.status_reason : ""}.
-              {o.retention_until && <> البيانات محفوظة حتى <DateText value={o.retention_until}/>.</>}
+              {o.status_reason ? tt("هذه العيادة مغلقة — السبب: {reason}.", { reason: o.status_reason }) : tt("هذه العيادة مغلقة.")}
+              {o.retention_until && <> {ttx("البيانات محفوظة حتى {date}.", { date: <DateText value={o.retention_until}/> })}</>}
             </Alert>
           </div>
         )}
         {o.status === "pending_activation" && (
           <div style={{ marginBottom: 16 }}>
             <Alert kind="amber" icon={<I.Clock size={16}/>}>
-              بانتظار التفعيل: تصبح العيادة نشطة عندما يقبل أول مدير دعوته
-              {d.usage.pending_invitations ? <> (دعوات معلقة: <span className="mono">{d.usage.pending_invitations}</span>)</> : <> — لا توجد دعوة معلقة، أرسل دعوة من تبويب «الأعضاء والدعوات»</>}.
+              {d.usage.pending_invitations
+                ? ttx("بانتظار التفعيل: تصبح العيادة نشطة عندما يقبل أول مدير دعوته (دعوات معلقة: {n}).", { n: <span className="mono">{d.usage.pending_invitations}</span> })
+                : tt("بانتظار التفعيل: تصبح العيادة نشطة عندما يقبل أول مدير دعوته — لا توجد دعوة معلقة، أرسل دعوة من تبويب «الأعضاء والدعوات».")}
             </Alert>
           </div>
         )}
 
-        <div className="pa-tabs" role="tablist" aria-label="أقسام العيادة">
+        <div className="pa-tabs" role="tablist" aria-label={tt("أقسام العيادة")}>
           {CLINIC_TABS.map(([k, label], i) => (
             <a key={k} role="tab" id={"pa-tab-" + k} aria-selected={active === k ? "true" : "false"} aria-controls="pa-tabpanel"
               tabIndex={active === k ? 0 : -1} className="pa-tab" href={"#/clinics/" + o.id + "/" + k}
@@ -1362,8 +1372,8 @@
             det.setData(detail);
             setStatusTo(null);
             const r = detail.organization.retention_until;
-            toast(to === "suspended" ? "أُوقفت العيادة — البيانات محفوظة حتى " + ltrText(fmtDate(r))
-              : to === "closed" ? "أُغلقت العيادة" : to === "active" ? "العيادة نشطة الآن" : "تم تغيير الحالة");
+            toast(to === "suspended" ? tt("أُوقفت العيادة — البيانات محفوظة حتى {date}", { date: isolated(fmtDate(r)) })
+              : to === "closed" ? tt("أُغلقت العيادة") : to === "active" ? tt("العيادة نشطة الآن") : tt("تم تغيير الحالة"));
           }}/>}
       </>
     );
@@ -1377,17 +1387,18 @@
     const formId = React.useId();
     const reasonId = React.useId();
     const a = statusAction(org.status, to);
+    const name = org.name;
     const copy = {
-      suspended: ["إيقاف «" + org.name + "»؟", <>يُمنع كل موظفي العيادة من الدخول فورًا، وتُحفظ بياناتها 6 أشهر (حتى <DateText value={plusMonths(6)}/>)، ويمكن إعادة تفعيلها في أي وقت خلالها.</>],
-      closed: ["إغلاق «" + org.name + "» نهائيًا؟", <>لا يمكن إعادة فتح عيادة مغلقة. تبقى البيانات محفوظة حتى <DateText value={org.retention_until}/>.</>],
+      suspended: [tt("إيقاف «{name}»؟", { name }), ttx("يُمنع كل موظفي العيادة من الدخول فورًا، وتُحفظ بياناتها 6 أشهر (حتى {date})، ويمكن إعادة تفعيلها في أي وقت خلالها.", { date: <DateText value={plusMonths(6)}/> })],
+      closed: [tt("إغلاق «{name}» نهائيًا؟", { name }), ttx("لا يمكن إعادة فتح عيادة مغلقة. تبقى البيانات محفوظة حتى {date}.", { date: <DateText value={org.retention_until}/> })],
       active: org.status === "suspended"
-        ? ["إعادة تفعيل «" + org.name + "»؟", "يعود موظفو العيادة إلى الدخول فورًا ويُلغى تاريخ الاحتفاظ."]
-        : ["تفعيل «" + org.name + "» يدويًا؟", "عادةً تُفعَّل العيادة تلقائيًا عند قبول أول مدير دعوته."],
-      pending_activation: ["نقل «" + org.name + "» إلى «بانتظار التفعيل»؟", "تصبح العيادة جاهزة لقبول دعوة أول مدير."],
+        ? [tt("إعادة تفعيل «{name}»؟", { name }), tt("يعود موظفو العيادة إلى الدخول فورًا ويُلغى تاريخ الاحتفاظ.")]
+        : [tt("تفعيل «{name}» يدويًا؟", { name }), tt("عادةً تُفعَّل العيادة تلقائيًا عند قبول أول مدير دعوته.")],
+      pending_activation: [tt("نقل «{name}» إلى «بانتظار التفعيل»؟", { name }), tt("تصبح العيادة جاهزة لقبول دعوة أول مدير.")],
     }[to];
     async function submit(e) {
       if (e) e.preventDefault();
-      if (needReason && !reason.trim()) { setErr(to === "suspended" ? "اكتب سبب الإيقاف" : "اكتب سبب الإغلاق"); return; }
+      if (needReason && !reason.trim()) { setErr(to === "suspended" ? tt("اكتب سبب الإيقاف") : tt("اكتب سبب الإغلاق")); return; }
       setBusy(true);
       setErr("");
       const res = await call("POST", P("/organizations/" + org.id + "/status"), { status: to, reason: reason.trim() });
@@ -1397,13 +1408,13 @@
     }
     return (
       <PModal title={copy[0]} danger={a.kind === "danger"} onClose={busy ? null : onClose} footer={<>
-        <Btn kind="secondary" onClick={onClose} disabled={busy}>رجوع</Btn>
+        <Btn kind="secondary" onClick={onClose} disabled={busy}>{tt("رجوع")}</Btn>
         <Btn kind={a.kind === "danger" ? "danger" : "primary"} type="submit" form={formId} busy={busy}>{a.label}</Btn>
       </>}>
         <form id={formId} onSubmit={submit} noValidate>
           <p style={{ marginTop: 0, lineHeight: 1.7 }}>{copy[1]}</p>
-          <Field id={reasonId} label={needReason ? (to === "suspended" ? "سبب الإيقاف" : "سبب الإغلاق") : "ملاحظة (اختياري)"} required={needReason} error={err}
-            help={needReason ? "يظهر في صفحة العيادة وسجل التدقيق." : null}>
+          <Field id={reasonId} label={needReason ? (to === "suspended" ? tt("سبب الإيقاف") : tt("سبب الإغلاق")) : tt("ملاحظة (اختياري)")} required={needReason} error={err}
+            help={needReason ? tt("يظهر في صفحة العيادة وسجل التدقيق.") : null}>
             <textarea {...describe(reasonId, err, needReason ? "x" : null)} rows={3} maxLength={1000} value={reason}
               onChange={(e) => { setReason(e.target.value); if (err) setErr(""); }} style={{ height: "auto", padding: "8px 12px" }}/>
           </Field>
@@ -1450,13 +1461,13 @@
       }
       onDetail(res.data);
       setErr({});
-      toast("تم حفظ التغييرات");
+      toast(tt("تم حفظ التغييرات"));
       return true;
     }
     function submit(e) {
       e.preventDefault();
       const nm = name.trim();
-      if (nm.length < 2 || nm.length > 120) { setErr({ name: "الاسم مطلوب (من 2 إلى 120 حرفًا)" }); return; }
+      if (nm.length < 2 || nm.length > 120) { setErr({ name: tt("الاسم مطلوب (من 2 إلى 120 حرفًا)") }); return; }
       if (!changed) return;
       if (changes.specialty_code) { setConfirmSpec(true); return; }
       save();
@@ -1466,47 +1477,47 @@
     return (
       <div className="rgrid c-lg" style={{ "--gtc": "1.3fr 1fr" }}>
         <form className="card card-pad" onSubmit={submit} noValidate>
-          <h2 className="h3" style={{ marginBottom: 14 }}>بيانات العيادة</h2>
+          <h2 className="h3" style={{ marginBottom: 14 }}>{tt("بيانات العيادة")}</h2>
           {err.form && <div style={{ marginBottom: 12 }}><Alert kind="red">{err.form}</Alert></div>}
-          <Field id={nameId} label="الاسم" required error={err.name}>
+          <Field id={nameId} label={tt("الاسم")} required error={err.name}>
             <input {...describe(nameId, err.name)} value={name} maxLength={120} onChange={(e) => { setName(e.target.value); if (err.name) setErr({}); }}/>
           </Field>
-          <Field id={specId} label="التخصص" required error={err.spec} help="تغيير التخصص لا يغيّر الوحدات المفعّلة تلقائيًا.">
+          <Field id={specId} label={tt("التخصص")} required error={err.spec} help={tt("تغيير التخصص لا يغيّر الوحدات المفعّلة تلقائيًا.")}>
             <select {...describe(specId, err.spec, "x")} value={spec} onChange={(e) => setSpec(e.target.value)}>
-              {specialties.filter((s) => s.status === "active" || s.code === o.specialty_code).map((s) => <option key={s.code} value={s.code}>{s.name_ar}</option>)}
+              {specialties.filter((s) => s.status === "active" || s.code === o.specialty_code).map((s) => <option key={s.code} value={s.code}>{specLabel(s)}</option>)}
             </select>
           </Field>
-          <Field id={planSel} label="الخطة" error={err.plan} help="للاشتراك اليدوي (الفترة والحالة) استخدم تبويب «الاشتراك».">
+          <Field id={planSel} label={tt("الخطة")} error={err.plan} help={tt("للاشتراك اليدوي (الفترة والحالة) استخدم تبويب «الاشتراك».")}>
             <select {...describe(planSel, err.plan, "x")} value={planId} onChange={(e) => setPlanId(e.target.value)}>
-              {!o.plan_id && <option value="">بدون خطة</option>}
-              {planOptions.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status !== "active" ? " (مؤرشفة)" : ""}</option>)}
+              {!o.plan_id && <option value="">{tt("بدون خطة")}</option>}
+              {planOptions.map((p) => <option key={p.id} value={p.id}>{p.name}{p.status !== "active" ? " " + tt("(مؤرشفة)") : ""}</option>)}
             </select>
           </Field>
           <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
-            {changed && <Btn kind="ghost" onClick={() => { setName(o.name); setSpec(o.specialty_code); setPlanId(o.plan_id || ""); setErr({}); }}>تراجع</Btn>}
-            <Btn kind="primary" type="submit" busy={busy && !confirmSpec} disabled={!changed}>حفظ التغييرات</Btn>
+            {changed && <Btn kind="ghost" onClick={() => { setName(o.name); setSpec(o.specialty_code); setPlanId(o.plan_id || ""); setErr({}); }}>{tt("تراجع")}</Btn>}
+            <Btn kind="primary" type="submit" busy={busy && !confirmSpec} disabled={!changed}>{tt("حفظ التغييرات")}</Btn>
           </div>
         </form>
         <div className="card card-pad">
-          <h2 className="h3" style={{ marginBottom: 14 }}>معلومات</h2>
+          <h2 className="h3" style={{ marginBottom: 14 }}>{tt("معلومات")}</h2>
           <Kv rows={[
-            ["المعرّف", <Ltr className="mono pa-code">{o.id}</Ltr>],
-            ["الرابط", <Ltr className="mono">{clinicUrl(o.slug)}</Ltr>],
-            ["أُنشئت", <DateText value={o.created_at} time/>],
-            ["آخر تحديث", <DateText value={o.updated_at} time/>],
-            ["الأعضاء النشطون", <span className="tnum">{usageText(u.active_members, plan.max_users)}</span>],
-            ["دعوات معلقة", <span className="mono">{u.pending_invitations}</span>],
-            ["الفروع النشطة", <span className="tnum">{usageText(u.active_branches, plan.max_branches)}</span>],
-            o.status_reason && ["سبب آخر تغيير حالة", o.status_reason],
+            [tt("المعرّف"), <Ltr className="mono pa-code">{o.id}</Ltr>],
+            [tt("الرابط"), <Ltr className="mono">{clinicUrl(o.slug)}</Ltr>],
+            [tt("أُنشئت"), <DateText value={o.created_at} time/>],
+            [tt("آخر تحديث"), <DateText value={o.updated_at} time/>],
+            [tt("الأعضاء النشطون"), <span className="tnum">{usageText(u.active_members, plan.max_users)}</span>],
+            [tt("دعوات معلقة"), <span className="mono">{u.pending_invitations}</span>],
+            [tt("الفروع النشطة"), <span className="tnum">{usageText(u.active_branches, plan.max_branches)}</span>],
+            o.status_reason && [tt("سبب آخر تغيير حالة"), o.status_reason],
           ]}/>
         </div>
         {confirmSpec && (
-          <ConfirmModal title="تغيير التخصص؟" confirmLabel="حفظ التخصص الجديد" onClose={() => setConfirmSpec(false)} onConfirm={save}
+          <ConfirmModal title={tt("تغيير التخصص؟")} confirmLabel={tt("حفظ التخصص الجديد")} onClose={() => setConfirmSpec(false)} onConfirm={save}
             body={<>
-              <p style={{ marginTop: 0 }}>من {quote(o.specialty_code, namesOf(specialties.map((s) => ({ code: s.code, name_ar: s.name_ar }))))} إلى {quote(spec, namesOf(specialties.map((s) => ({ code: s.code, name_ar: s.name_ar }))))}. الوحدات المفعّلة تبقى كما هي؛ الفرق مع الوحدات الافتراضية للتخصص الجديد:</p>
-              <div className="pa-help">افتراضية وغير مفعّلة: {notEnabled.length ? notEnabled.map((c) => quote(c, names)).join("، ") : "لا شيء"}</div>
-              <div className="pa-help">مفعّلة وليست افتراضية: {extra.length ? extra.map((c) => quote(c, names)).join("، ") : "لا شيء"}</div>
-              <div className="pa-help">عدّل الوحدات من تبويب «الميزات» بعد الحفظ.</div>
+              <p style={{ marginTop: 0 }}>{tt("من {from} إلى {to}. الوحدات المفعّلة تبقى كما هي؛ الفرق مع الوحدات الافتراضية للتخصص الجديد:", { from: quote(o.specialty_code, specNamesOf(specialties)), to: quote(spec, specNamesOf(specialties)) })}</p>
+              <div className="pa-help">{tt("افتراضية وغير مفعّلة: {list}", { list: notEnabled.length ? joinList(notEnabled.map((c) => quote(c, names))) : tt("لا شيء") })}</div>
+              <div className="pa-help">{tt("مفعّلة وليست افتراضية: {list}", { list: extra.length ? joinList(extra.map((c) => quote(c, names))) : tt("لا شيء") })}</div>
+              <div className="pa-help">{tt("عدّل الوحدات من تبويب «الميزات» بعد الحفظ.")}</div>
             </>}/>
         )}
       </div>
@@ -1536,7 +1547,7 @@
       }
       onDetail(res.data);
       setErrors({});
-      toast("تم الحفظ");
+      toast(tt("تم الحفظ"));
       return true;
     }
     function toggle(code, next) {
@@ -1559,16 +1570,18 @@
       <div className="card">
         <div className="pa-card-head">
           <div>
-            <h2 className="h3">الميزات المفعّلة <span className="mono muted">({enabled.size})</span></h2>
-            <div className="pa-help">تعطيل وحدة يخفيها عن العيادة وتبقى بياناتها محفوظة.</div>
+            <h2 className="h3">{tt("الميزات المفعّلة")} <span className="mono muted">({enabled.size})</span></h2>
+            <div className="pa-help">{tt("تعطيل وحدة يخفيها عن العيادة وتبقى بياناتها محفوظة.")}</div>
           </div>
-          {planModules && <span className="badge b-grey">الخطة تحدد الوحدات التخصصية المتاحة</span>}
+          {planModules && <span className="badge b-grey">{tt("الخطة تحدد الوحدات التخصصية المتاحة")}</span>}
         </div>
         <ModuleList catalog={catalog} enabled={enabled} pending={pending} errors={errors} planModules={planModules}
           onToggle={toggle} onFix={fix} disabled={busy}/>
         {confirmOff && (
-          <ConfirmModal title={"تعطيل " + quote(confirmOff, names) + "؟"} kind="danger" confirmLabel="تعطيل الوحدة"
-            body={<>ستختفي الوحدة {quote(confirmOff, names)} من «{o.name}» فورًا، <b>وتبقى بياناتها محفوظة</b> وتعود عند إعادة التفعيل.</>}
+          <ConfirmModal title={tt("تعطيل {module}؟", { module: quote(confirmOff, names) })} kind="danger" confirmLabel={tt("تعطيل الوحدة")}
+            body={ttx("ستختفي الوحدة {module} من {clinic} فورًا، {kept} وتعود عند إعادة التفعيل.", {
+              module: quote(confirmOff, names), clinic: quoted(o.name), kept: <b>{tt("وتبقى بياناتها محفوظة")}</b>,
+            })}
             onClose={() => setConfirmOff(null)}
             onConfirm={async () => {
               const code = confirmOff;
@@ -1589,16 +1602,16 @@
       <div className="card">
         <div className="pa-card-head">
           <div>
-            <h2 className="h3">الفروع</h2>
-            <div className="pa-help">يديرها مدير العيادة من شاشة الفروع. العرض هنا للقراءة فقط.</div>
+            <h2 className="h3">{tt("الفروع")}</h2>
+            <div className="pa-help">{tt("يديرها مدير العيادة من شاشة الفروع. العرض هنا للقراءة فقط.")}</div>
           </div>
-          <span className="badge b-grey tnum">{usageText(detail.usage.active_branches, plan.max_branches, "الفروع النشطة")}</span>
+          <span className="badge b-grey tnum">{usageText(detail.usage.active_branches, plan.max_branches, tt("الفروع النشطة"))}</span>
         </div>
         <div className="tbl-scroll">
           <CardTable>
-            <thead><tr><th>الفرع</th><th>الحالة</th><th>العنوان</th><th>الهاتف</th><th>أُضيف</th></tr></thead>
+            <thead><tr><th>{tt("الفرع")}</th><th>{tt("الحالة")}</th><th>{tt("العنوان")}</th><th>{tt("الهاتف")}</th><th>{tt("أُضيف")}</th></tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={5} className="tbl-empty">لا توجد فروع لهذه العيادة.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={5} className="tbl-empty">{tt("لا توجد فروع لهذه العيادة.")}</td></tr>}
               {rows.map((b) => (
                 <tr key={b.id}>
                   <td><b>{b.name}</b><div><Ltr className="mono pa-code">{b.id}</Ltr></div></td>
@@ -1619,7 +1632,7 @@
     const o = detail.organization;
     const branchName = {};
     (detail.branches || []).forEach((b) => { branchName[b.id] = b.name; });
-    const branchList = (ids) => (ids && ids.length ? ids.map((i) => branchName[i] || i).join("، ") : "كل الفروع");
+    const branchList = (ids) => (ids && ids.length ? joinList(ids.map((i) => branchName[i] || i)) : tt("كل الفروع"));
     const [inviteOpen, setInviteOpen] = useState(false);
     const [rowBusy, setRowBusy] = useState(null);
     const [revoke, setRevoke] = useState(null);
@@ -1632,28 +1645,28 @@
       const res = await call("POST", P("/organizations/" + o.id + "/invitations/" + inv.id + "/resend"));
       setRowBusy(null);
       if (!res.ok) { toast(errorText(res.error), "error"); return; }
-      if (res.data && res.data.email_sent === false) toast("جُددت الدعوة لكن تعذّر إرسال البريد — حاول مرة أخرى", "error");
-      else toast("أُعيد إرسال الدعوة إلى " + inv.email);
+      if (res.data && res.data.email_sent === false) toast(tt("جُددت الدعوة لكن تعذّر إرسال البريد — حاول مرة أخرى"), "error");
+      else toast(tt("أُعيد إرسال الدعوة إلى {email}", { email: inv.email }));
       reload();
     }
     return (
       <>
         <div className="card" style={{ marginBottom: 18 }}>
           <div className="pa-card-head">
-            <h2 className="h3">الأعضاء <span className="mono muted">({detail.members.length})</span></h2>
-            <span className="badge b-grey tnum" data-seats="" title="الأعضاء النشطون + الدعوات المعلقة">{usageText(seats, plan.max_users, "المقاعد")}</span>
+            <h2 className="h3">{tt("الأعضاء")} <span className="mono muted">({detail.members.length})</span></h2>
+            <span className="badge b-grey tnum" data-seats="" title={tt("الأعضاء النشطون + الدعوات المعلقة")}>{usageText(seats, plan.max_users, tt("المقاعد"))}</span>
           </div>
           <div className="tbl-scroll">
             <CardTable>
-              <thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>انضم</th></tr></thead>
+              <thead><tr><th>{tt("الاسم")}</th><th>{tt("البريد")}</th><th>{tt("الدور")}</th><th>{tt("الفروع")}</th><th>{tt("الحالة")}</th><th>{tt("انضم")}</th></tr></thead>
               <tbody>
-                {detail.members.length === 0 && <tr><td colSpan={6} className="tbl-empty">لا يوجد أعضاء بعد — ينضم أول مدير عند قبول دعوته.</td></tr>}
+                {detail.members.length === 0 && <tr><td colSpan={6} className="tbl-empty">{tt("لا يوجد أعضاء بعد — ينضم أول مدير عند قبول دعوته.")}</td></tr>}
                 {detail.members.map((m) => (
                   <tr key={m.id}>
                     <td><b>{m.name || "—"}</b></td>
                     <td><Ltr className="mono">{m.email}</Ltr></td>
                     <td><span className="badge b-grey">{ROLE_LABEL[m.role] || m.role}</span></td>
-                    <td>{m.role === "admin" ? "كل الفروع" : branchList(m.branch_ids)}</td>
+                    <td>{m.role === "admin" ? tt("كل الفروع") : branchList(m.branch_ids)}</td>
                     <td><Badge map={MEMBER_STATUS} value={m.status}/></td>
                     <td><DateText value={m.joined_at || m.created_at}/></td>
                   </tr>
@@ -1665,30 +1678,30 @@
 
         <div className="card">
           <div className="pa-card-head">
-            <h2 className="h3">الدعوات <span className="mono muted">({detail.invitations.length})</span></h2>
-            <Btn kind="primary" disabled={!canInvite} title={canInvite ? undefined : "لا يمكن الدعوة لعيادة " + ORG_STATUS[o.status][0]}
-              onClick={() => setInviteOpen(true)}><I.Send size={14}/> دعوة مستخدم</Btn>
+            <h2 className="h3">{tt("الدعوات")} <span className="mono muted">({detail.invitations.length})</span></h2>
+            <Btn kind="primary" disabled={!canInvite} title={canInvite ? undefined : tt("لا يمكن الدعوة لعيادة {status}", { status: statusWord(ORG_STATUS, o.status) })}
+              onClick={() => setInviteOpen(true)}><I.Send size={14}/> {tt("دعوة مستخدم")}</Btn>
           </div>
-          {!canInvite && <div style={{ padding: "0 16px 12px" }}><Alert kind="grey">العيادة {ORG_STATUS[o.status][0]} — لا يمكن إرسال دعوات أو إعادة إرسالها.</Alert></div>}
+          {!canInvite && <div style={{ padding: "0 16px 12px" }}><Alert kind="grey">{tt("العيادة {status} — لا يمكن إرسال دعوات أو إعادة إرسالها.", { status: statusWord(ORG_STATUS, o.status) })}</Alert></div>}
           <div className="tbl-scroll">
             <CardTable>
-              <thead><tr><th>البريد</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th>تنتهي</th><th><span className="pa-sr">إجراءات</span></th></tr></thead>
+              <thead><tr><th>{tt("البريد")}</th><th>{tt("الدور")}</th><th>{tt("الفروع")}</th><th>{tt("الحالة")}</th><th>{tt("تنتهي")}</th><th><span className="pa-sr">{tt("إجراءات")}</span></th></tr></thead>
               <tbody>
-                {detail.invitations.length === 0 && <tr><td colSpan={6} className="tbl-empty">لا توجد دعوات.</td></tr>}
+                {detail.invitations.length === 0 && <tr><td colSpan={6} className="tbl-empty">{tt("لا توجد دعوات.")}</td></tr>}
                 {detail.invitations.map((inv) => {
                   const open = inv.status === "pending" || inv.status === "expired";
                   return (
                     <tr key={inv.id} data-invite={inv.email}>
                       <td><Ltr className="mono">{inv.email}</Ltr></td>
                       <td><span className="badge b-grey">{ROLE_LABEL[inv.role] || inv.role}</span></td>
-                      <td>{inv.role === "admin" ? "كل الفروع" : branchList(inv.branch_ids)}</td>
+                      <td>{inv.role === "admin" ? tt("كل الفروع") : branchList(inv.branch_ids)}</td>
                       <td><div className="row gap-2" style={{ flexWrap: "wrap" }}><Badge map={INVITE_STATUS} value={inv.status}/>{open && <InviteEmailBadge inv={inv}/>}</div></td>
                       <td><DateText value={inv.expires_at}/></td>
                       <td>
                         {open && canInvite && (
                           <div className="row gap-2" style={{ justifyContent: "flex-end" }}>
-                            <Btn kind="ghost" busy={rowBusy === inv.id} onClick={() => resend(inv)} aria-label={"إعادة إرسال الدعوة إلى " + inv.email}>إعادة الإرسال</Btn>
-                            <Btn kind="ghost" disabled={rowBusy === inv.id} onClick={() => setRevoke(inv)} aria-label={"إلغاء الدعوة إلى " + inv.email}>إلغاء</Btn>
+                            <Btn kind="ghost" busy={rowBusy === inv.id} onClick={() => resend(inv)} aria-label={tt("إعادة إرسال الدعوة إلى {email}", { email: inv.email })}>{tt("إعادة الإرسال")}</Btn>
+                            <Btn kind="ghost" disabled={rowBusy === inv.id} onClick={() => setRevoke(inv)} aria-label={tt("إلغاء الدعوة إلى {email}", { email: inv.email })}>{tt("إلغاء")}</Btn>
                           </div>
                         )}
                       </td>
@@ -1703,13 +1716,13 @@
         {inviteOpen && <InviteModal org={o} branches={(detail.branches || []).filter((b) => b.status === "active")}
           onClose={() => setInviteOpen(false)} onDone={() => { setInviteOpen(false); reload(); }}/>}
         {revoke && (
-          <ConfirmModal title="إلغاء الدعوة؟" kind="danger" confirmLabel="إلغاء الدعوة"
-            body={<>لن يستطيع <Ltr className="mono">{revoke.email}</Ltr> استخدام رابط الدعوة بعد الآن. يبقى سجلها محفوظًا.</>}
+          <ConfirmModal title={tt("إلغاء الدعوة؟")} kind="danger" confirmLabel={tt("إلغاء الدعوة")}
+            body={ttx("لن يستطيع {email} استخدام رابط الدعوة بعد الآن. يبقى سجلها محفوظًا.", { email: <Ltr className="mono">{revoke.email}</Ltr> })}
             onClose={() => setRevoke(null)}
             onConfirm={async () => {
               const res = await call("DELETE", P("/organizations/" + o.id + "/invitations/" + revoke.id));
               if (!res.ok) { toast(errorText(res.error), "error"); return false; }
-              toast("أُلغيت الدعوة");
+              toast(tt("أُلغيت الدعوة"));
               setRevoke(null);
               reload();
               return true;
@@ -1729,8 +1742,8 @@
     async function submit(e) {
       e.preventDefault();
       const e2 = {};
-      if (!EMAIL_RE.test(email.trim())) e2.email = "أدخل بريدًا إلكترونيًا صالحًا";
-      if (role !== "admin" && picked.size === 0) e2.branches = "اختر فرعًا واحدًا على الأقل لهذا الدور";
+      if (!EMAIL_RE.test(email.trim())) e2.email = tt("أدخل بريدًا إلكترونيًا صالحًا");
+      if (role !== "admin" && picked.size === 0) e2.branches = tt("اختر فرعًا واحدًا على الأقل لهذا الدور");
       setErr(e2);
       if (Object.keys(e2).length) return;
       setBusy(true);
@@ -1744,29 +1757,29 @@
         setErr(field ? { [field]: text } : { form: text });
         return;
       }
-      if (res.data && res.data.email_sent === false) toast("أُنشئت الدعوة لكن تعذّر إرسال البريد — استخدم «إعادة الإرسال»", "error");
-      else toast("أُرسلت الدعوة إلى " + email.trim().toLowerCase());
+      if (res.data && res.data.email_sent === false) toast(tt("أُنشئت الدعوة لكن تعذّر إرسال البريد — استخدم «إعادة الإرسال»"), "error");
+      else toast(tt("أُرسلت الدعوة إلى {email}", { email: email.trim().toLowerCase() }));
       onDone();
     }
     return (
-      <PModal title={"دعوة مستخدم إلى «" + org.name + "»"} onClose={busy ? null : onClose} footer={<>
-        <Btn kind="secondary" onClick={onClose} disabled={busy}>رجوع</Btn>
-        <Btn kind="primary" type="submit" form={formId} busy={busy}><I.Send size={14}/> إرسال الدعوة</Btn>
+      <PModal title={tt("دعوة مستخدم إلى «{name}»", { name: org.name })} onClose={busy ? null : onClose} footer={<>
+        <Btn kind="secondary" onClick={onClose} disabled={busy}>{tt("رجوع")}</Btn>
+        <Btn kind="primary" type="submit" form={formId} busy={busy}><I.Send size={14}/> {tt("إرسال الدعوة")}</Btn>
       </>}>
         <form id={formId} onSubmit={submit} noValidate>
           {err.form && <div style={{ marginBottom: 12 }}><Alert kind="red">{err.form}</Alert></div>}
-          <Field id={emailId} label="البريد الإلكتروني" required error={err.email}>
+          <Field id={emailId} label={tt("البريد الإلكتروني")} required error={err.email}>
             <input {...describe(emailId, err.email)} type="email" dir="ltr" value={email} onChange={(e) => { setEmail(e.target.value); if (err.email) setErr({}); }} placeholder="name@clinic.com"/>
           </Field>
-          <Field id={roleId} label="الدور" required error={err.role}>
+          <Field id={roleId} label={tt("الدور")} required error={err.role}>
             <select {...describe(roleId, err.role)} value={role} onChange={(e) => setRole(e.target.value)}>
               {["admin", "receptionist", "doctor", "therapist", "staff"].map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </Field>
           {role !== "admin" && (
             <fieldset className="pa-fieldset" aria-describedby={err.branches ? "pa-inv-br-err" : undefined}>
-              <legend className="label">الفروع<span className="pa-req" aria-hidden="true"> *</span></legend>
-              {branches.length === 0 && <div className="pa-help">لا توجد فروع نشطة — يمكن دعوة مدير العيادة فقط.</div>}
+              <legend className="label">{tt("الفروع")}<span className="pa-req" aria-hidden="true"> *</span></legend>
+              {branches.length === 0 && <div className="pa-help">{tt("لا توجد فروع نشطة — يمكن دعوة مدير العيادة فقط.")}</div>}
               {branches.map((b) => (
                 <label key={b.id} className="pa-check">
                   <input type="checkbox" checked={picked.has(b.id)} onChange={(e) => {
@@ -1802,8 +1815,8 @@
     async function submit(e) {
       e.preventDefault();
       const e2 = {};
-      if (!planId) e2.plan = "اختر خطة";
-      if (end && start && end < start) e2.end = "تاريخ النهاية قبل تاريخ البداية";
+      if (!planId) e2.plan = tt("اختر خطة");
+      if (end && start && end < start) e2.end = tt("تاريخ النهاية قبل تاريخ البداية");
       setErr(e2);
       if (Object.keys(e2).length) return;
       setBusy(true);
@@ -1820,58 +1833,58 @@
       }
       onDetail(res.data);
       setNotes("");
-      toast("تم حفظ الاشتراك");
+      toast(tt("تم حفظ الاشتراك"));
     }
     const subPlan = sub ? planOf(sub.plan_id) : null;
     return (
       <div className="rgrid c-lg" style={{ "--gtc": "1fr 1.2fr" }}>
         <div className="card card-pad">
-          <h2 className="h3" style={{ marginBottom: 14 }}>الاشتراك الحالي</h2>
+          <h2 className="h3" style={{ marginBottom: 14 }}>{tt("الاشتراك الحالي")}</h2>
           {sub ? (
             <Kv rows={[
-              ["الخطة", subPlan ? subPlan.name : <Ltr className="mono">{shortId(sub.plan_id)}</Ltr>],
-              ["الحالة", <span className="badge b-blue" data-sub-status="">{SUB_STATUS[sub.status] || sub.status}</span>],
-              ["الفترة", <span data-sub-period="">{sub.period_start ? <>من <DateText value={sub.period_start}/> </> : null}{sub.period_end ? <>إلى <DateText value={sub.period_end}/></> : "(فترة مفتوحة)"}</span>],
-              ["ملاحظات", (sub.notes && (SYSTEM_NOTES[sub.notes] || sub.notes)) || <span className="muted">—</span>],
-              ["سُجّل في", <DateText value={sub.created_at} time/>],
+              [tt("الخطة"), subPlan ? subPlan.name : <Ltr className="mono">{shortId(sub.plan_id)}</Ltr>],
+              [tt("الحالة"), <span className="badge b-blue" data-sub-status="">{SUB_STATUS[sub.status] || sub.status}</span>],
+              [tt("الفترة"), <span data-sub-period="">{sub.period_start ? <>{ttx("من {date}", { date: <DateText value={sub.period_start}/> })} </> : null}{sub.period_end ? ttx("إلى {date}", { date: <DateText value={sub.period_end}/> }) : tt("(فترة مفتوحة)")}</span>],
+              [tt("ملاحظات"), (sub.notes && (SYSTEM_NOTES[sub.notes] || sub.notes)) || <span className="muted">—</span>],
+              [tt("سُجّل في"), <DateText value={sub.created_at} time/>],
             ]}/>
-          ) : <div className="muted">لا يوجد اشتراك مسجّل بعد.</div>}
+          ) : <div className="muted">{tt("لا يوجد اشتراك مسجّل بعد.")}</div>}
           {chosen && (
             <div style={{ marginTop: 16 }}>
-              <div className="label">حدود الخطة {chosen.id === o.plan_id ? "الحالية" : "المختارة"}</div>
+              <div className="label">{chosen.id === o.plan_id ? tt("حدود الخطة الحالية") : tt("حدود الخطة المختارة")}</div>
               <PlanLimits plan={chosen}/>
             </div>
           )}
         </div>
         <form className="card card-pad" onSubmit={submit} noValidate>
-          <h2 className="h3" style={{ marginBottom: 4 }}>تسجيل اشتراك يدوي</h2>
-          <div className="pa-help" style={{ marginBottom: 14, marginTop: 0 }}>يُحفظ كسجل جديد (يبقى السجل السابق)، ويغيّر خطة العيادة.</div>
+          <h2 className="h3" style={{ marginBottom: 4 }}>{tt("تسجيل اشتراك يدوي")}</h2>
+          <div className="pa-help" style={{ marginBottom: 14, marginTop: 0 }}>{tt("يُحفظ كسجل جديد (يبقى السجل السابق)، ويغيّر خطة العيادة.")}</div>
           {plansError && <div style={{ marginBottom: 12 }}><ErrorBox error={plansError}/></div>}
           {err.form && <div style={{ marginBottom: 12 }}><Alert kind="red">{err.form}</Alert></div>}
           <div className="rgrid c-sm" style={{ "--gtc": "1fr 1fr" }}>
-            <Field id={ids.plan} label="الخطة" required error={err.plan}>
+            <Field id={ids.plan} label={tt("الخطة")} required error={err.plan}>
               <select {...describe(ids.plan, err.plan)} value={planId} onChange={(e) => setPlanId(e.target.value)}>
-                {!planId && <option value="">اختر خطة</option>}
-                {list.filter((p) => p.status === "active" || p.id === o.plan_id).map((p) => <option key={p.id} value={p.id}>{p.name}{p.status !== "active" ? " (مؤرشفة)" : ""}</option>)}
+                {!planId && <option value="">{tt("اختر خطة")}</option>}
+                {list.filter((p) => p.status === "active" || p.id === o.plan_id).map((p) => <option key={p.id} value={p.id}>{p.name}{p.status !== "active" ? " " + tt("(مؤرشفة)") : ""}</option>)}
               </select>
             </Field>
-            <Field id={ids.status} label="حالة الاشتراك" required error={err.status}>
+            <Field id={ids.status} label={tt("حالة الاشتراك")} required error={err.status}>
               <select {...describe(ids.status, err.status)} value={status} onChange={(e) => setStatus(e.target.value)}>
                 {Object.keys(SUB_STATUS).map((k) => <option key={k} value={k}>{SUB_STATUS[k]}</option>)}
               </select>
             </Field>
-            <Field id={ids.start} label="بداية الفترة" error={err.start}>
+            <Field id={ids.start} label={tt("بداية الفترة")} error={err.start}>
               <input {...describe(ids.start, err.start)} type="date" dir="ltr" value={start} onChange={(e) => setStart(e.target.value)}/>
             </Field>
-            <Field id={ids.end} label="نهاية الفترة" error={err.end} help="فارغة = فترة مفتوحة.">
+            <Field id={ids.end} label={tt("نهاية الفترة")} error={err.end} help={tt("فارغة = فترة مفتوحة.")}>
               <input {...describe(ids.end, err.end, "x")} type="date" dir="ltr" value={end} min={start || undefined} onChange={(e) => { setEnd(e.target.value); if (err.end) setErr({}); }}/>
             </Field>
           </div>
-          <Field id={ids.notes} label="ملاحظات" error={err.notes} help="مثل رقم الإيصال أو طريقة الدفع.">
+          <Field id={ids.notes} label={tt("ملاحظات")} error={err.notes} help={tt("مثل رقم الإيصال أو طريقة الدفع.")}>
             <textarea {...describe(ids.notes, err.notes, "x")} rows={2} maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} style={{ height: "auto", padding: "8px 12px" }}/>
           </Field>
           <div className="row" style={{ justifyContent: "flex-end" }}>
-            <Btn kind="primary" type="submit" busy={busy}>حفظ الاشتراك</Btn>
+            <Btn kind="primary" type="submit" busy={busy}>{tt("حفظ الاشتراك")}</Btn>
           </div>
         </form>
       </div>
@@ -1894,26 +1907,26 @@
       <>
         <div className="page-head">
           <div>
-            <h1 className="h1">التخصصات والوحدات</h1>
-            <div className="muted" style={{ marginTop: 4 }}>الكتالوج للعرض فقط حاليًا. الوحدات «قريبًا» لا يمكن تفعيلها لأي عيادة.</div>
+            <h1 className="h1">{tt("التخصصات والوحدات")}</h1>
+            <div className="muted" style={{ marginTop: 4 }}>{tt("الكتالوج للعرض فقط حاليًا. الوحدات «قريبًا» لا يمكن تفعيلها لأي عيادة.")}</div>
           </div>
         </div>
         <div className="card" style={{ marginBottom: 18 }}>
-          <div className="pa-card-head"><h2 className="h3">التخصصات</h2></div>
+          <div className="pa-card-head"><h2 className="h3">{tt("التخصصات")}</h2></div>
           {specs.error ? <div style={{ padding: 16 }}><ErrorBox error={specs.error} onRetry={specs.reload}/></div> : (
             <div className="tbl-scroll">
               <CardTable>
-                <thead><tr><th>التخصص</th><th>الرمز</th><th>الحالة</th><th>الوحدات الافتراضية</th></tr></thead>
+                <thead><tr><th>{tt("التخصص")}</th><th>{tt("الرمز")}</th><th>{tt("الحالة")}</th><th>{tt("الوحدات الافتراضية")}</th></tr></thead>
                 <tbody>
                   {!specs.data && <tr><td colSpan={4} style={{ padding: 0 }}><SkeletonRows count={3}/></td></tr>}
                   {specs.data && specs.data.map((s) => (
                     <tr key={s.code}>
-                      <td><b>{s.name_ar}</b>{s.name_en && <div className="muted" style={{ fontSize: 12 }}><Ltr>{s.name_en}</Ltr></div>}</td>
+                      <td><b>{specLabel(s)}</b>{IS_RTL && s.name_en && <div className="muted" style={{ fontSize: 12 }}><Ltr>{s.name_en}</Ltr></div>}</td>
                       <td><Ltr className="mono pa-code">{s.code}</Ltr></td>
                       <td><Badge map={CATALOG_STATUS} value={s.status}/></td>
                       <td><span className="pa-chips">{(s.default_modules || []).map((c) => {
                         const planned = (mods.data || []).some((m) => m.code === c && m.status !== "active");
-                        return <span key={c} className={"badge " + (planned ? "b-grey" : "b-blue")} title={planned ? "قريبًا" : undefined}>{names[c] || c}{planned ? " (قريبًا)" : ""}</span>;
+                        return <span key={c} className={"badge " + (planned ? "b-grey" : "b-blue")} title={planned ? tt("قريبًا") : undefined}>{names[c] || c}{planned ? " " + tt("(قريبًا)") : ""}</span>;
                       })}</span></td>
                     </tr>
                   ))}
@@ -1923,18 +1936,18 @@
           )}
         </div>
         <div className="card">
-          <div className="pa-card-head"><h2 className="h3">الوحدات</h2></div>
+          <div className="pa-card-head"><h2 className="h3">{tt("الوحدات")}</h2></div>
           {mods.error ? <div style={{ padding: 16 }}><ErrorBox error={mods.error} onRetry={mods.reload}/></div> : (
             <div className="tbl-scroll">
               <CardTable>
-                <thead><tr><th>الوحدة</th><th>الرمز</th><th>الفئة</th><th>يعتمد على</th><th>الحالة</th></tr></thead>
+                <thead><tr><th>{tt("الوحدة")}</th><th>{tt("الرمز")}</th><th>{tt("الفئة")}</th><th>{tt("يعتمد على")}</th><th>{tt("الحالة")}</th></tr></thead>
                 <tbody>
                   {!mods.data && <tr><td colSpan={5} style={{ padding: 0 }}><SkeletonRows count={6}/></td></tr>}
                   {mods.data && mods.data.map((m) => (
                     <tr key={m.code}>
                       <td><b>{m.name_ar}</b></td>
                       <td><Ltr className="mono pa-code">{m.code}</Ltr></td>
-                      <td>{m.category === "core" ? "النواة المشتركة" : "تخصصية"}</td>
+                      <td>{m.category === "core" ? tt("النواة المشتركة") : tt("تخصصية")}</td>
                       <td><span className="pa-chips">{(m.depends_on || []).length ? m.depends_on.map((d) => <span key={d} className="badge b-grey">{names[d] || d}</span>) : <span className="muted">—</span>}</span></td>
                       <td><Badge map={CATALOG_STATUS} value={m.status}/></td>
                     </tr>
@@ -1961,22 +1974,22 @@
       <>
         <div className="page-head">
           <div>
-            <h1 className="h1">الخطط</h1>
-            <div className="muted" style={{ marginTop: 4 }}>حدود كل خطة؛ الحد الفارغ = غير محدود.</div>
+            <h1 className="h1">{tt("الخطط")}</h1>
+            <div className="muted" style={{ marginTop: 4 }}>{tt("حدود كل خطة؛ الحد الفارغ = غير محدود.")}</div>
           </div>
           <div className="page-actions">
-            <Btn kind="primary" onClick={() => setEditing({ mode: "create" })} disabled={!mods.data}><I.Plus size={15}/> خطة جديدة</Btn>
+            <Btn kind="primary" onClick={() => setEditing({ mode: "create" })} disabled={!mods.data}><I.Plus size={15}/> {tt("خطة جديدة")}</Btn>
           </div>
         </div>
         <div className="card">
           {plans.error ? <div style={{ padding: 16 }}><ErrorBox error={plans.error} onRetry={plans.reload}/></div> : (
             <div className="tbl-scroll">
               <CardTable>
-                <thead><tr><th>الخطة</th><th>المستخدمون</th><th>الفروع</th><th>التخزين</th><th>الوحدات</th><th>الحالة</th><th>العيادات</th><th><span className="pa-sr">إجراءات</span></th></tr></thead>
+                <thead><tr><th>{tt("الخطة")}</th><th>{tt("المستخدمون")}</th><th>{tt("الفروع")}</th><th>{tt("التخزين")}</th><th>{tt("الوحدات")}</th><th>{tt("الحالة")}</th><th>{tt("العيادات")}</th><th><span className="pa-sr">{tt("إجراءات")}</span></th></tr></thead>
                 <tbody>
                   {!rows && <tr><td colSpan={8} style={{ padding: 0 }}><SkeletonRows count={3}/></td></tr>}
                   {rows && rows.length === 0 && <tr><td colSpan={8} className="tbl-empty">
-                    <Empty icon={<I.CreditCard size={22}/>} title="لا توجد خطط" body="أنشئ أول خطة لتحديد حدود العيادات." action={<Btn kind="primary" onClick={() => setEditing({ mode: "create" })}>خطة جديدة</Btn>}/>
+                    <Empty icon={<I.CreditCard size={22}/>} title={tt("لا توجد خطط")} body={tt("أنشئ أول خطة لتحديد حدود العيادات.")} action={<Btn kind="primary" onClick={() => setEditing({ mode: "create" })}>{tt("خطة جديدة")}</Btn>}/>
                   </td></tr>}
                   {rows && rows.map((p) => (
                     <tr key={p.id} data-plan={p.code}>
@@ -1985,11 +1998,11 @@
                       <td className="tnum" data-col="max_branches">{fmtLimit(p.max_branches)}</td>
                       <td className="tnum" data-col="max_storage_mb"><Ltr>{fmtLimit(p.max_storage_mb, "MB")}</Ltr></td>
                       <td>{Array.isArray(p.included_modules)
-                        ? <span className="pa-chips">{p.included_modules.length ? p.included_modules.map((c) => <span key={c} className="badge b-blue">{names[c] || c}</span>) : <span className="muted">النواة فقط</span>}</span>
-                        : "كل الوحدات"}</td>
+                        ? <span className="pa-chips">{p.included_modules.length ? p.included_modules.map((c) => <span key={c} className="badge b-blue">{names[c] || c}</span>) : <span className="muted">{tt("النواة فقط")}</span>}</span>
+                        : tt("كل الوحدات")}</td>
                       <td><Badge map={PLAN_STATUS} value={p.status}/></td>
                       <td className="mono">{p.organizations}</td>
-                      <td><Btn kind="ghost" onClick={() => setEditing({ mode: "edit", plan: p })} disabled={!mods.data} aria-label={"تعديل الخطة " + p.name}><I.Edit size={14}/> تعديل</Btn></td>
+                      <td><Btn kind="ghost" onClick={() => setEditing({ mode: "edit", plan: p })} disabled={!mods.data} aria-label={tt("تعديل الخطة {name}", { name: p.name })}><I.Edit size={14}/> {tt("تعديل")}</Btn></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1999,7 +2012,7 @@
         </div>
         {editing && <PlanModal mode={editing.mode} plan={editing.plan} modules={mods.data || []}
           onClose={() => setEditing(null)}
-          onSaved={(p) => { setEditing(null); toast(editing.mode === "create" ? "أُنشئت الخطة «" + p.name + "»" : "تم حفظ الخطة «" + p.name + "»"); plans.reload(); }}/>}
+          onSaved={(p) => { setEditing(null); toast(editing.mode === "create" ? tt("أُنشئت الخطة «{name}»", { name: p.name }) : tt("تم حفظ الخطة «{name}»", { name: p.name })); plans.reload(); }}/>}
       </>
     );
   }
@@ -2008,7 +2021,7 @@
   function parseLimit(s) {
     const t = String(s || "").trim();
     if (!t) return { value: null };
-    if (!/^\d+$/.test(t) || Number(t) > 1000000) return { error: "عدد صحيح من 0 إلى 1000000، أو فارغ لغير محدود" };
+    if (!/^\d+$/.test(t) || Number(t) > 1000000) return { error: tt("عدد صحيح من 0 إلى 1000000، أو فارغ لغير محدود") };
     return { value: Number(t) };
   }
 
@@ -2030,8 +2043,8 @@
       e.preventDefault();
       const e2 = {};
       const name = form.name.trim();
-      if (!name || name.length > 120) e2.name = "الاسم مطلوب (120 حرفًا على الأكثر)";
-      if (mode === "create" && (!PLAN_CODE_RE.test(form.code) || form.code.length > 40)) e2.code = "أحرف لاتينية صغيرة وأرقام و _ أو - (40 حرفًا على الأكثر)";
+      if (!name || name.length > 120) e2.name = tt("الاسم مطلوب (120 حرفًا على الأكثر)");
+      if (mode === "create" && (!PLAN_CODE_RE.test(form.code) || form.code.length > 40)) e2.code = tt("أحرف لاتينية صغيرة وأرقام و _ أو - (40 حرفًا على الأكثر)");
       const limits = {};
       ["max_users", "max_branches", "max_storage_mb"].forEach((k) => {
         const r = parseLimit(form[k]);
@@ -2048,7 +2061,7 @@
         const before = { name: p.name, max_users: p.max_users, max_branches: p.max_branches, max_storage_mb: p.max_storage_mb,
           included_modules: Array.isArray(p.included_modules) ? [...p.included_modules].sort() : null, status: p.status };
         Object.keys(before).forEach((k) => { if (same(before[k], body[k])) delete body[k]; });
-        if (!Object.keys(body).length) { toast("لا توجد تغييرات للحفظ", "info"); onClose(); return; }
+        if (!Object.keys(body).length) { toast(tt("لا توجد تغييرات للحفظ"), "info"); onClose(); return; }
       }
       setBusy(true);
       const res = mode === "create" ? await call("POST", P("/plans"), body) : await call("PATCH", P("/plans/" + p.id), body);
@@ -2062,40 +2075,40 @@
       onSaved(res.data);
     }
     const limitField = (k, label, unit) => (
-      <Field id={ids[k]} label={label} error={err[k]} help={"فارغ = غير محدود" + (unit ? " · " + unit : "")}>
-        <input {...describe(ids[k], err[k], "x")} inputMode="numeric" dir="ltr" value={form[k]} placeholder="غير محدود"
+      <Field id={ids[k]} label={label} error={err[k]} help={tt("فارغ = غير محدود") + (unit ? " · " + unit : "")}>
+        <input {...describe(ids[k], err[k], "x")} inputMode="numeric" dir="ltr" value={form[k]} placeholder={tt("غير محدود")}
           onChange={(e) => set({ [k]: e.target.value.replace(/[^\d]/g, "") })}/>
       </Field>
     );
     return (
-      <PModal title={mode === "create" ? "خطة جديدة" : "تعديل الخطة «" + p.name + "»"} width={620} onClose={busy ? null : onClose} footer={<>
-        <Btn kind="secondary" onClick={onClose} disabled={busy}>رجوع</Btn>
-        <Btn kind="primary" type="submit" form={formId} busy={busy}>{mode === "create" ? "إنشاء الخطة" : "حفظ الخطة"}</Btn>
+      <PModal title={mode === "create" ? tt("خطة جديدة") : tt("تعديل الخطة «{name}»", { name: p.name })} width={620} onClose={busy ? null : onClose} footer={<>
+        <Btn kind="secondary" onClick={onClose} disabled={busy}>{tt("رجوع")}</Btn>
+        <Btn kind="primary" type="submit" form={formId} busy={busy}>{mode === "create" ? tt("إنشاء الخطة") : tt("حفظ الخطة")}</Btn>
       </>}>
         <form id={formId} onSubmit={submit} noValidate>
           {err.form && <div style={{ marginBottom: 12 }}><Alert kind="red">{err.form}</Alert></div>}
           <div className="rgrid c-sm" style={{ "--gtc": "1fr 1fr" }}>
-            <Field id={ids.name} label="الاسم" required error={err.name}>
+            <Field id={ids.name} label={tt("الاسم")} required error={err.name}>
               <input {...describe(ids.name, err.name)} value={form.name} maxLength={120} onChange={(e) => set({ name: e.target.value })}/>
             </Field>
-            <Field id={ids.code} label="الرمز" required={mode === "create"} error={err.code} help={mode === "create" ? "مثل basic أو pro-2026؛ لا يتغير لاحقًا." : "لا يتغير بعد الإنشاء."}>
+            <Field id={ids.code} label={tt("الرمز")} required={mode === "create"} error={err.code} help={mode === "create" ? tt("مثل basic أو pro-2026؛ لا يتغير لاحقًا.") : tt("لا يتغير بعد الإنشاء.")}>
               <input {...describe(ids.code, err.code, "x")} className={"input mono" + (err.code ? " pa-invalid" : "")} dir="ltr" value={form.code} maxLength={40}
                 readOnly={mode !== "create"} onChange={(e) => set({ code: e.target.value.toLowerCase().trim() })}/>
             </Field>
-            {limitField("max_users", "حد المستخدمين")}
-            {limitField("max_branches", "حد الفروع")}
-            {limitField("max_storage_mb", "حد التخزين", "ميغابايت")}
-            <Field id={ids.status} label="الحالة" error={err.status} help="الخطة المؤرشفة لا تُختار لعيادات جديدة.">
+            {limitField("max_users", tt("حد المستخدمين"))}
+            {limitField("max_branches", tt("حد الفروع"))}
+            {limitField("max_storage_mb", tt("حد التخزين"), tt("ميغابايت"))}
+            <Field id={ids.status} label={tt("الحالة")} error={err.status} help={tt("الخطة المؤرشفة لا تُختار لعيادات جديدة.")}>
               <select {...describe(ids.status, err.status, "x")} value={form.status} onChange={(e) => set({ status: e.target.value })}>
-                <option value="active">نشطة</option>
-                <option value="archived">مؤرشفة</option>
+                <option value="active">{PLAN_STATUS.active[0]}</option>
+                <option value="archived">{PLAN_STATUS.archived[0]}</option>
               </select>
             </Field>
           </div>
           <fieldset className="pa-fieldset">
-            <legend className="label">الوحدات المشمولة</legend>
-            <label className="pa-check"><input type="radio" name={formId + "-mods"} checked={form.all} onChange={() => set({ all: true })}/> كل الوحدات</label>
-            <label className="pa-check"><input type="radio" name={formId + "-mods"} checked={!form.all} onChange={() => set({ all: false })}/> وحدات تخصصية محددة (وحدات النواة متاحة دائمًا)</label>
+            <legend className="label">{tt("الوحدات المشمولة")}</legend>
+            <label className="pa-check"><input type="radio" name={formId + "-mods"} checked={form.all} onChange={() => set({ all: true })}/> {tt("كل الوحدات")}</label>
+            <label className="pa-check"><input type="radio" name={formId + "-mods"} checked={!form.all} onChange={() => set({ all: false })}/> {tt("وحدات تخصصية محددة (وحدات النواة متاحة دائمًا)")}</label>
             {!form.all && (
               <div className="pa-checks">
                 {specialty.map((m) => (
@@ -2104,7 +2117,7 @@
                       const s = new Set(form.included);
                       if (e.target.checked) s.add(m.code); else s.delete(m.code);
                       set({ included: s });
-                    }}/> {m.name_ar} <Ltr className="mono pa-code">{m.code}</Ltr>{m.status !== "active" && <span className="badge b-amber" style={{ marginInlineStart: 4 }}>قريبًا</span>}
+                    }}/> {m.name_ar} <Ltr className="mono pa-code">{m.code}</Ltr>{m.status !== "active" && <span className="badge b-amber" style={{ marginInlineStart: 4 }}>{tt("قريبًا")}</span>}
                   </label>
                 ))}
               </div>
@@ -2120,7 +2133,7 @@
   // ══════════════════════════════════════════════════════════════
   const AUDIT_PAGE = 25;
   // audit_events.result (0003): success is the norm and shows nothing.
-  const AUDIT_RESULT_LABEL = { denied: "مرفوضة", error: "فشلت" };
+  const AUDIT_RESULT_LABEL = { denied: tt("مرفوضة"), error: tt("فشلت") };
 
   function AuditTable({ rows, loading, compact, showOrg = true, onEmpty }) {
     const [payload, setPayload] = useState(null);
@@ -2131,25 +2144,25 @@
           <CardTable data-audit="">
             <thead>
               <tr>
-                <th>الوقت</th>
-                {showOrg && <th>العيادة</th>}
-                <th>المستخدم</th>
-                <th>العملية</th>
-                {!compact && <th>الهدف</th>}
-                {!compact && <th><span className="pa-sr">التفاصيل</span></th>}
+                <th>{tt("الوقت")}</th>
+                {showOrg && <th>{tt("العيادة")}</th>}
+                <th>{tt("المستخدم")}</th>
+                <th>{tt("العملية")}</th>
+                {!compact && <th>{tt("الهدف")}</th>}
+                {!compact && <th><span className="pa-sr">{tt("التفاصيل")}</span></th>}
               </tr>
             </thead>
             <tbody>
               {(loading || !rows) && <tr><td colSpan={cols} style={{ padding: 0 }}><SkeletonRows count={compact ? 4 : 6}/></td></tr>}
-              {!loading && rows && rows.length === 0 && <tr><td colSpan={cols} className="tbl-empty">{onEmpty || "لا توجد عمليات مسجلة."}</td></tr>}
+              {!loading && rows && rows.length === 0 && <tr><td colSpan={cols} className="tbl-empty">{onEmpty || tt("لا توجد عمليات مسجلة.")}</td></tr>}
               {!loading && rows && rows.map((a) => (
                 <tr key={a.id} data-action={a.action}>
                   <td style={{ whiteSpace: "nowrap" }}><DateText value={a.created_at} time/></td>
                   {showOrg && <td>{a.organization_id
                     ? <a className="pa-link" href={"#/clinics/" + a.organization_id}><Ltr className="mono">{a.organization_slug || shortId(a.organization_id)}</Ltr></a>
-                    : <span className="muted">المنصة</span>}</td>}
+                    : <span className="muted">{tt("المنصة")}</span>}</td>}
                   <td>
-                    {a.actor_email ? <Ltr className="mono">{a.actor_email}</Ltr> : <span className="muted">النظام</span>}
+                    {a.actor_email ? <Ltr className="mono">{a.actor_email}</Ltr> : <span className="muted">{tt("النظام")}</span>}
                     {a.actor_role && <div className="muted" style={{ fontSize: 11.5 }}>{ROLE_LABEL[a.actor_role] || a.actor_role}</div>}
                   </td>
                   <td>
@@ -2158,7 +2171,7 @@
                     <div><Ltr className="mono pa-code">{a.action}</Ltr></div>
                   </td>
                   {!compact && <td>{a.target_type ? <>{TARGET_LABEL[a.target_type] || a.target_type} <Ltr className="mono pa-code">{shortId(a.target_id || a.row_pk)}</Ltr></> : <span className="muted">—</span>}</td>}
-                  {!compact && <td>{a.payload && <Btn kind="ghost" onClick={() => setPayload(a)} aria-label="عرض تفاصيل العملية"><I.Eye size={14}/> التفاصيل</Btn>}</td>}
+                  {!compact && <td>{a.payload && <Btn kind="ghost" onClick={() => setPayload(a)} aria-label={tt("عرض تفاصيل العملية")}><I.Eye size={14}/> {tt("التفاصيل")}</Btn>}</td>}
                 </tr>
               ))}
             </tbody>
@@ -2167,9 +2180,9 @@
         {payload && (
           <PModal title={ACTION_LABEL[payload.action] || payload.action} width={620} onClose={() => setPayload(null)}>
             <Kv rows={[
-              ["الوقت", <DateText value={payload.created_at} time/>],
-              ["المستخدم", <Ltr className="mono">{payload.actor_email || "—"}</Ltr>],
-              ["الجدول", <Ltr className="mono">{payload.table_name || "—"}</Ltr>],
+              [tt("الوقت"), <DateText value={payload.created_at} time/>],
+              [tt("المستخدم"), <Ltr className="mono">{payload.actor_email || "—"}</Ltr>],
+              [tt("الجدول"), <Ltr className="mono">{payload.table_name || "—"}</Ltr>],
             ]}/>
             <pre className="pa-json" dir="ltr">{JSON.stringify(payload.payload, null, 2)}</pre>
           </PModal>
@@ -2200,7 +2213,7 @@
 
     function apply(e) {
       e.preventDefault();
-      if (form.from && form.to && form.from > form.to) { setErr("تاريخ البداية بعد تاريخ النهاية"); return; }
+      if (form.from && form.to && form.from > form.to) { setErr(tt("تاريخ البداية بعد تاريخ النهاية")); return; }
       setErr("");
       const next = {};
       Object.keys(form).forEach((k) => { const v = String(form[k] || "").trim(); if (v) next[k] = v; });
@@ -2212,42 +2225,42 @@
 
     return (
       <div className="card">
-        <form className="pa-filters" role="search" aria-label="تصفية السجل" onSubmit={apply} noValidate>
+        <form className="pa-filters" role="search" aria-label={tt("تصفية السجل")} onSubmit={apply} noValidate>
           {!fixedOrgId && (
             <div className="pa-filter">
-              <label className="label" htmlFor={ids.org}>العيادة</label>
+              <label className="label" htmlFor={ids.org}>{tt("العيادة")}</label>
               <select id={ids.org} className="input" value={form.organization_id} onChange={set("organization_id")}>
-                <option value="">كل العيادات</option>
+                <option value="">{tt("كل العيادات")}</option>
                 {((orgs.data && orgs.data.data) || []).map((o) => <option key={o.id} value={o.id}>{o.name} ({o.slug})</option>)}
               </select>
             </div>
           )}
           <div className="pa-filter pa-filter-grow">
-            <label className="label" htmlFor={ids.actor}>المستخدم</label>
-            <input id={ids.actor} className="input" dir="ltr" value={form.actor} onChange={set("actor")} placeholder="البريد أو المعرّف"/>
+            <label className="label" htmlFor={ids.actor}>{tt("المستخدم")}</label>
+            <input id={ids.actor} className="input" dir="ltr" value={form.actor} onChange={set("actor")} placeholder={tt("البريد أو المعرّف")}/>
           </div>
           <div className="pa-filter">
-            <label className="label" htmlFor={ids.action}>نوع العملية</label>
+            <label className="label" htmlFor={ids.action}>{tt("نوع العملية")}</label>
             <input id={ids.action} className="input mono" dir="ltr" list={ids.list} value={form.action} onChange={set("action")} placeholder="organization.*"/>
-            <datalist id={ids.list}>{KNOWN_ACTIONS.map((a) => <option key={a} value={a}>{ACTION_LABEL[a] || "كل العمليات التي تبدأ بـ " + a.slice(0, -1)}</option>)}</datalist>
+            <datalist id={ids.list}>{KNOWN_ACTIONS.map((a) => <option key={a} value={a}>{ACTION_LABEL[a] || tt("كل العمليات التي تبدأ بـ {prefix}", { prefix: a.slice(0, -1) })}</option>)}</datalist>
           </div>
           <div className="pa-filter">
-            <label className="label" htmlFor={ids.from}>من تاريخ</label>
+            <label className="label" htmlFor={ids.from}>{tt("من تاريخ")}</label>
             <input id={ids.from} className={"input" + (err ? " pa-invalid" : "")} type="date" dir="ltr" value={form.from} onChange={set("from")}/>
           </div>
           <div className="pa-filter">
-            <label className="label" htmlFor={ids.to}>إلى تاريخ</label>
+            <label className="label" htmlFor={ids.to}>{tt("إلى تاريخ")}</label>
             <input id={ids.to} className={"input" + (err ? " pa-invalid" : "")} type="date" dir="ltr" value={form.to} onChange={set("to")}/>
           </div>
           <div className="pa-filter row gap-2" style={{ alignSelf: "flex-end" }}>
-            <Btn kind="primary" type="submit"><I.Filter size={14}/> تطبيق</Btn>
-            {filtered && <Btn kind="ghost" onClick={clear}>مسح</Btn>}
+            <Btn kind="primary" type="submit"><I.Filter size={14}/> {tt("تطبيق")}</Btn>
+            {filtered && <Btn kind="ghost" onClick={clear}>{tt("مسح")}</Btn>}
           </div>
           {err && <div className="pa-field-error" role="alert" style={{ flexBasis: "100%" }}>{err}</div>}
         </form>
         {res.error ? <div style={{ padding: 16 }}><ErrorBox error={res.error} onRetry={res.reload}/></div> : (
           <AuditTable rows={res.data ? res.data.data : null} loading={res.loading && !res.data} showOrg={!fixedOrgId}
-            onEmpty={filtered ? "لا توجد عمليات مطابقة للتصفية." : "لا توجد عمليات مسجلة."}/>
+            onEmpty={filtered ? tt("لا توجد عمليات مطابقة للتصفية.") : tt("لا توجد عمليات مسجلة.")}/>
         )}
         {res.data && <Pager offset={offset} limit={AUDIT_PAGE} count={res.data.count} loading={res.loading}
           onPage={(p) => setQuery({ ...query, page: String(p) })}/>}
@@ -2265,8 +2278,10 @@
       <>
         <div className="page-head">
           <div>
-            <h1 className="h1">سجل التدقيق</h1>
-            <div className="muted" style={{ marginTop: 4 }}>كل عمليات المنصة والعيادات، الأحدث أولًا. في «نوع العملية» يطابق <Ltr className="mono">organization.*</Ltr> كل العمليات التي تبدأ بـ <Ltr className="mono">organization.</Ltr></div>
+            <h1 className="h1">{tt("سجل التدقيق")}</h1>
+            <div className="muted" style={{ marginTop: 4 }}>{ttx("كل عمليات المنصة والعيادات، الأحدث أولًا. في «نوع العملية» يطابق {pattern} كل العمليات التي تبدأ بـ {prefix}", {
+              pattern: <Ltr className="mono">organization.*</Ltr>, prefix: <Ltr className="mono">organization.</Ltr>,
+            })}</div>
           </div>
         </div>
         <AuditView query={query} setQuery={setQuery}/>
@@ -2284,15 +2299,15 @@
           <I.Logo size={36} aria-hidden="true"/>
           <div>
             <div style={{ fontWeight: 700, fontSize: 19, color: "#0F1E2B" }}>ClinicSystem EG</div>
-            <div style={{ fontSize: 12, color: "#1E4A6E" }}>لوحة إدارة المنصة</div>
+            <div style={{ fontSize: 12, color: "#1E4A6E" }}>{tt("لوحة إدارة المنصة")}</div>
           </div>
         </div>
         <div className="auth-brand-extra" style={{ position: "relative", maxWidth: 420 }}>
           <div className="serif" style={{ fontSize: "clamp(28px, 4.5vw, 42px)", lineHeight: 1.15, color: "#0F1E2B", marginBottom: 14 }}>
-            عيادات كثيرة، <em>لوحة واحدة</em>.
+            {ttx("عيادات كثيرة، {em}.", { em: <em>{tt("لوحة واحدة")}</em> })}
           </div>
           <p style={{ fontSize: 14.5, color: "#1E4A6E", lineHeight: 1.7, margin: 0 }}>
-            أنشئ العيادات وفعّل ميزاتها، وحدّد خططها، وراجع سجل العمليات — لفريق المنصة فقط.
+            {tt("أنشئ العيادات وفعّل ميزاتها، وحدّد خططها، وراجع سجل العمليات — لفريق المنصة فقط.")}
           </p>
         </div>
         <div className="auth-brand-extra" style={{ position: "relative", fontSize: 12, color: "#1E4A6E" }}>© {new Date().getFullYear()} ClinicSystem EG</div>
@@ -2311,8 +2326,8 @@
     async function submit(e) {
       e.preventDefault();
       const e2 = {};
-      if (!EMAIL_RE.test(email.trim())) e2.email = "أدخل بريدًا إلكترونيًا صالحًا";
-      if (!pw) e2.pw = "أدخل كلمة المرور";
+      if (!EMAIL_RE.test(email.trim())) e2.email = tt("أدخل بريدًا إلكترونيًا صالحًا");
+      if (!pw) e2.pw = tt("أدخل كلمة المرور");
       setErr(e2);
       if (Object.keys(e2).length) return;
       setBusy(true);
@@ -2331,7 +2346,7 @@
       }
       setBusy(false);
       if (error) {
-        setErr({ form: error.status === 401 ? "بيانات الدخول غير صحيحة" : errorText(error) });
+        setErr({ form: error.status === 401 ? tt("بيانات الدخول غير صحيحة") : errorText(error) });
         setPw("");
         return;
       }
@@ -2342,32 +2357,51 @@
         <BrandPanel/>
         <main className="pa-auth-form-wrap">
           <form className="pa-auth-form" onSubmit={submit} noValidate aria-labelledby="pa-login-title">
-            <div className="pa-chip-platform"><PI.Shield size={14}/> مديرو المنصة فقط</div>
-            <h1 className="h1" id="pa-login-title" style={{ fontSize: 28, margin: "10px 0 6px" }}>دخول لوحة المنصة</h1>
-            <div className="muted" style={{ marginBottom: 22 }}>سجّل الدخول بحساب مدير المنصة.</div>
+            <div className="pa-auth-top">
+              <div className="pa-chip-platform"><PI.Shield size={14}/> {tt("مديرو المنصة فقط")}</div>
+              <LangSwitch className="btn btn-ghost pa-lang"/>
+            </div>
+            <h1 className="h1" id="pa-login-title" style={{ fontSize: 28, margin: "10px 0 6px" }}>{tt("دخول لوحة المنصة")}</h1>
+            <div className="muted" style={{ marginBottom: 22 }}>{tt("سجّل الدخول بحساب مدير المنصة.")}</div>
             {notice && <div style={{ marginBottom: 14 }}><Alert kind="amber">{notice}</Alert></div>}
             {err.form && <div style={{ marginBottom: 14 }}><Alert kind="red">{err.form}</Alert></div>}
-            <Field id={emailId} label="البريد الإلكتروني" error={err.email}>
+            <Field id={emailId} label={tt("البريد الإلكتروني")} error={err.email}>
               <input {...describe(emailId, err.email)} type="email" dir="ltr" autoComplete="username" value={email}
                 onChange={(e) => { setEmail(e.target.value); if (err.email || err.form) setErr({}); }} style={{ height: 42 }}/>
             </Field>
-            <Field id={pwId} label="كلمة المرور" error={err.pw}>
+            <Field id={pwId} label={tt("كلمة المرور")} error={err.pw}>
               <div style={{ position: "relative" }}>
                 <input {...describe(pwId, err.pw)} type={show ? "text" : "password"} dir="ltr" autoComplete="current-password" value={pw}
                   onChange={(e) => { setPw(e.target.value); if (err.pw || err.form) setErr({}); }} style={{ height: 42, paddingInlineEnd: 40 }}/>
-                <button type="button" className="pa-eye" onClick={() => setShow(!show)} aria-label={show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} aria-pressed={show ? "true" : "false"}>
+                <button type="button" className="pa-eye" onClick={() => setShow(!show)} aria-label={show ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} aria-pressed={show ? "true" : "false"}>
                   <I.Eye size={15}/>
                 </button>
               </div>
             </Field>
             <label className="pa-check" style={{ marginTop: 4 }}>
-              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}/> أبقني مسجلًا لمدة 30 يومًا
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}/> {tt("أبقني مسجلًا لمدة 30 يومًا")}
             </label>
-            <Btn kind="primary" type="submit" busy={busy} className="pa-btn-block" style={{ marginTop: 18 }}>تسجيل الدخول</Btn>
+            <Btn kind="primary" type="submit" busy={busy} className="pa-btn-block" style={{ marginTop: 18 }}>{tt("تسجيل الدخول")}</Btn>
           </form>
         </main>
       </div>
     );
+  }
+
+  // true under the phone breakpoint (docs/04: 768px), e.g. for the compact
+  // language switch in the top bar.
+  function useNarrow() {
+    const q = "(max-width: 768px)";
+    const [narrow, setNarrow] = useState(() => !!(window.matchMedia && window.matchMedia(q).matches));
+    useEffect(() => {
+      if (!window.matchMedia) return undefined;
+      const m = window.matchMedia(q);
+      const on = () => setNarrow(m.matches);
+      on();
+      if (m.addEventListener) m.addEventListener("change", on); else m.addListener(on);
+      return () => { if (m.removeEventListener) m.removeEventListener("change", on); else m.removeListener(on); };
+    }, []);
+    return narrow;
   }
 
   function CenterCard({ icon, title, children, actions }) {
@@ -2390,6 +2424,7 @@
     const [loggingOut, setLoggingOut] = useState(false);
     const guardRef = useRef(null);
     const mainRef = useRef(null);
+    const narrow = useNarrow();
     const dirty = () => !!(guardRef.current && guardRef.current());
 
     useEffect(() => {
@@ -2429,15 +2464,15 @@
     useEffect(() => { window.scrollTo(0, 0); }, [r.name, r.id]);
     const section = { stats: "stats", clinics: "clinics", new: "clinics", clinic: "clinics", catalog: "catalog", plans: "plans", audit: "audit" }[r.name];
     const NAV = [
-      ["stats", "#/", "المؤشرات", <I.Dashboard size={16}/>],
-      ["clinics", "#/clinics", "العيادات", <PI.Building size={16}/>],
-      ["catalog", "#/catalog", "التخصصات والوحدات", <I.Layers size={16}/>],
-      ["plans", "#/plans", "الخطط", <I.CreditCard size={16}/>],
-      ["audit", "#/audit", "سجل التدقيق", <I.FileText size={16}/>],
+      ["stats", "#/", tt("المؤشرات"), <I.Dashboard size={16}/>],
+      ["clinics", "#/clinics", tt("العيادات"), <PI.Building size={16}/>],
+      ["catalog", "#/catalog", tt("التخصصات والوحدات"), <I.Layers size={16}/>],
+      ["plans", "#/plans", tt("الخطط"), <I.CreditCard size={16}/>],
+      ["audit", "#/audit", tt("سجل التدقيق"), <I.FileText size={16}/>],
     ];
     const titles = {
-      stats: "المؤشرات", clinics: "العيادات", new: "إنشاء عيادة", clinic: "تفاصيل العيادة",
-      catalog: "التخصصات والوحدات", plans: "الخطط", audit: "سجل التدقيق", notfound: "صفحة غير موجودة",
+      stats: tt("المؤشرات"), clinics: tt("العيادات"), new: tt("إنشاء عيادة"), clinic: tt("تفاصيل العيادة"),
+      catalog: tt("التخصصات والوحدات"), plans: tt("الخطط"), audit: tt("سجل التدقيق"), notfound: tt("صفحة غير موجودة"),
     };
     let page;
     switch (r.name) {
@@ -2448,7 +2483,7 @@
       case "catalog": page = <CatalogPage/>; break;
       case "plans": page = <PlansPage/>; break;
       case "audit": page = <AuditPage query={r.query}/>; break;
-      default: page = <div className="card"><Empty title="الصفحة غير موجودة" body="الرابط غير معروف في لوحة المنصة." action={<a className="btn btn-secondary" href="#/">المؤشرات</a>}/></div>;
+      default: page = <div className="card"><Empty title={tt("الصفحة غير موجودة")} body={tt("الرابط غير معروف في لوحة المنصة.")} action={<a className="btn btn-secondary" href="#/">{tt("المؤشرات")}</a>}/></div>;
     }
     async function logout() {
       setLoggingOut(true);
@@ -2458,18 +2493,18 @@
     const email = (user && user.email) || "";
     return (
       <div className="pa-root">
-        <a className="pa-skip" href="#pa-main" onClick={(e) => { e.preventDefault(); if (mainRef.current) mainRef.current.focus(); }}>تخطَّ إلى المحتوى</a>
+        <a className="pa-skip" href="#pa-main" onClick={(e) => { e.preventDefault(); if (mainRef.current) mainRef.current.focus(); }}>{tt("تخطَّ إلى المحتوى")}</a>
         <div className={"sidebar-backdrop" + (navOpen ? " open" : "")} onClick={() => setNavOpen(false)} aria-hidden="true"/>
-        <aside className={"sidebar pa-sidebar" + (navOpen ? " open" : "")} aria-label="قائمة المنصة">
+        <aside className={"sidebar pa-sidebar" + (navOpen ? " open" : "")} aria-label={tt("قائمة المنصة")}>
           <div className="pa-brand">
             <I.Logo size={30}/>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 14.5 }}>ClinicSystem EG</div>
-              <div className="muted" style={{ fontSize: 11.5 }}>لوحة إدارة المنصة</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>{tt("لوحة إدارة المنصة")}</div>
             </div>
           </div>
-          <div className="nav-section">الإدارة</div>
-          <nav aria-label="أقسام المنصة">
+          <div className="nav-section">{tt("الإدارة")}</div>
+          <nav aria-label={tt("أقسام المنصة")}>
             {NAV.map(([key, href, label, icon]) => (
               <a key={key} href={href} className={"nav-item" + (section === key ? " active" : "")} aria-current={section === key ? "page" : undefined}
                 onClick={() => setNavOpen(false)}>
@@ -2481,28 +2516,29 @@
           <div className="pa-userbox">
             <span className="av md" aria-hidden="true">{(email[0] || "?").toUpperCase()}</span>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 12.5 }}>{(user && user.name) || "مدير المنصة"}</div>
+              <div style={{ fontWeight: 600, fontSize: 12.5 }}>{(user && user.name) || tt("مدير المنصة")}</div>
               <div className="muted pa-ellipsis" style={{ fontSize: 11.5 }}><Ltr>{email}</Ltr></div>
             </div>
           </div>
         </aside>
         <div className="pa-main">
           <header className="topbar">
-            <button type="button" className="mobile-menu-btn" aria-label="القائمة" aria-expanded={navOpen ? "true" : "false"} onClick={() => setNavOpen(!navOpen)}>
+            <button type="button" className="mobile-menu-btn" aria-label={tt("القائمة")} aria-expanded={navOpen ? "true" : "false"} onClick={() => setNavOpen(!navOpen)}>
               <I.Menu size={18}/>
             </button>
             <div className="grow" style={{ minWidth: 0 }}>
-              <div className="crumb" style={{ marginBottom: 0 }}><PI.Shield size={12}/> لوحة المنصة</div>
+              <div className="crumb" style={{ marginBottom: 0 }}><PI.Shield size={12}/> {tt("لوحة المنصة")}</div>
               <div className="h2 pa-ellipsis">{titles[r.name]}</div>
             </div>
             <span className="pa-who muted"><Ltr>{email}</Ltr></span>
-            <Btn kind="secondary" busy={loggingOut} onClick={logout} aria-label="تسجيل الخروج"><I.Logout size={15}/><span className="pa-hide-sm">تسجيل الخروج</span></Btn>
+            <LangSwitch className="btn btn-ghost pa-lang" compact={narrow}/>
+            <Btn kind="secondary" busy={loggingOut} onClick={logout} aria-label={tt("تسجيل الخروج")}><I.Logout size={15}/><span className="pa-hide-sm">{tt("تسجيل الخروج")}</span></Btn>
           </header>
           <main className="page pa-page" id="pa-main" ref={mainRef} tabIndex={-1}>{page}</main>
         </div>
         {leaveTo && (
-          <ConfirmModal title="تجاهل التغييرات؟" kind="danger" confirmLabel="تجاهل والخروج"
-            body="لن تُنشأ أي عيادة، وستضيع البيانات التي أدخلتها في المعالج."
+          <ConfirmModal title={tt("تجاهل التغييرات؟")} kind="danger" confirmLabel={tt("تجاهل والخروج")}
+            body={tt("لن تُنشأ أي عيادة، وستضيع البيانات التي أدخلتها في المعالج.")}
             onClose={() => setLeaveTo(null)}
             onConfirm={() => {
               const target = leaveTo;
@@ -2522,7 +2558,7 @@
           <div key={t.id} className={"pa-toast pa-toast-" + t.kind} data-kind={t.kind}>
             <span className="pa-toast-dot" aria-hidden="true"/>
             <span className="grow">{t.msg}</span>
-            <button type="button" className="pa-toast-x" aria-label="إغلاق الإشعار" onClick={() => onDismiss(t.id)}><I.X size={12}/></button>
+            <button type="button" className="pa-toast-x" aria-label={tt("إغلاق الإشعار")} onClick={() => onDismiss(t.id)}><I.X size={12}/></button>
           </div>
         ))}
       </div>
@@ -2563,14 +2599,14 @@
     useEffect(() => { check(); }, [check]);
 
     useEffect(() => {
-      sessionHooks.lost = () => setAuth((a) => (a.state === "ready" ? { state: "anon", notice: "انتهت الجلسة — سجّل الدخول من جديد" } : a));
+      sessionHooks.lost = () => setAuth((a) => (a.state === "ready" ? { state: "anon", notice: tt("انتهت الجلسة — سجّل الدخول من جديد") } : a));
       sessionHooks.blocked = (code) => setAuth((a) => ({ state: code === "not_super_admin" ? "denied" : "blocked", user: a.user, code }));
       return () => { sessionHooks.lost = null; sessionHooks.blocked = null; };
     }, []);
 
     useEffect(() => {
       const prev = document.title;
-      document.title = "لوحة المنصة — ClinicSystem EG";
+      document.title = tt("لوحة المنصة — ClinicSystem EG");
       return () => { document.title = prev; };
     }, []);
 
@@ -2584,7 +2620,7 @@
         const r = await window.ClinicApi.request("POST", "/auth/logout");
         failed = !r.ok && r.status !== 401;
       }
-      if (failed) { toast("تعذّر تسجيل الخروج — تحقق من الاتصال", "error"); return false; }
+      if (failed) { toast(tt("تعذّر تسجيل الخروج — تحقق من الاتصال"), "error"); return false; }
       apiCache.clear();
       setAuth({ state: "anon" });
       return true;
@@ -2594,45 +2630,45 @@
     if (auth.state === "checking") {
       content = (
         <div className="pa-center" aria-busy="true">
-          <div className="row gap-2 muted" role="status"><Spinner/> جارٍ التحقق من الجلسة…</div>
+          <div className="row gap-2 muted" role="status"><Spinner/> {tt("جارٍ التحقق من الجلسة…")}</div>
         </div>
       );
     } else if (auth.state === "anon") {
       content = <LoginScreen notice={auth.notice} onSignedIn={(s) => {
         setAuth(s.is_super_admin ? { state: "ready", user: s.user } : { state: "denied", user: s.user });
-        if (s.is_super_admin) toast("مرحبًا بك في لوحة المنصة");
+        if (s.is_super_admin) toast(tt("مرحبًا بك في لوحة المنصة"));
       }}/>;
     } else if (auth.state === "denied") {
       content = (
-        <CenterCard icon={<I.Lock size={24}/>} title="ليست لديك صلاحية لوحة المنصة"
+        <CenterCard icon={<I.Lock size={24}/>} title={tt("ليست لديك صلاحية لوحة المنصة")}
           actions={<>
             <LogoutButton onLogout={logout}/>
-            <a className="btn btn-secondary" href="/">الموقع الرئيسي</a>
+            <a className="btn btn-secondary" href="/">{tt("الموقع الرئيسي")}</a>
           </>}>
-          <span data-not-authorized="">أنت مسجّل الدخول بالحساب <Ltr className="mono">{(auth.user && auth.user.email) || ""}</Ltr>، وهذا الحساب ليس من مديري المنصة. سجّل الخروج ثم ادخل بحساب مدير المنصة.</span>
+          <span data-not-authorized="">{ttx("أنت مسجّل الدخول بالحساب {email}، وهذا الحساب ليس من مديري المنصة. سجّل الخروج ثم ادخل بحساب مدير المنصة.", { email: <Ltr className="mono">{(auth.user && auth.user.email) || ""}</Ltr> })}</span>
         </CenterCard>
       );
     } else if (auth.state === "blocked") {
       content = (
-        <CenterCard icon={<PI.Shield size={24}/>} title="افتح لوحة المنصة من عنوانها"
+        <CenterCard icon={<PI.Shield size={24}/>} title={tt("افتح لوحة المنصة من عنوانها")}
           actions={<LogoutButton onLogout={logout}/>}>
-          تعمل لوحة المنصة من العنوان <Ltr className="mono">admin.{baseDomain()}</Ltr> فقط.
+          {ttx("تعمل لوحة المنصة من العنوان {host} فقط.", { host: <Ltr className="mono">admin.{baseDomain()}</Ltr> })}
         </CenterCard>
       );
     } else if (auth.state === "error") {
       content = (
-        <CenterCard icon={<PI.Alert size={24}/>} title="تعذّر التحقق من الجلسة"
-          actions={<Btn kind="primary" onClick={check}><PI.Refresh size={14}/> إعادة المحاولة</Btn>}>
+        <CenterCard icon={<PI.Alert size={24}/>} title={tt("تعذّر التحقق من الجلسة")}
+          actions={<Btn kind="primary" onClick={check}><PI.Refresh size={14}/> {tt("إعادة المحاولة")}</Btn>}>
           {auth.error && (auth.error.status === 0 || auth.error.status === 429)
             ? errorText(auth.error)
-            : "تعذّر الوصول إلى خادم المنصة — حاول مرة أخرى بعد قليل."}
+            : tt("تعذّر الوصول إلى خادم المنصة — حاول مرة أخرى بعد قليل.")}
         </CenterCard>
       );
     } else {
       content = <Shell user={auth.user} onLogout={logout}/>;
     }
     return (
-      <div className="pa-app" data-platform-app="" data-auth={auth.state} dir="rtl" lang="ar">
+      <div className="pa-app" data-platform-app="" data-auth={auth.state} dir={IS_RTL ? "rtl" : "ltr"} lang={LANG}>
         <style>{PLATFORM_CSS}</style>
         {content}
         <Toasts items={toasts} onDismiss={(id) => setToasts((l) => l.filter((t) => t.id !== id))}/>
@@ -2642,7 +2678,7 @@
 
   function LogoutButton({ onLogout }) {
     const [busy, setBusy] = useState(false);
-    return <Btn kind="primary" busy={busy} onClick={async () => { setBusy(true); const ok = await onLogout(); if (!ok) setBusy(false); }}><I.Logout size={15}/> تسجيل الخروج</Btn>;
+    return <Btn kind="primary" busy={busy} onClick={async () => { setBusy(true); const ok = await onLogout(); if (!ok) setBusy(false); }}><I.Logout size={15}/> {tt("تسجيل الخروج")}</Btn>;
   }
 
   // Panel styles: index.html tokens and classes (.btn, .card, .tbl, .badge,

@@ -65,7 +65,7 @@ function HistoricalImportPage() {
     if (!incoming.length) return;
     const valid = [], bad = [];
     for (const f of incoming) (isSupported(f) ? valid : bad).push(f);
-    if (bad.length && window.showToast) window.showToast(`نوع غير مدعوم: ${bad.map(b => b.name || b).join("، ")}`, "error");
+    if (bad.length && window.showToast) window.showToast(tt("نوع غير مدعوم: {files}", { files: bad.map(b => b.name || b).join(IS_RTL ? "، " : ", ") }), "error");
     if (valid.length) setFiles(prev => [
       ...prev,
       ...valid.map(f => ({ id: Math.random().toString(36).slice(2), file: f, progress: 0, status: "pending" })),
@@ -80,8 +80,8 @@ function HistoricalImportPage() {
   // ── Save ──────────────────────────────────────────────────────
   function validate() {
     const e = {};
-    if (!form.name.trim()) e.name = "الاسم مطلوب";
-    if (!form.phone.trim()) e.phone = "رقم الهاتف مطلوب";
+    if (!form.name.trim()) e.name = tt("الاسم مطلوب");
+    if (!form.phone.trim()) e.phone = tt("رقم الهاتف مطلوب");
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -106,7 +106,7 @@ function HistoricalImportPage() {
   async function save() {
     if (saving) return;
     if (!validate()) {
-      if (window.showToast) window.showToast("أكمل الحقول المطلوبة", "error");
+      if (window.showToast) window.showToast(tt("أكمل الحقول المطلوبة"), "error");
       const firstBad = !form.name.trim() ? nameRef.current
         : (formRef.current && formRef.current.querySelector('[name="phone"]'));
       firstBad && firstBad.focus();
@@ -124,12 +124,12 @@ function HistoricalImportPage() {
     const sb = window.SB;
     if (!sb) {
       console.error("[import] save aborted — Supabase client not configured");
-      if (window.showToast) window.showToast("لم يتم تكوين قاعدة البيانات", "error");
+      if (window.showToast) window.showToast(tt("لم يتم تكوين قاعدة البيانات"), "error");
       return;
     }
     const auth = window.getAuthStaff
       ? await window.getAuthStaff()
-      : { ok: false, reason: "no-database", error: "getAuthStaff غير متاح" };
+      : { ok: false, reason: "no-database", error: tt("getAuthStaff غير متاح") };
     console.info("[import] verified auth state before insert", {
       ok:      auth.ok,
       reason:  auth.reason || null,
@@ -139,11 +139,11 @@ function HistoricalImportPage() {
     });
     if (!auth.ok) {
       if (auth.reason === "no-session" || auth.reason === "invalid-session") {
-        if (window.showToast) window.showToast("انتهت الجلسة — سجّل الدخول من جديد", "error");
+        if (window.showToast) window.showToast(tt("انتهت الجلسة — سجّل الدخول من جديد"), "error");
         // Kick back to the login screen instead of letting a dead session linger.
         setTimeout(() => window.location.reload(), 1200);
       } else {
-        if (window.showToast) window.showToast(auth.error || "تعذّر التحقق من الصلاحيات", "error");
+        if (window.showToast) window.showToast(auth.error || tt("تعذّر التحقق من الصلاحيات"), "error");
       }
       return;
     }
@@ -154,7 +154,7 @@ function HistoricalImportPage() {
       const existing = ((window.DATA && window.DATA.patients) || []).find(
         p => normalizePhone(p.phone) === phoneKey
       );
-      if (existing && !window.confirm(`يوجد مريض بنفس رقم الهاتف: ${existing.name}. متابعة إضافة سجل جديد؟`)) {
+      if (existing && !window.confirm(tt("يوجد مريض بنفس رقم الهاتف: {name}. متابعة إضافة سجل جديد؟", { name: existing.name }))) {
         return;
       }
     }
@@ -199,12 +199,12 @@ function HistoricalImportPage() {
       if (!res || res._ok === false) {
         // Surface the EXACT PostgreSQL/RLS error and the operation that
         // failed — never a fake success.
-        const msg = (res && res._error) || "تعذّر حفظ المريض في قاعدة البيانات";
+        const msg = (res && res._error) || tt("تعذّر حفظ المريض في قاعدة البيانات");
         console.error("[import] patient insert rejected by Postgres", {
           operation: "UPSERT patients (INSERT ON CONFLICT UPDATE)",
           error: msg, payload: row,
         });
-        if (window.showToast) window.showToast(`فشل INSERT في جدول patients — ${msg}`, "error");
+        if (window.showToast) window.showToast(tt("فشل INSERT في جدول patients — {msg}", { msg }), "error");
         return;
       }
 
@@ -221,7 +221,7 @@ function HistoricalImportPage() {
         });
         if (!found) {
           console.error("[import] patient saved but not readable back from Postgres — likely RLS SELECT policy");
-          if (window.showToast) window.showToast("تم الإرسال لكن السجل غير مرئي — تحقق من صلاحيات RLS", "error");
+          if (window.showToast) window.showToast(tt("تم الإرسال لكن السجل غير مرئي — تحقق من صلاحيات RLS"), "error");
           return;
         }
       } catch (e) {
@@ -241,21 +241,21 @@ function HistoricalImportPage() {
             uploaded++;
             setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: "done", progress: 100 } : x));
           } else {
-            const fErr = (res && res.error) || "سبب غير معروف";
+            const fErr = (res && res.error) || tt("سبب غير معروف");
             console.error("[import] file upload rejected", { file: item.file.name, error: fErr });
-            if (window.showToast) window.showToast(`فشل رفع ${item.file.name} — ${fErr}`, "error");
+            if (window.showToast) window.showToast(tt("فشل رفع {file} — {error}", { file: item.file.name, error: fErr }), "error");
             setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: "error", error: fErr } : x));
           }
         } catch (err) {
           console.error("[import] file upload threw", { file: item.file.name, error: err });
-          if (window.showToast) window.showToast(`فشل رفع ${item.file.name} — ${err.message || err}`, "error");
+          if (window.showToast) window.showToast(tt("فشل رفع {file} — {error}", { file: item.file.name, error: err.message || err }), "error");
           setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: "error" } : x));
         }
       }
 
       setCount(n => n + 1);
       setLast({ name: row.name, pid, files: uploaded });
-      if (window.showToast) window.showToast(`تم حفظ ${row.name} · ${pid}${uploaded ? ` · ${uploaded} ملف` : ""}`, "success");
+      if (window.showToast) window.showToast(tt("تم حفظ {name} · {pid}", { name: row.name, pid }) + (uploaded ? " · " + tt("{n} ملف", { n: uploaded }) : ""), "success");
 
       // Reset for the next record — keep therapist, date and status to save keystrokes.
       setForm({ ...blankForm(), assigned: form.assigned, registered: form.registered, status: form.status });
@@ -300,78 +300,80 @@ function HistoricalImportPage() {
         <I.Logo size={26} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 }}>
-            إدخال المرضى التاريخي
-            <span className="badge b-amber" style={{ fontSize: 10 }}>مؤقّت</span>
+            {tt("إدخال المرضى التاريخي")}
+            <span className="badge b-amber" style={{ fontSize: 10 }}>{tt("مؤقّت")}</span>
           </div>
-          <div className="muted" style={{ fontSize: 11.5 }}>إدخال سريع للسجلات الورقية · Enter للحفظ · Esc للمسح</div>
+          <div className="muted" style={{ fontSize: 11.5 }}>{tt("إدخال سريع للسجلات الورقية · Enter للحفظ · Esc للمسح")}</div>
         </div>
         <div style={{ flex: 1 }} />
-        <span className="badge b-green" title="عدد السجلات المُدخلة في هذه الجلسة">
-          <span className="dot"></span> تم إدخال <span className="mono" style={{ margin: "0 4px" }}>{count}</span> مريض
+        <span className="badge b-green" title={tt("عدد السجلات المُدخلة في هذه الجلسة")}>
+          <span className="dot"></span> {ttx("تم إدخال {n} مريض", { n: <span className="mono" style={{ margin: "0 4px" }}>{count}</span> })}
         </span>
-        <button className="btn btn-secondary" onClick={exitImport}><I.ArrowLeft size={13} /> عودة للتطبيق</button>
+        <LangSwitch className="btn btn-ghost" />
+        {/* In Arabic the stylesheet mirrors this arrow inside .btn (index.html). */}
+        <button className="btn btn-secondary" onClick={exitImport}><I.ArrowLeft size={13} /> {tt("عودة للتطبيق")}</button>
       </header>
 
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "18px clamp(12px,3vw,24px) 120px" }}>
         {last && (
           <div className="card" style={{ padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, background: "var(--green-bg)", border: "1px solid #BCE0D1" }}>
             <I.Check size={15} style={{ color: "var(--green)" }} />
-            <span style={{ fontSize: 13 }}>آخر حفظ: <strong>{last.name}</strong> <span className="mono muted">({last.pid})</span>{last.files ? ` · ${last.files} ملف` : ""}</span>
+            <span style={{ fontSize: 13 }}>{ttx("آخر حفظ: {name} {pid}", { name: <strong>{last.name}</strong>, pid: <span className="mono muted">({last.pid})</span> })}{last.files ? " · " + tt("{n} ملف", { n: last.files }) : ""}</span>
           </div>
         )}
 
         <div ref={formRef} className="card card-pad">
           <div className="rgrid c-sm" style={{ "--gtc": "1fr 1fr", gap: 14 }}>
-            <Field label="اسم المريض" required span={2}>
+            <Field label={tt("اسم المريض")} required span={2}>
               <input ref={nameRef} name="name" className="input" style={errors.name ? errStyle : null}
-                placeholder="مثال: هناء مصطفى" value={form.name} onChange={e => set("name", e.target.value)} autoComplete="off" />
+                placeholder={tt("مثال: هناء مصطفى")} value={form.name} onChange={e => set("name", e.target.value)} autoComplete="off" />
               {errors.name && <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 4 }}>{errors.name}</div>}
             </Field>
 
-            <Field label="رقم الهاتف" required>
+            <Field label={tt("رقم الهاتف")} required>
               <input name="phone" className="input" style={errors.phone ? errStyle : null}
                 placeholder="+20 1XX XXX XXXX" value={form.phone} onChange={e => set("phone", e.target.value)} autoComplete="off" inputMode="tel" />
               {errors.phone && <div style={{ color: "var(--red)", fontSize: 11.5, marginTop: 4 }}>{errors.phone}</div>}
             </Field>
 
-            <Field label="الجنس">
+            <Field label={tt("الجنس")}>
               <div style={{ display: "flex", gap: 6 }}>
                 {[["F", "أنثى"], ["M", "ذكر"]].map(([v, l]) => (
                   <button key={v} type="button" className={"btn " + (form.gender === v ? "btn-primary" : "btn-secondary")}
-                    style={{ flex: 1, justifyContent: "center" }} onClick={() => set("gender", v)}>{l}</button>
+                    style={{ flex: 1, justifyContent: "center" }} onClick={() => set("gender", v)}>{tt(l)}</button>
                 ))}
               </div>
             </Field>
 
-            <Field label="العمر">
+            <Field label={tt("العمر")}>
               <input name="age" className="input" type="number" min="0" max="120" placeholder="34"
                 value={form.age} onChange={e => set("age", e.target.value)} />
             </Field>
-            <Field label="تاريخ الميلاد (اختياري)">
+            <Field label={tt("تاريخ الميلاد (اختياري)")}>
               <input name="dob" className="input" type="date" value={form.dob} onChange={e => set("dob", e.target.value)} />
             </Field>
 
-            <Field label="العنوان" span={2}>
-              <input name="address" className="input" placeholder="الشارع، الحي، المدينة"
+            <Field label={tt("العنوان")} span={2}>
+              <input name="address" className="input" placeholder={tt("الشارع، الحي، المدينة")}
                 value={form.address} onChange={e => set("address", e.target.value)} autoComplete="off" />
             </Field>
 
-            <Field label="التشخيص / نوع الحالة" span={2}>
+            <Field label={tt("التشخيص / نوع الحالة")} span={2}>
               <window.DiagnosisAutocomplete name="diagnosis" placeholder="e.g. L4–L5 disc herniation"
                 value={form.diagnosis} onChange={e => set("diagnosis", e.target.value)} />
             </Field>
 
-            <Field label="الطبيب / الأخصائي المسؤول">
-              <input name="assigned" className="input" list="import-team" placeholder="اكتب أو اختر"
+            <Field label={tt("الطبيب / الأخصائي المسؤول")}>
+              <input name="assigned" className="input" list="import-team" placeholder={tt("اكتب أو اختر")}
                 value={form.assigned} onChange={e => set("assigned", e.target.value)} autoComplete="off" />
               <datalist id="import-team">{teamOptions.map(t => <option key={t} value={t} />)}</datalist>
             </Field>
 
-            <Field label="تاريخ التسجيل">
+            <Field label={tt("تاريخ التسجيل")}>
               <input name="registered" className="input" type="date" value={form.registered} onChange={e => set("registered", e.target.value)} />
             </Field>
 
-            <Field label="حالة العلاج الحالية" span={2}>
+            <Field label={tt("حالة العلاج الحالية")} span={2}>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {["نشط", "غير نشط", "مكتمل", "متوقف"].map(s => (
                   <button key={s} type="button" className="btn btn-secondary"
@@ -380,19 +382,19 @@ function HistoricalImportPage() {
                       borderColor: form.status === s ? "var(--blue-500)" : "var(--ink-200)",
                       color: form.status === s ? "var(--blue-900)" : "var(--ink-700)",
                     }}
-                    onClick={() => set("status", s)}>{s}</button>
+                    onClick={() => set("status", s)}>{tt(s)}</button>
                 ))}
               </div>
             </Field>
 
-            <Field label="ملاحظات" span={2}>
+            <Field label={tt("ملاحظات")} span={2}>
               <textarea name="notes" className="input" style={{ height: 64, padding: 10, resize: "vertical" }}
-                placeholder="ملاحظات من السجل الورقي (اختياري)" value={form.notes} onChange={e => set("notes", e.target.value)} />
+                placeholder={tt("ملاحظات من السجل الورقي (اختياري)")} value={form.notes} onChange={e => set("notes", e.target.value)} />
             </Field>
           </div>
 
           {/* ── Document upload ──────────────────────────────────── */}
-          <div className="label" style={{ marginTop: 16 }}>المستندات (أشعة، رنين، تقارير، تحاليل، صور، PDF…)</div>
+          <div className="label" style={{ marginTop: 16 }}>{tt("المستندات (أشعة، رنين، تقارير، تحاليل، صور، PDF…)")}</div>
           <div
             onClick={() => fileInputRef.current && fileInputRef.current.click()}
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -408,13 +410,13 @@ function HistoricalImportPage() {
               <I.Upload size={18} />
             </div>
             <div style={{ flex: 1, minWidth: 180 }}>
-              <div style={{ fontWeight: 500, fontSize: 13.5 }}>أفلت الملفات هنا أو اضغط للاختيار</div>
-              <div className="muted" style={{ fontSize: 11.5 }}>متعدد · صور، PDF، DICOM، مستندات · يُرفع بعد حفظ المريض</div>
+              <div style={{ fontWeight: 500, fontSize: 13.5 }}>{tt("أفلت الملفات هنا أو اضغط للاختيار")}</div>
+              <div className="muted" style={{ fontSize: 11.5 }}>{tt("متعدد · صور، PDF، DICOM، مستندات · يُرفع بعد حفظ المريض")}</div>
             </div>
             <input ref={fileInputRef} type="file" multiple style={{ display: "none" }}
               accept="image/*,application/pdf,.pdf,.doc,.docx,.dcm,.xls,.xlsx,.txt"
               onChange={e => { addFiles(e.target.files); e.target.value = ""; }} />
-            <button type="button" className="btn btn-secondary" onClick={e => { e.stopPropagation(); fileInputRef.current && fileInputRef.current.click(); }}>تصفّح</button>
+            <button type="button" className="btn btn-secondary" onClick={e => { e.stopPropagation(); fileInputRef.current && fileInputRef.current.click(); }}>{tt("تصفّح")}</button>
           </div>
 
           {files.length > 0 && (
@@ -433,11 +435,11 @@ function HistoricalImportPage() {
                       </div>
                     )}
                   </div>
-                  {item.status === "done" && <span className="badge b-green" style={{ fontSize: 10 }}><I.Check size={10} /> تم</span>}
-                  {item.status === "error" && <span className="badge b-red" style={{ fontSize: 10 }}>فشل</span>}
+                  {item.status === "done" && <span className="badge b-green" style={{ fontSize: 10 }}><I.Check size={10} /> {tt("تم")}</span>}
+                  {item.status === "error" && <span className="badge b-red" style={{ fontSize: 10 }}>{tt("فشل")}</span>}
                   {item.status === "uploading" && <span className="badge b-blue" style={{ fontSize: 10 }}>{item.progress}%</span>}
                   {(item.status === "pending") && (
-                    <button type="button" className="btn btn-ghost btn-icon" title="إزالة" onClick={() => removeStaged(item.id)}><I.X size={13} /></button>
+                    <button type="button" className="btn btn-ghost btn-icon" title={tt("إزالة")} aria-label={tt("إزالة")} onClick={() => removeStaged(item.id)}><I.X size={13} /></button>
                   )}
                 </div>
               ))}
@@ -448,17 +450,17 @@ function HistoricalImportPage() {
 
       {/* ── Sticky action bar ───────────────────────────────────── */}
       <div style={{
-        position: "fixed", bottom: 0, left: 0, right: 0, background: "#fff",
+        position: "fixed", bottom: 0, insetInlineStart: 0, insetInlineEnd: 0, background: "#fff",
         borderTop: "1px solid var(--ink-200)", boxShadow: "0 -2px 14px rgba(15,30,43,.05)",
         padding: "10px clamp(12px,3vw,24px)", display: "flex", alignItems: "center", gap: 12, zIndex: 20
       }}>
         <div className="muted" style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
-          <span className="mono">Enter</span> حفظ ومتابعة · <span className="mono">Esc</span> مسح · {files.length} ملف بالانتظار
+          {ttx("{enter} حفظ ومتابعة · {esc} مسح · {n} ملف بالانتظار", { enter: <span className="mono">Enter</span>, esc: <span className="mono">Esc</span>, n: files.length })}
         </div>
-        <button type="button" className="btn btn-ghost" onClick={() => { setForm(blankForm()); setFiles([]); setErrors({}); nameRef.current && nameRef.current.focus(); }}>مسح</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { setForm(blankForm()); setFiles([]); setErrors({}); nameRef.current && nameRef.current.focus(); }}>{tt("مسح")}</button>
         <button type="button" className="btn btn-blue" disabled={saving} onClick={save} style={{ minWidth: 160, justifyContent: "center" }}>
           {saving ? <span className="spin" style={{ width: 14, height: 14, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%" }} /> : <I.Check size={14} />}
-          {saving ? "جارٍ الحفظ…" : "حفظ ومتابعة"}
+          {saving ? tt("جارٍ الحفظ…") : tt("حفظ ومتابعة")}
         </button>
       </div>
     </div>
@@ -482,7 +484,7 @@ function ImportAuthGate() {
   const runCheck = React.useCallback(async () => {
     setGate({ phase: "checking" });
     if (!window.getAuthStaff) {
-      setGate({ phase: "error", error: "طبقة المصادقة غير محمّلة" });
+      setGate({ phase: "error", error: tt("طبقة المصادقة غير محمّلة") });
       return;
     }
     const res = await window.getAuthStaff();
@@ -526,7 +528,7 @@ function ImportAuthGate() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--ink-50)", gap: 10 }}>
         <span className="spin" style={{ width: 18, height: 18, border: "2px solid var(--blue-500)", borderTopColor: "transparent", borderRadius: "50%" }} />
-        <span className="muted" style={{ fontSize: 13.5 }}>جارٍ التحقق من الجلسة والصلاحيات…</span>
+        <span className="muted" style={{ fontSize: 13.5 }}>{tt("جارٍ التحقق من الجلسة والصلاحيات…")}</span>
       </div>
     );
   }
@@ -542,16 +544,16 @@ function ImportAuthGate() {
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--ink-50)", padding: 24 }}>
         <div className="card card-pad" style={{ maxWidth: 460, textAlign: "center" }}>
           <div style={{ fontSize: 34, marginBottom: 10 }}>🔒</div>
-          <div className="h3" style={{ marginBottom: 6 }}>لا يمكن فتح صفحة الإدخال</div>
+          <div className="h3" style={{ marginBottom: 6 }}>{tt("لا يمكن فتح صفحة الإدخال")}</div>
           <div className="muted" style={{ fontSize: 13.5, marginBottom: 8 }}>
-            الصفحة متاحة لكل الموظفين (مدير، استقبال، طبيب، أخصائي) بعد التحقق من الدور في قاعدة البيانات.
+            {tt("الصفحة متاحة لكل الموظفين (مدير، استقبال، طبيب، أخصائي) بعد التحقق من الدور في قاعدة البيانات.")}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--red)", marginBottom: 16, direction: "rtl" }}>
-            {gate.error || "سبب غير معروف"}{gate.role ? ` — الدور الحالي: ${gate.role}` : ""}
+          <div style={{ fontSize: 12.5, color: "var(--red)", marginBottom: 16 }}>
+            {gate.error || tt("سبب غير معروف")}{gate.role ? " — " + tt("الدور الحالي: {role}", { role: gate.role }) : ""}
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <button className="btn btn-secondary" onClick={() => runCheck()}>إعادة المحاولة</button>
-            <button className="btn btn-blue" onClick={exitToApp}>عودة للتطبيق</button>
+            <button className="btn btn-secondary" onClick={() => runCheck()}>{tt("إعادة المحاولة")}</button>
+            <button className="btn btn-blue" onClick={exitToApp}>{tt("عودة للتطبيق")}</button>
           </div>
         </div>
       </div>

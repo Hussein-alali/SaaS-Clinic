@@ -33,10 +33,10 @@ function SettingsPage({ go }) {
   // «المستخدمون والأدوار» is C06 (module core.staff, docs/03).
   const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
   const items = [
-    { id:"clinic",    l:"بيانات العيادة",       ic:<I.MapPin size={14}/> },
-    { id:"branding",  l:"الهوية البصرية",       ic:<I.Image size={14}/> },
-    { id:"depts",     l:"الأقسام والفريق",       ic:<I.Stethoscope size={14}/> },
-    ...(staffOn ? [{ id:"users", l:"المستخدمون والأدوار", ic:<I.Users size={14}/> }] : []),
+    { id:"clinic",    l:tt("بيانات العيادة"),       ic:<I.MapPin size={14}/> },
+    { id:"branding",  l:tt("الهوية البصرية"),       ic:<I.Image size={14}/> },
+    { id:"depts",     l:tt("الأقسام والفريق"),       ic:<I.Stethoscope size={14}/> },
+    ...(staffOn ? [{ id:"users", l:tt("المستخدمون والأدوار"), ic:<I.Users size={14}/> }] : []),
   ];
 
   return (
@@ -61,7 +61,7 @@ function SettingsPage({ go }) {
           {tab==="users" && staffOn && <UsersPanel/>}
           {tab==="branding" && <BrandingPanel/>}
           {tab!=="clinic" && tab!=="users" && tab!=="branding" && tab!=="depts" && (
-            <EmptyState icon={<I.Settings size={22}/>} title="قريبًا" body={`The "${tab}" section is part من the next release. Reach out to support if you need something configured.`}/>
+            <EmptyState icon={<I.Settings size={22}/>} title={tt("قريبًا")} body={tt("القسم «{tab}» جزء من الإصدار القادم. تواصل مع الدعم إذا احتجت إلى إعداده.", { tab })}/>
           )}
         </div>
       </div>
@@ -76,9 +76,9 @@ function SettingsPage({ go }) {
 // department/doctor appears everywhere with no code change.
 const DEPT_ICONS = ["Stethoscope","Activity","Heart","Users","Sparkle","Layers","Bone","Brain"];
 const DOC_STATUS_OPTS = [
-  { v:"available", l:"متاح" }, { v:"busy", l:"مشغول" }, { v:"leave", l:"في إجازة" },
+  { v:"available", l:tt("متاح") }, { v:"busy", l:tt("مشغول") }, { v:"leave", l:tt("في إجازة") },
 ];
-const DOC_STATUS_AR = { available:"متاح", busy:"مشغول", leave:"في إجازة" };
+const DOC_STATUS_AR = { available:tt("متاح"), busy:tt("مشغول"), leave:tt("في إجازة") };
 const newId = (p) => newRecordId(p);
 
 // ── useRoster: shared search + pagination for staff tables ─────
@@ -120,7 +120,7 @@ function RosterPager({ page, pages, total, onPage }) {
   if (total === 0) return null;
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:8,flexWrap:"wrap"}}>
-      <div className="muted" style={{fontSize:12}}>الإجمالي <span className="mono">{total}</span> · صفحة <span className="mono">{page}</span> من <span className="mono">{pages}</span></div>
+      <div className="muted" style={{fontSize:12}}>{ttx("الإجمالي {total} · صفحة {page} من {pages}", { total: <span className="mono">{total}</span>, page: <span className="mono">{page}</span>, pages: <span className="mono">{pages}</span> })}</div>
       <div style={{display:"flex",gap:4}}>
         <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page<=1} onClick={()=>onPage(page-1)}>السابق</button>
         <button className="btn btn-secondary" style={{fontSize:12,padding:"4px 10px"}} disabled={page>=pages} onClick={()=>onPage(page+1)}>التالي</button>
@@ -167,25 +167,26 @@ function DeptDoctorsPanel() {
 
   async function removeDept(d) {
     if (doctors.some(x=>x.department_id===d.id) || specialists.some(x=>x.department_id===d.id)) {
-      window.showToast && window.showToast("أزل أعضاء القسم أولاً","error"); return;
+      window.showToast && window.showToast(tt("أزل أعضاء القسم أولاً"),"error"); return;
     }
-    if (!window.confirm(`حذف قسم «${d.name_ar}»؟`)) return;
-    try { await window.KineticData.remove("departments", d.id); window.showToast && window.showToast("تم حذف القسم","success"); }
-    catch(e){ console.error(e); window.showToast && window.showToast(e.message || "تعذّر الحذف","error"); }
+    if (!window.confirm(tt("حذف قسم «{name}»؟", { name: d.name_ar }))) return;
+    try { await window.KineticData.remove("departments", d.id); window.showToast && window.showToast(tt("تم حذف القسم"),"success"); }
+    catch(e){ console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر الحذف"),"error"); }
   }
-  async function removeRow(table, row, label) {
-    if (!window.confirm(`حذف ${label} «${row.name}»؟`)) return;
-    try { await window.KineticData.remove(table, row.id); window.showToast && window.showToast(`تم حذف ${label}`,"success"); }
-    catch(e){ console.error(e); window.showToast && window.showToast(e.message || "تعذّر الحذف","error"); }
+  // `ask` / `done`: the whole sentences («حذف الطبيب «…»؟», «تم حذف الطبيب»).
+  async function removeRow(table, row, ask, done) {
+    if (!window.confirm(ask)) return;
+    try { await window.KineticData.remove(table, row.id); window.showToast && window.showToast(done,"success"); }
+    catch(e){ console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر الحذف"),"error"); }
   }
   async function toggleActive(table, row) {
     const next = row.active === false;
     try {
       const res = await window.KineticData.upsert(table, { ...row, active: next });
-      if (res && res._ok === false) throw new Error(res._error || "تعذّر التحديث");
-      window.showToast && window.showToast(next ? "تم التفعيل" : "تم الإيقاف", "success");
+      if (res && res._ok === false) throw new Error(res._error || tt("تعذّر التحديث"));
+      window.showToast && window.showToast(next ? tt("تم التفعيل") : tt("تم الإيقاف"), "success");
     }
-    catch(e){ console.error(e); window.showToast && window.showToast(e.message || "تعذّر التحديث","error"); }
+    catch(e){ console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر التحديث"),"error"); }
   }
 
   return (
@@ -196,7 +197,7 @@ function DeptDoctorsPanel() {
         search="" setSearch={()=>{}}
         onAdd={()=>setDeptModal({})} addLabel="إضافة قسم"/>
       <div className="tbl-scroll" style={{marginBottom:26}}>
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>القسم</th><th>بالإنجليزية</th><th>الأطباء</th><th>الأخصائيون</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {depts.length===0 && <tr><td colSpan={6}><EmptyState icon={<I.Layers size={22}/>} title="لا أقسام بعد" body="أضف أول قسم من زر «إضافة قسم»."/></td></tr>}
@@ -211,17 +212,17 @@ function DeptDoctorsPanel() {
                 <td className="mono">{countSpecs(d.id)}</td>
                 <td>
                   <button className={"badge " + (d.active!==false?"b-green":"b-grey")} style={{cursor:"pointer",border:"none"}} onClick={()=>toggleActive("departments", d)}>
-                    <span className="dot"></span>{d.active!==false?"نشط":"موقوف"}
+                    <span className="dot"></span>{d.active!==false?tt("نشط"):tt("موقوف")}
                   </button>
                 </td>
                 <td><RowMenu size={13} items={[
-                  { label:"تعديل", icon:<I.Edit size={13}/>, onClick:()=>setDeptModal(d) },
-                  { label:"حذف", icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeDept(d) },
+                  { label:tt("تعديل"), icon:<I.Edit size={13}/>, onClick:()=>setDeptModal(d) },
+                  { label:tt("حذف"), icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeDept(d) },
                 ]}/></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
       </div>
 
       {/* ── Doctors ───────────────────────────────────────────── */}
@@ -230,10 +231,10 @@ function DeptDoctorsPanel() {
         search={doctorsRoster.search} setSearch={doctorsRoster.setSearch}
         onAdd={()=>setDocModal({})} addLabel="إضافة طبيب"/>
       <div className="tbl-scroll">
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>الطبيب</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>التوفر</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
-            {doctorsRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Stethoscope size={22}/>} title="لا أطباء" body={depts.length? "أضف أول طبيب من زر «إضافة طبيب».":"أضف قسمًا أولاً ثم أضف الأطباء."}/></td></tr>}
+            {doctorsRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Stethoscope size={22}/>} title="لا أطباء" body={depts.length? tt("أضف أول طبيب من زر «إضافة طبيب»."):tt("أضف قسمًا أولاً ثم أضف الأطباء.")}/></td></tr>}
             {doctorsRoster.view.map(d=>(
               <tr key={d.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -247,18 +248,18 @@ function DeptDoctorsPanel() {
                 <td><span className={"badge " + (d.status==="available"?"b-green":d.status==="busy"?"b-amber":"b-grey")}><span className="dot"></span>{DOC_STATUS_AR[d.status]||d.status||"—"}</span></td>
                 <td>
                   <button className={"badge " + (d.active!==false?"b-green":"b-grey")} style={{cursor:"pointer",border:"none"}} onClick={()=>toggleActive("doctors", d)}>
-                    <span className="dot"></span>{d.active!==false?"مفعّل":"موقوف"}
+                    <span className="dot"></span>{d.active!==false?tt("مفعّل"):tt("موقوف")}
                   </button>
                 </td>
                 <td><RowMenu size={13} items={[
-                  { label:"تعديل", icon:<I.Edit size={13}/>, onClick:()=>setDocModal(d) },
-                  { label:d.active!==false?"إيقاف":"تفعيل", icon:d.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("doctors", d) },
-                  { label:"حذف", icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("doctors", d, "الطبيب") },
+                  { label:tt("تعديل"), icon:<I.Edit size={13}/>, onClick:()=>setDocModal(d) },
+                  { label:d.active!==false?tt("إيقاف"):tt("تفعيل"), icon:d.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("doctors", d) },
+                  { label:tt("حذف"), icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("doctors", d, tt("حذف الطبيب «{name}»؟", { name: d.name }), tt("تم حذف الطبيب")) },
                 ]}/></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
       </div>
       <RosterPager page={doctorsRoster.page} pages={doctorsRoster.pages} total={doctorsRoster.total} onPage={doctorsRoster.setPage}/>
 
@@ -269,10 +270,10 @@ function DeptDoctorsPanel() {
         search={specRoster.search} setSearch={specRoster.setSearch}
         onAdd={()=>setSpecModal({})} addLabel="إضافة أخصائي"/>
       <div className="tbl-scroll">
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>الأخصائي</th><th>القسم</th><th>التخصص</th><th>الهاتف</th><th>البريد</th><th>رقم الترخيص</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
-            {specRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Activity size={22}/>} title="لا أخصائيين" body={depts.length? "أضف أول أخصائي من زر «إضافة أخصائي».":"أضف قسمًا أولاً ثم أضف الأخصائيين."}/></td></tr>}
+            {specRoster.total===0 && <tr><td colSpan={8}><EmptyState icon={<I.Activity size={22}/>} title="لا أخصائيين" body={depts.length? tt("أضف أول أخصائي من زر «إضافة أخصائي»."):tt("أضف قسمًا أولاً ثم أضف الأخصائيين.")}/></td></tr>}
             {specRoster.view.map(s=>(
               <tr key={s.id}>
                 <td><div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -286,18 +287,18 @@ function DeptDoctorsPanel() {
                 <td className="mono" style={{fontSize:12}}>{s.license_number||"—"}</td>
                 <td>
                   <button className={"badge " + (s.active!==false?"b-green":"b-grey")} style={{cursor:"pointer",border:"none"}} onClick={()=>toggleActive("therapists", s)}>
-                    <span className="dot"></span>{s.active!==false?"مفعّل":"موقوف"}
+                    <span className="dot"></span>{s.active!==false?tt("مفعّل"):tt("موقوف")}
                   </button>
                 </td>
                 <td><RowMenu size={13} items={[
-                  { label:"تعديل", icon:<I.Edit size={13}/>, onClick:()=>setSpecModal(s) },
-                  { label:s.active!==false?"إيقاف":"تفعيل", icon:s.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("therapists", s) },
-                  { label:"حذف", icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("therapists", s, "الأخصائي") },
+                  { label:tt("تعديل"), icon:<I.Edit size={13}/>, onClick:()=>setSpecModal(s) },
+                  { label:s.active!==false?tt("إيقاف"):tt("تفعيل"), icon:s.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("therapists", s) },
+                  { label:tt("حذف"), icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("therapists", s, tt("حذف الأخصائي «{name}»؟", { name: s.name }), tt("تم حذف الأخصائي")) },
                 ]}/></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
       </div>
       <RosterPager page={specRoster.page} pages={specRoster.pages} total={specRoster.total} onPage={specRoster.setPage}/>
 
@@ -308,7 +309,7 @@ function DeptDoctorsPanel() {
         search={rcpRoster.search} setSearch={rcpRoster.setSearch}
         onAdd={()=>setRcpModal({})} addLabel="إضافة موظف استقبال"/>
       <div className="tbl-scroll">
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>الاسم</th><th>الهاتف</th><th>البريد</th><th>ملاحظات</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {rcpRoster.total===0 && <tr><td colSpan={6}><EmptyState icon={<I.Users size={22}/>} title="لا موظفي استقبال" body="أضف أول موظف من زر «إضافة موظف استقبال»."/></td></tr>}
@@ -323,18 +324,18 @@ function DeptDoctorsPanel() {
                 <td className="muted" style={{fontSize:12.5,maxWidth:220,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.notes||""}>{r.notes||"—"}</td>
                 <td>
                   <button className={"badge " + (r.active!==false?"b-green":"b-grey")} style={{cursor:"pointer",border:"none"}} onClick={()=>toggleActive("receptionists", r)}>
-                    <span className="dot"></span>{r.active!==false?"مفعّل":"موقوف"}
+                    <span className="dot"></span>{r.active!==false?tt("مفعّل"):tt("موقوف")}
                   </button>
                 </td>
                 <td><RowMenu size={13} items={[
-                  { label:"تعديل", icon:<I.Edit size={13}/>, onClick:()=>setRcpModal(r) },
-                  { label:r.active!==false?"إيقاف":"تفعيل", icon:r.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("receptionists", r) },
-                  { label:"حذف", icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("receptionists", r, "موظف الاستقبال") },
+                  { label:tt("تعديل"), icon:<I.Edit size={13}/>, onClick:()=>setRcpModal(r) },
+                  { label:r.active!==false?tt("إيقاف"):tt("تفعيل"), icon:r.active!==false?<I.Lock size={13}/>:<I.Check size={13}/>, onClick:()=>toggleActive("receptionists", r) },
+                  { label:tt("حذف"), icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeRow("receptionists", r, tt("حذف موظف الاستقبال «{name}»؟", { name: r.name }), tt("تم حذف موظف الاستقبال")) },
                 ]}/></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
       </div>
       <RosterPager page={rcpRoster.page} pages={rcpRoster.pages} total={rcpRoster.total} onPage={rcpRoster.setPage}/>
 
@@ -356,20 +357,20 @@ function DeptModal({ row, onClose }) {
   const [busy, setBusy] = React.useState(false);
   const set = (k,v)=>setF(s=>({...s,[k]:v}));
   async function save() {
-    if (!f.name_ar.trim()) return window.showToast && window.showToast("أدخل اسم القسم","error");
+    if (!f.name_ar.trim()) return window.showToast && window.showToast(tt("أدخل اسم القسم"),"error");
     setBusy(true);
     try {
       await window.KineticData.upsert("departments", {
         id: row.id || newId("D-"), ...f, name_ar: f.name_ar.trim(),
         sort_order: Number(f.sort_order)||0,
       });
-      window.showToast && window.showToast(isNew?"تمت إضافة القسم":"تم تحديث القسم","success");
+      window.showToast && window.showToast(isNew?tt("تمت إضافة القسم"):tt("تم تحديث القسم"),"success");
       onClose();
-    } catch(e){ console.warn(e); window.showToast && window.showToast("تعذّر الحفظ","error"); }
+    } catch(e){ console.warn(e); window.showToast && window.showToast(tt("تعذّر الحفظ"),"error"); }
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?"قسم جديد":"تعديل قسم"} onClose={onClose} width={520}
+    <Modal title={isNew?tt("قسم جديد"):tt("تعديل قسم")} onClose={onClose} width={520}
       footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
@@ -419,12 +420,12 @@ function AuthUserPicker({ roleSlug, linkedRows, value, onChange, disabled }) {
   if (disabled) {
     return (
       <div className="input" style={{opacity:.75,cursor:"not-allowed",background:"var(--ink-50)"}}>
-        {value ? `${value.name || "—"} — ${value.email || "—"}` : "غير مربوط بحساب"}
+        {value ? `${value.name || "—"} — ${value.email || "—"}` : tt("غير مربوط بحساب")}
       </div>
     );
   }
   if (options === null) {
-    return <div className="muted" style={{fontSize:12}}>جاري تحميل الحسابات…</div>;
+    return <div className="muted" style={{fontSize:12}}>{tt("جاري تحميل الحسابات…")}</div>;
   }
   const q = search.trim().toLowerCase();
   const filtered = q
@@ -462,18 +463,23 @@ function AuthUserPicker({ roleSlug, linkedRows, value, onChange, disabled }) {
 // works even before ROLE_AR's module-scope binding is reached in TDZ).
 function roleLabelAr(slug) {
   const t = { admin:"مدير", receptionist:"موظف استقبال", doctor:"طبيب", therapist:"الأخصائي" };
-  return t[slug] || slug || "—";
+  return t[slug] ? tt(t[slug]) : (slug || "—");
 }
 
 // Turn a PostgREST unique-violation into an Arabic explainer. This is the
 // last line of defence against duplicate assignment: the DB unique index
 // still rejects the write even if the client picker was stale.
-function friendlyRosterError(msg, roleLabel) {
+// `kind`: doctor | therapist | receptionist (one whole sentence each).
+function friendlyRosterError(msg, kind) {
   const t = String(msg || "").toLowerCase();
   if (t.includes("23505") || t.includes("duplicate") || t.includes("unique")) {
-    return `هذا الحساب مربوط بالفعل بسجل ${roleLabel} آخر — اختر حسابًا مختلفًا`;
+    return ({
+      doctor: tt("هذا الحساب مربوط بالفعل بسجل طبيب آخر — اختر حسابًا مختلفًا"),
+      therapist: tt("هذا الحساب مربوط بالفعل بسجل أخصائي آخر — اختر حسابًا مختلفًا"),
+      receptionist: tt("هذا الحساب مربوط بالفعل بسجل موظف استقبال آخر — اختر حسابًا مختلفًا"),
+    })[kind];
   }
-  return msg || "تعذّر الحفظ";
+  return msg || tt("تعذّر الحفظ");
 }
 
 function DoctorModal({ row, depts, onClose }) {
@@ -505,10 +511,10 @@ function DoctorModal({ row, depts, onClose }) {
   }
   async function save() {
     if (isNew && (!account || !account.auth_uid)) {
-      return window.showToast && window.showToast("اختر حسابًا مرتبطًا للطبيب","error");
+      return window.showToast && window.showToast(tt("اختر حسابًا مرتبطًا للطبيب"),"error");
     }
-    if (!depts.length) return window.showToast && window.showToast("أضف قسمًا أولاً","error");
-    if (!f.department_id) return window.showToast && window.showToast("اختر القسم","error");
+    if (!depts.length) return window.showToast && window.showToast(tt("أضف قسمًا أولاً"),"error");
+    if (!f.department_id) return window.showToast && window.showToast(tt("اختر القسم"),"error");
     setBusy(true);
     try {
       const name = (account && account.name) ? account.name.trim() : (row.name || "").trim();
@@ -528,17 +534,17 @@ function DoctorModal({ row, depts, onClose }) {
         license_number: f.license_number.trim() || null,
         notes: f.notes.trim() || null,
       });
-      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "طبيب"));
-      window.showToast && window.showToast(isNew ? "تمت إضافة الطبيب" : "تم تحديث الطبيب", "success");
+      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "doctor"));
+      window.showToast && window.showToast(isNew ? tt("تمت إضافة الطبيب") : tt("تم تحديث الطبيب"), "success");
       onClose();
-    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || "تعذّر الحفظ","error"); }
+    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر الحفظ"),"error"); }
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?"طبيب جديد":"تعديل طبيب"} onClose={onClose} width={600}
+    <Modal title={isNew?tt("طبيب جديد"):tt("تعديل طبيب")} onClose={onClose} width={600}
       footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? "يظهر فقط حسابات دور «طبيب» غير المربوطة" : "الحساب المرتبط لا يتغيّر بعد الحفظ"}>
+      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «طبيب» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="doctor" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
@@ -610,10 +616,10 @@ function SpecialistModal({ row, depts, onClose }) {
   }
   async function save() {
     if (isNew && (!account || !account.auth_uid)) {
-      return window.showToast && window.showToast("اختر حسابًا مرتبطًا للأخصائي","error");
+      return window.showToast && window.showToast(tt("اختر حسابًا مرتبطًا للأخصائي"),"error");
     }
-    if (!depts.length) return window.showToast && window.showToast("أضف قسمًا أولاً","error");
-    if (!f.department_id) return window.showToast && window.showToast("اختر القسم","error");
+    if (!depts.length) return window.showToast && window.showToast(tt("أضف قسمًا أولاً"),"error");
+    if (!f.department_id) return window.showToast && window.showToast(tt("اختر القسم"),"error");
     setBusy(true);
     try {
       const name = (account && account.name) ? account.name.trim() : (row.name || "").trim();
@@ -630,17 +636,17 @@ function SpecialistModal({ row, depts, onClose }) {
         color: f.color, max: Number(f.max) || 0,
         active: !!f.active,
       });
-      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "أخصائي"));
-      window.showToast && window.showToast(isNew ? "تمت إضافة الأخصائي" : "تم تحديث الأخصائي", "success");
+      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "therapist"));
+      window.showToast && window.showToast(isNew ? tt("تمت إضافة الأخصائي") : tt("تم تحديث الأخصائي"), "success");
       onClose();
-    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || "تعذّر الحفظ","error"); }
+    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر الحفظ"),"error"); }
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?"أخصائي جديد":"تعديل أخصائي"} onClose={onClose} width={600}
+    <Modal title={isNew?tt("أخصائي جديد"):tt("تعديل أخصائي")} onClose={onClose} width={600}
       footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? "يظهر فقط حسابات دور «الأخصائي» غير المربوطة" : "الحساب المرتبط لا يتغيّر بعد الحفظ"}>
+      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «الأخصائي» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="therapist" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
@@ -702,7 +708,7 @@ function ReceptionistModal({ row, onClose }) {
   }
   async function save() {
     if (isNew && (!account || !account.auth_uid)) {
-      return window.showToast && window.showToast("اختر حسابًا مرتبطًا لموظف الاستقبال","error");
+      return window.showToast && window.showToast(tt("اختر حسابًا مرتبطًا لموظف الاستقبال"),"error");
     }
     setBusy(true);
     try {
@@ -716,17 +722,17 @@ function ReceptionistModal({ row, onClose }) {
         notes: f.notes.trim() || null,
         active: !!f.active,
       });
-      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "موظف استقبال"));
-      window.showToast && window.showToast(isNew ? "تمت إضافة موظف الاستقبال" : "تم التحديث", "success");
+      if (res && res._ok === false) throw new Error(friendlyRosterError(res._error, "receptionist"));
+      window.showToast && window.showToast(isNew ? tt("تمت إضافة موظف الاستقبال") : tt("تم التحديث"), "success");
       onClose();
-    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || "تعذّر الحفظ","error"); }
+    } catch (e) { console.error(e); window.showToast && window.showToast(e.message || tt("تعذّر الحفظ"),"error"); }
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?"موظف استقبال جديد":"تعديل موظف استقبال"} onClose={onClose} width={520}
+    <Modal title={isNew?tt("موظف استقبال جديد"):tt("تعديل موظف استقبال")} onClose={onClose} width={520}
       footer={<><button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> حفظ</button></>}>
-      <Field label="الحساب المرتبط" required hint={isNew ? "يظهر فقط حسابات دور «موظف الاستقبال» غير المربوطة" : "الحساب المرتبط لا يتغيّر بعد الحفظ"}>
+      <Field label="الحساب المرتبط" required hint={isNew ? tt("يظهر فقط حسابات دور «موظف الاستقبال» غير المربوطة") : tt("الحساب المرتبط لا يتغيّر بعد الحفظ")}>
         <AuthUserPicker roleSlug="receptionist" linkedRows={linkedRows} value={account} onChange={pickAccount} disabled={!isNew}/>
       </Field>
       <div style={{height:12}}/>
@@ -750,18 +756,19 @@ function ReceptionistModal({ row, onClose }) {
 }
 
 // ── Admin: user management (create logins, reset passwords) ───
-const ROLE_AR = { admin:"مدير", receptionist:"موظف استقبال", doctor:"طبيب", therapist:"الأخصائي" };
+// Labels only (the stored role is the slug).
+const ROLE_AR = { admin:tt("مدير"), receptionist:tt("موظف استقبال"), doctor:tt("طبيب"), therapist:tt("الأخصائي") };
 const ROLE_OPTIONS = [
-  { slug:"admin", label:"مدير" },
-  { slug:"receptionist", label:"موظف استقبال" },
-  { slug:"doctor", label:"طبيب" },
-  { slug:"therapist", label:"الأخصائي" },
+  { slug:"admin", label:tt("مدير") },
+  { slug:"receptionist", label:tt("موظف استقبال") },
+  { slug:"doctor", label:tt("طبيب") },
+  { slug:"therapist", label:tt("الأخصائي") },
 ];
 const roleBadgeClass = (slug) => slug==="admin" ? "b-violet" : slug==="doctor" ? "b-blue" : slug==="therapist" ? "b-green" : "b-grey";
 
 // Styled confirmation dialog (used before destructive / sensitive admin
 // actions). Two-button footer, busy spinner, optional danger styling.
-function ConfirmModal({ title, message, confirmLabel="تأكيد", cancelLabel="إلغاء", danger=false, busy=false, onConfirm, onClose }) {
+function ConfirmModal({ title, message, confirmLabel=tt("تأكيد"), cancelLabel=tt("إلغاء"), danger=false, busy=false, onConfirm, onClose }) {
   return (
     <Modal title={title} onClose={busy?undefined:onClose} width={440}
       footer={<>
@@ -780,8 +787,8 @@ function ConfirmModal({ title, message, confirmLabel="تأكيد", cancelLabel="
 function staffStatusMeta(s) {
   const active = String((s && s.status) || "active") !== "inactive";
   return active
-    ? { active:true,  label:"نشط",   cls:"b-green" }
-    : { active:false, label:"معطّل", cls:"b-grey"  };
+    ? { active:true,  label:tt("نشط"),   cls:"b-green" }
+    : { active:false, label:tt("معطّل"), cls:"b-grey"  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -846,24 +853,24 @@ function onboardingSteps(usage) {
   const active = (b) => String((b && b.status) || "active") !== "inactive";
   const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
   const steps = [
-    { id: "branch", title: "أكمل بيانات الفرع الأول", hint: "العنوان، والهاتف، وساعات العمل.",
+    { id: "branch", title: tt("أكمل بيانات الفرع الأول"), hint: tt("العنوان، والهاتف، وساعات العمل."),
       done: branches.some(b => active(b) && (String(b.address || "").trim() || String(b.phone || "").trim())),
-      action: "فتح الفروع", route: "branches" },
-    { id: "settings", title: "راجع إعدادات العيادة", hint: "اسم العرض، وبيانات التواصل، وساعات التقويم.",
+      action: tt("فتح الفروع"), route: "branches" },
+    { id: "settings", title: tt("راجع إعدادات العيادة"), hint: tt("اسم العرض، وبيانات التواصل، وساعات التقويم."),
       done: !!(String(c.phone || "").trim() || String(c.email || "").trim() || String(c.address || "").trim()),
-      action: "فتح الإعدادات", route: "settings", tab: "clinic" },
-    { id: "team", title: "أضف الأقسام والأطباء والأخصائيين", hint: "يظهرون في الحجز والتقويم.",
+      action: tt("فتح الإعدادات"), route: "settings", tab: "clinic" },
+    { id: "team", title: tt("أضف الأقسام والأطباء والأخصائيين"), hint: tt("يظهرون في الحجز والتقويم."),
       done: ((D.doctors || []).length + (D.therapists || []).length) > 0,
-      action: "فتح الأقسام والفريق", route: "settings", tab: "depts" },
+      action: tt("فتح الأقسام والفريق"), route: "settings", tab: "depts" },
   ];
   if (staffOn) {
-    steps.push({ id: "invite", title: "ادعُ فريقك وحدد فروعهم", hint: "استقبال، وأطباء، وأخصائيون — كلٌّ بدوره.",
+    steps.push({ id: "invite", title: tt("ادعُ فريقك وحدد فروعهم"), hint: tt("استقبال، وأطباء، وأخصائيون — كلٌّ بدوره."),
       done: !!(usage && usage.users && Number(usage.users.used) > 1),
-      action: "دعوة الموظفين", route: "settings", tab: "users", needsUsage: true });
+      action: tt("دعوة الموظفين"), route: "settings", tab: "users", needsUsage: true });
   }
-  steps.push({ id: "booking", title: "أضف أول مريض واحجز أول موعد", hint: "من صفحة المواعيد: «حجز جديد».",
+  steps.push({ id: "booking", title: tt("أضف أول مريض واحجز أول موعد"), hint: tt("من صفحة المواعيد: «حجز جديد»."),
     done: (D.patients || []).length > 0 && (D.appts || []).length > 0,
-    action: "فتح المواعيد", route: "appointments" });
+    action: tt("فتح المواعيد"), route: "appointments" });
   return steps;
 }
 
@@ -904,7 +911,7 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
   };
   const fold = (on) => { setOnboardingFlag("later", scopeKey, on); setLater(on); };
   const pct = Math.round((doneCount / steps.length) * 100);
-  const progressText = `أنجزت ${doneCount} من ${steps.length}`;
+  const progressText = tt("أنجزت {done} من {total}", { done: doneCount, total: steps.length });
 
   if (later) {
     return (
@@ -952,7 +959,7 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
             </span>
             <div style={{flex:1,minWidth:180}}>
               <div style={{fontSize:13.5,fontWeight:500,color: st.done ? "var(--ink-500)" : "var(--ink-900)",textDecoration: st.done ? "line-through" : "none"}}>
-                {st.title}<span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>{st.done ? " — تم" : " — لم يتم بعد"}</span>
+                {st.title}<span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>{" — " + (st.done ? tt("تم") : tt("لم يتم بعد"))}</span>
               </div>
               <div className="muted" style={{fontSize:12,marginTop:2}}>{st.hint}</div>
             </div>
@@ -993,6 +1000,9 @@ function caEmail(email) {
   return <bdi dir="ltr">{v.slice(0, at)}<wbr/>{v.slice(at)}</bdi>;
 }
 
+// Separator of a short list of names («أ، ب» / "A, B").
+const CA_LIST_SEP = IS_RTL ? "، " : ", ";
+
 // YYYY-MM-DD (ISO) kept left-to-right inside Arabic text.
 function caFmtDate(v) {
   const s = String(v || "").slice(0, 10);
@@ -1005,7 +1015,7 @@ function caBranchNames(ids) {
   return (ids || []).map(id => {
     const b = list.find(x => x.id === id);
     if (!b) return id;
-    return b.name + ((window.branchIsActive && !window.branchIsActive(b)) ? " (معطّل)" : "");
+    return b.name + ((window.branchIsActive && !window.branchIsActive(b)) ? " (" + tt("معطّل") + ")" : "");
   });
 }
 
@@ -1044,6 +1054,12 @@ function CaBranchChecks({ value, onChange, idPrefix, invalid, describedBy }) {
 // plan_limit:branches) is shown in Arabic where it happens.
 
 // Working hours as short lines: "السبت، الأحد: 09:00–21:00".
+// Day names: Arabic as stored in BRANCH_DAYS, else the locale's (Sunday first).
+const CA_DAY_INDEX = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+function caDayName(d) {
+  if (IS_RTL || !(d.key in CA_DAY_INDEX)) return d.ar;
+  return weekdayNames()[CA_DAY_INDEX[d.key]];
+}
 function caHoursSummary(wh) {
   const days = window.BRANCH_DAYS || [];
   if (!wh || typeof wh !== "object") return null;
@@ -1054,7 +1070,7 @@ function caHoursSummary(wh) {
     if (!Array.isArray(v) || v.length !== 2) { closed++; continue; }
     const key = v[0] + "–" + v[1];
     const g = groups.find(x => x.key === key);
-    if (g) g.days.push(d.ar); else groups.push({ key, from: v[0], to: v[1], days: [d.ar] });
+    if (g) g.days.push(caDayName(d)); else groups.push({ key, from: v[0], to: v[1], days: [caDayName(d)] });
   }
   if (!groups.length) return null;
   return { groups, closed };
@@ -1074,7 +1090,7 @@ function BranchCard({ b, current, staffCount, canDeactivate, onEdit, onToggle })
         <div style={{flex:1,minWidth:0}}>
           <div className="h3 branch-card-name" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{b.name}</div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
-            <span className={"badge " + (on ? "b-green" : "b-grey")}><span className="dot"></span>{on ? "نشط" : "معطّل"}</span>
+            <span className={"badge " + (on ? "b-green" : "b-grey")}><span className="dot"></span>{on ? tt("نشط") : tt("معطّل")}</span>
             {current && <span className="badge b-blue">الفرع الحالي</span>}
           </div>
         </div>
@@ -1090,23 +1106,23 @@ function BranchCard({ b, current, staffCount, canDeactivate, onEdit, onToggle })
         {hours ? (
           <div className="branch-card-hours" style={{display:"flex",flexDirection:"column",gap:2}}>
             {hours.groups.map(g => (
-              <span key={g.key}>{g.days.join("، ")}: <bdi dir="ltr" className="mono">{g.from}–{g.to}</bdi></span>
+              <span key={g.key}>{g.days.join(CA_LIST_SEP)}: <bdi dir="ltr" className="mono">{g.from}–{g.to}</bdi></span>
             ))}
             {hours.closed > 0 && <span className="muted">باقي الأيام: مغلق</span>}
           </div>
         ) : <span className="muted">لم تُحدد ساعات العمل</span>}
       </div>
       <div style={{display:"flex",gap:8,marginTop:"auto",paddingTop:6,borderTop:"1px solid var(--ink-100)",flexWrap:"wrap"}}>
-        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onEdit} aria-label={`تعديل ${b.name}`}><I.Edit size={13}/> تعديل</button>
+        <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onEdit} aria-label={tt("تعديل {name}", { name: b.name })}><I.Edit size={13}/> تعديل</button>
         {on ? (
           <button type="button" className="btn btn-secondary" style={{fontSize:12.5,color:canDeactivate?"var(--red)":undefined}}
             disabled={!canDeactivate} aria-disabled={!canDeactivate ? "true" : undefined}
-            title={canDeactivate ? undefined : "لا يمكن تعطيل آخر فرع نشط"}
-            onClick={onToggle} aria-label={`تعطيل ${b.name}`}>
+            title={canDeactivate ? undefined : tt("لا يمكن تعطيل آخر فرع نشط")}
+            onClick={onToggle} aria-label={tt("تعطيل {name}", { name: b.name })}>
             <I.Lock size={13}/> تعطيل
           </button>
         ) : (
-          <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onToggle} aria-label={`إعادة تفعيل ${b.name}`}>
+          <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={onToggle} aria-label={tt("إعادة تفعيل {name}", { name: b.name })}>
             <I.Check size={13}/> إعادة تفعيل
           </button>
         )}
@@ -1132,18 +1148,7 @@ function BranchesPage({ go }) {
     return () => window.removeEventListener("kinetic:branches-updated", onUpd);
   }, []);
 
-  if (role && role !== "مدير") {
-    return (
-      <Page>
-        <div className="card card-pad" style={{textAlign:"center",padding:"60px 20px",maxWidth:520,margin:"40px auto"}}>
-          <I.Lock size={36} style={{color:"var(--ink-400)",marginBottom:12}}/>
-          <div className="h2" style={{marginBottom:8}}>ليست لديك صلاحية لهذه الصفحة</div>
-          <div className="muted" style={{fontSize:13.5,marginBottom:20}}>إدارة الفروع متاحة لمدير العيادة فقط.</div>
-          <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>go && go("dashboard")}><I.ArrowLeft size={13}/> العودة إلى لوحة التحكم</button>
-        </div>
-      </Page>
-    );
-  }
+  if (role && role !== "مدير") return <ClinicNoPermission go={go} role={role} reason={tt("إدارة الفروع متاحة لمدير العيادة فقط.")}/>;
 
   const isOn = (b) => !window.branchIsActive || window.branchIsActive(b);
   const activeList = branches.filter(isOn);
@@ -1159,10 +1164,12 @@ function BranchesPage({ go }) {
     try {
       await window.setBranchStatus(branch.id, target);
       setNotice(null);
-      if (window.showToast) window.showToast(target === "inactive" ? `تم تعطيل ${branch.name}` : `تمت إعادة تفعيل ${branch.name}`, "success");
+      if (window.showToast) window.showToast(target === "inactive" ? tt("تم تعطيل {name}", { name: branch.name }) : tt("تمت إعادة تفعيل {name}", { name: branch.name }), "success");
       reload();
     } catch (e) {
-      const msg = e && /[؀-ۿ]/.test(String(e.message || "")) ? e.message : "تعذّر تغيير حالة الفرع — أعد المحاولة";
+      // A message the data layer wrote for people (err.friendly, already
+      // translated) is shown as is; anything else gets the generic text.
+      const msg = e && (e.friendly || /[؀-ۿ]/.test(String(e.message || ""))) ? e.message : tt("تعذّر تغيير حالة الفرع — أعد المحاولة");
       setNotice({ tone: "error", text: msg });
     } finally {
       setBusy(false);
@@ -1171,8 +1178,8 @@ function BranchesPage({ go }) {
   }
 
   const counter = max != null
-    ? <>الفروع النشطة: <span className="mono">{activeList.length}</span> من <span className="mono">{max}</span></>
-    : <>الفروع النشطة: <span className="mono">{activeList.length}</span>{usage ? " · خطتك بلا حد للفروع" : ""}</>;
+    ? <>{ttx("الفروع النشطة: {n} من {max}", { n: <span className="mono">{activeList.length}</span>, max: <span className="mono">{max}</span> })}</>
+    : <>{ttx("الفروع النشطة: {n}", { n: <span className="mono">{activeList.length}</span> })}{usage ? " · " + tt("خطتك بلا حد للفروع") : ""}</>;
 
   return (
     <Page>
@@ -1193,7 +1200,7 @@ function BranchesPage({ go }) {
 
       {atLimit && (
         <CaAlert tone="warn" id="branch-limit-note">
-          وصلت إلى حد الفروع في خطتك (<span className="mono">{activeList.length}</span> من <span className="mono">{max}</span>). لإضافة فرع آخر عطّل فرعًا قائمًا أو تواصل مع إدارة المنصة لترقية الخطة.
+          {ttx("وصلت إلى حد الفروع في خطتك ({n} من {max}). لإضافة فرع آخر عطّل فرعًا قائمًا أو تواصل مع إدارة المنصة لترقية الخطة.", { n: <span className="mono">{activeList.length}</span>, max: <span className="mono">{max}</span> })}
         </CaAlert>
       )}
       {notice && <CaAlert tone={notice.tone} onClose={()=>setNotice(null)}>{notice.text}</CaAlert>}
@@ -1228,16 +1235,16 @@ function BranchesPage({ go }) {
       {form && <BranchFormModal editing={form === "new" ? null : form} onSaved={()=>{ setNotice(null); reload(); }} onClose={()=>setForm(null)}/>}
       {confirm && (
         <ConfirmModal
-          title={confirm.target === "inactive" ? `تعطيل ${confirm.branch.name}` : `إعادة تفعيل ${confirm.branch.name}`}
+          title={confirm.target === "inactive" ? tt("تعطيل {name}", { name: confirm.branch.name }) : tt("إعادة تفعيل {name}", { name: confirm.branch.name })}
           danger={confirm.target === "inactive"}
           busy={busy}
           cancelLabel="رجوع"
-          confirmLabel={confirm.target === "inactive" ? "تعطيل الفرع" : "إعادة التفعيل"}
+          confirmLabel={confirm.target === "inactive" ? tt("تعطيل الفرع") : tt("إعادة التفعيل")}
           onConfirm={applyStatus}
           onClose={()=>setConfirm(null)}
           message={confirm.target === "inactive"
-            ? <>سيختفي <b>{confirm.branch.name}</b> من قائمة الفروع ولن يقبل حجوزات جديدة. تبقى مواعيده وفواتيره وجلساته محفوظة، ويمكنك إعادة تفعيله لاحقًا. لا يُحذف أي فرع.</>
-            : <>سيعود <b>{confirm.branch.name}</b> إلى قائمة الفروع ويقبل الحجوزات من جديد. يُحسب ضمن حد الفروع في خطتك.</>}
+            ? <>{ttx("سيختفي {name} من قائمة الفروع ولن يقبل حجوزات جديدة. تبقى مواعيده وفواتيره وجلساته محفوظة، ويمكنك إعادة تفعيله لاحقًا. لا يُحذف أي فرع.", { name: <b>{confirm.branch.name}</b> })}</>
+            : <>{ttx("سيعود {name} إلى قائمة الفروع ويقبل الحجوزات من جديد. يُحسب ضمن حد الفروع في خطتك.", { name: <b>{confirm.branch.name}</b> })}</>}
         />
       )}
     </Page>
@@ -1259,7 +1266,7 @@ function InactiveBranchBanner() {
   if (!b || window.branchIsActive(b)) return null;
   return (
     <div style={{padding:"10px 36px 0"}}>
-      <CaAlert tone="warn">الفرع «{b.name}» معطّل — بياناته للعرض فقط ولا يمكن إضافة حجوزات جديدة فيه. تواصل مع مدير العيادة.</CaAlert>
+      <CaAlert tone="warn">{tt("الفرع «{name}» معطّل — بياناته للعرض فقط ولا يمكن إضافة حجوزات جديدة فيه. تواصل مع مدير العيادة.", { name: b.name })}</CaAlert>
     </div>
   );
 }
@@ -1273,18 +1280,19 @@ function InactiveBranchBanner() {
 // member (PATCH /api/org/members/:id), deactivate / re-activate through
 // the admin set-status flow, and the existing «إنشاء مستخدم». Without a
 // backend (demo mode) the local staff roster below is shown instead.
-const CA_ROLE_AR = { admin:"مدير", receptionist:"موظف استقبال", doctor:"طبيب", therapist:"الأخصائي", staff:"موظف" };
+// Labels only: the API's role and status values are the keys.
+const CA_ROLE_AR = { admin:tt("مدير"), receptionist:tt("موظف استقبال"), doctor:tt("طبيب"), therapist:tt("الأخصائي"), staff:tt("موظف") };
 const CA_INVITE_ROLES = ["receptionist", "doctor", "therapist", "admin"];
 const CA_INVITE_STATUS = {
-  pending:  { label:"معلّقة",  cls:"b-amber" },
-  expired:  { label:"منتهية", cls:"b-grey" },
-  accepted: { label:"مقبولة", cls:"b-green" },
-  revoked:  { label:"ملغاة",  cls:"b-red" },
+  pending:  { label:tt("معلّقة"),  cls:"b-amber" },
+  expired:  { label:tt("منتهية"), cls:"b-grey" },
+  accepted: { label:tt("مقبولة"), cls:"b-green" },
+  revoked:  { label:tt("ملغاة"),  cls:"b-red" },
 };
 const CA_MEMBER_STATUS = {
-  active:   { label:"نشط",   cls:"b-green" },
-  disabled: { label:"معطّل", cls:"b-grey" },
-  invited:  { label:"مدعو",  cls:"b-amber" },
+  active:   { label:tt("نشط"),   cls:"b-green" },
+  disabled: { label:tt("معطّل"), cls:"b-grey" },
+  invited:  { label:tt("مدعو"),  cls:"b-amber" },
 };
 const CA_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -1361,9 +1369,9 @@ function StaffInvitesPanel() {
     const inv = data && data.invitation;
     if (!inv) return;
     setInvites(prev => caMergeInvite(prev, inv));
-    if (data.email_sent === true) toast(`تم إرسال الدعوة إلى ${inv.email}`);
-    else if (data.email_sent === false) toast(`أُنشئت الدعوة لكن لم يُرسل البريد إلى ${inv.email} بعد — أعد الإرسال من القائمة`, "error");
-    else toast(`أُنشئت الدعوة — البريد قيد الإرسال إلى ${inv.email}`, "info");
+    if (data.email_sent === true) toast(tt("تم إرسال الدعوة إلى {email}", { email: inv.email }));
+    else if (data.email_sent === false) toast(tt("أُنشئت الدعوة لكن لم يُرسل البريد إلى {email} بعد — أعد الإرسال من القائمة", { email: inv.email }), "error");
+    else toast(tt("أُنشئت الدعوة — البريد قيد الإرسال إلى {email}", { email: inv.email }), "info");
     setFilter("open");
     load();
   }
@@ -1375,9 +1383,9 @@ function StaffInvitesPanel() {
     if (!r.ok) { toast(r.error, "error"); return; }
     const sent = r.data ? r.data.email_sent : false;
     if (r.data && r.data.invitation) setInvites(prev => caMergeInvite(prev, r.data.invitation));
-    if (sent === true) toast(`أُعيد إرسال الدعوة إلى ${inv.email}`);
-    else if (sent === null) toast(`جُددت الدعوة — البريد قيد الإرسال إلى ${inv.email}`, "info");
-    else toast(`تعذّر إرسال البريد إلى ${inv.email} — أعد المحاولة لاحقًا`, "error");
+    if (sent === true) toast(tt("أُعيد إرسال الدعوة إلى {email}", { email: inv.email }));
+    else if (sent === null) toast(tt("جُددت الدعوة — البريد قيد الإرسال إلى {email}", { email: inv.email }), "info");
+    else toast(tt("تعذّر إرسال البريد إلى {email} — أعد المحاولة لاحقًا", { email: inv.email }), "error");
     load();
   }
 
@@ -1386,7 +1394,7 @@ function StaffInvitesPanel() {
     setRevokeBusy(true);
     const r = await window.OrgAdmin.revokeInvitation(revokeRow.id);
     setRevokeBusy(false);
-    if (r.ok) { toast(`تم إلغاء دعوة ${revokeRow.email}`); load(); }
+    if (r.ok) { toast(tt("تم إلغاء دعوة {email}", { email: revokeRow.email })); load(); }
     else toast(r.error, "error");
     setRevokeRow(null);
   }
@@ -1397,8 +1405,8 @@ function StaffInvitesPanel() {
     setStatusBusy(true);
     const res = await window.adminSetStaffStatus({ staff_id: row.staff_id, active });
     setStatusBusy(false);
-    if (res.ok) toast(active ? `تم تفعيل حساب ${row.name}` : `تم تعطيل حساب ${row.name}`);
-    else toast(res.error || "تعذّر تنفيذ العملية", "error");
+    if (res.ok) toast(active ? tt("تم تفعيل حساب {name}", { name: row.name }) : tt("تم تعطيل حساب {name}", { name: row.name }));
+    else toast(res.error || tt("تعذّر تنفيذ العملية"), "error");
     setStatusRow(null);
     load();
   }
@@ -1412,17 +1420,12 @@ function StaffInvitesPanel() {
 
   return (
     <div className="staff-panel">
-      {/* Phones (< 640px): each row becomes a card (docs/04 Layout rules). */}
+      {/* Phones (< 640px): each row is a card (<CardTable>, docs/04 Layout
+          rules); the lists grow with the page instead of scrolling inside. */}
       <style>{`
-        @media (max-width: 639px) {
+        @media (max-width: 640px) {
           .staff-panel .tbl-scroll { max-height: none; overflow: visible; }
-          .staff-panel .tbl-scroll > .tbl.ca-cards { min-width: 0; }
-          .staff-panel .ca-cards thead { display: none; }
-          .staff-panel .ca-cards, .staff-panel .ca-cards tbody { display: block; }
-          .staff-panel .ca-cards tbody tr { display: block; border: 1px solid var(--ink-200); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; background: #fff; }
-          .staff-panel .ca-cards tbody td { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 !important; border: none !important; background: transparent !important; }
-          .staff-panel .ca-cards tbody td[data-label]::before { content: attr(data-label); font-size: 11.5px; color: var(--ink-500); flex-shrink: 0; }
-          .staff-panel .ca-cards tbody td.ca-cell-menu { justify-content: flex-end; width: auto !important; }
+          .staff-panel .tbl-cards tbody td.ca-cell-menu { width: auto !important; }
         }
       `}</style>
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14,gap:12,flexWrap:"wrap"}}>
@@ -1432,10 +1435,11 @@ function StaffInvitesPanel() {
           {usage && usage.users && (
             <div className="users-counter" data-testid="users-counter" style={{marginTop:8,fontSize:12.5,color:atLimit?"#9B6321":"var(--ink-700)"}}>
               {/* The pending invitations belong to the count, before the plan's note. */}
-              المستخدمون: <span className="mono">{usage.users.used}</span>
-              {usersMax != null && <> من <span className="mono">{usersMax}</span></>}
-              {usage.users.pending_invitations > 0 && <span className="muted"> (منها دعوات معلّقة: <span className="mono">{usage.users.pending_invitations}</span>)</span>}
-              {usersMax == null && <> · خطتك بلا حد للمستخدمين</>}
+              {usersMax != null
+                ? ttx("المستخدمون: {used} من {max}", { used: <span className="mono">{usage.users.used}</span>, max: <span className="mono">{usersMax}</span> })
+                : ttx("المستخدمون: {used}", { used: <span className="mono">{usage.users.used}</span> })}
+              {usage.users.pending_invitations > 0 && <span className="muted"> {ttx("(منها دعوات معلّقة: {n})", { n: <span className="mono">{usage.users.pending_invitations}</span> })}</span>}
+              {usersMax == null && <> · {tt("خطتك بلا حد للمستخدمين")}</>}
             </div>
           )}
         </div>
@@ -1447,7 +1451,7 @@ function StaffInvitesPanel() {
 
       {atLimit && (
         <CaAlert tone="warn">
-          وصلت إلى حد المستخدمين في خطتك (<span className="mono">{usage.users.used}</span> من <span className="mono">{usersMax}</span>) — الدعوات المعلّقة تُحسب أيضًا. ألغِ دعوة أو عطّل حسابًا، أو تواصل مع إدارة المنصة لترقية الخطة.
+          {ttx("وصلت إلى حد المستخدمين في خطتك ({used} من {max}) — الدعوات المعلّقة تُحسب أيضًا. ألغِ دعوة أو عطّل حسابًا، أو تواصل مع إدارة المنصة لترقية الخطة.", { used: <span className="mono">{usage.users.used}</span>, max: <span className="mono">{usersMax}</span> })}
         </CaAlert>
       )}
       {loadError && (
@@ -1458,7 +1462,7 @@ function StaffInvitesPanel() {
       <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
         <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{initials(me.name)}</div>
         <div style={{flex:1,minWidth:160}}>
-          <div style={{fontWeight:600,fontSize:13.5}}>{me.name || "حسابي"} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{me.role || "مدير"}</span></div>
+          <div style={{fontWeight:600,fontSize:13.5}}>{me.name || tt("حسابي")} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{tt(me.role || "مدير")}</span></div>
           <div className="mono muted" style={{fontSize:12}}><bdi dir="ltr">{me.email || "—"}</bdi></div>
         </div>
         <button type="button" className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> تعديل اسمي</button>
@@ -1469,8 +1473,8 @@ function StaffInvitesPanel() {
           card without sideways scrolling on a desktop screen. */}
       <div className="h3" style={{marginBottom:8}}>أعضاء العيادة</div>
       <div className="tbl-scroll" style={{marginBottom:22}}>
-        <table className="tbl members-table ca-cards">
-          <thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>إجراءات</span></th></tr></thead>
+        <CardTable className="members-table">
+          <thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {members === null && !loadError && (
               <tr><td colSpan={5} style={{padding:0}}><SkeletonRow count={3}/></td></tr>
@@ -1480,21 +1484,21 @@ function StaffInvitesPanel() {
             )}
             {(members || []).map(m => {
               const st = CA_MEMBER_STATUS[m.status] || CA_MEMBER_STATUS.active;
-              const branches = m.role === "admin" ? ["كل الفروع"] : caBranchNames(m.branch_ids);
+              const branches = m.role === "admin" ? [tt("كل الفروع")] : caBranchNames(m.branch_ids);
               const active = m.status === "active";
               const items = [];
               if (m.is_self) {
-                items.push({ label:"تعديل اسمي", icon:<I.Edit size={13}/>, onClick:()=>setProfileOpen(true) });
-                items.push({ label:"تغيير كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setPwOpen(true) });
+                items.push({ label:tt("تعديل اسمي"), icon:<I.Edit size={13}/>, onClick:()=>setProfileOpen(true) });
+                items.push({ label:tt("تغيير كلمة المرور"), icon:<I.Lock size={13}/>, onClick:()=>setPwOpen(true) });
               } else {
-                items.push({ label:"تعديل الدور والفروع", icon:<I.Settings size={13}/>, onClick:()=>setEditMember(m) });
-                if (m.staff_id) items.push({ label:"تعديل الاسم", icon:<I.Edit size={13}/>, onClick:()=>setNameRow({ staff_id:m.staff_id, name:m.name, email:m.email, role:m.role }) });
-                if (m.staff_id) items.push({ label:"إعادة تعيين كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setResetRow({ staff_id:m.staff_id, auth_uid:m.user_id, name:m.name, email:m.email }) });
+                items.push({ label:tt("تعديل الدور والفروع"), icon:<I.Settings size={13}/>, onClick:()=>setEditMember(m) });
+                if (m.staff_id) items.push({ label:tt("تعديل الاسم"), icon:<I.Edit size={13}/>, onClick:()=>setNameRow({ staff_id:m.staff_id, name:m.name, email:m.email, role:m.role }) });
+                if (m.staff_id) items.push({ label:tt("إعادة تعيين كلمة المرور"), icon:<I.Lock size={13}/>, onClick:()=>setResetRow({ staff_id:m.staff_id, auth_uid:m.user_id, name:m.name, email:m.email }) });
                 if (m.staff_id) items.push(active
-                  ? { label:"تعطيل الحساب", icon:<I.Lock size={13}/>, danger:true, onClick:()=>setStatusRow({ row:m, active:false }) }
-                  : { label:"إعادة تفعيل الحساب", icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:m, active:true }) });
+                  ? { label:tt("تعطيل الحساب"), icon:<I.Lock size={13}/>, danger:true, onClick:()=>setStatusRow({ row:m, active:false }) }
+                  : { label:tt("إعادة تفعيل الحساب"), icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:m, active:true }) });
               }
-              items.push({ label:"نسخ البريد", icon:<I.Mail size={13}/>, onClick:()=>{ try { navigator.clipboard.writeText(m.email || ""); toast("تم نسخ البريد"); } catch (_) {} } });
+              items.push({ label:tt("نسخ البريد"), icon:<I.Mail size={13}/>, onClick:()=>{ try { navigator.clipboard.writeText(m.email || ""); toast(tt("تم نسخ البريد")); } catch (_) {} } });
               // A disabled member is greyed by colour, not opacity: opacity
               // would trap the row menu (position:fixed) under the next table.
               return (
@@ -1506,40 +1510,40 @@ function StaffInvitesPanel() {
                       <div className="mono muted" style={{fontSize:11.5,overflowWrap:"break-word"}}>{caEmail(m.email)}</div>
                     </div>
                   </div></td>
-                  <td data-label="الدور"><span className={"badge " + roleBadgeClass(m.role)} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{CA_ROLE_AR[m.role] || m.role}</span></td>
-                  <td data-label="الفروع" style={{fontSize:12.5}}>{branches.length ? branches.join("، ") : <span className="muted">—</span>}</td>
-                  <td data-label="الحالة"><span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span></td>
+                  <td><span className={"badge " + roleBadgeClass(m.role)} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{CA_ROLE_AR[m.role] || m.role}</span></td>
+                  <td style={{fontSize:12.5}}>{branches.length ? branches.join(CA_LIST_SEP) : <span className="muted">—</span>}</td>
+                  <td><span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span></td>
                   <td className="ca-cell-menu" style={{width:44}}><RowMenu size={13} items={items}/></td>
                 </tr>
               );
             })}
           </tbody>
-        </table>
+        </CardTable>
       </div>
 
       {/* Invitations — e-mail with the role and branches under it. */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:8}}>
         <div className="h3">الدعوات</div>
-        <div className="seg" role="group" aria-label="تصفية الدعوات">
-          <button type="button" className={filter === "open" ? "on" : ""} aria-pressed={filter === "open"} onClick={()=>setFilter("open")}>بانتظار القبول (<span className="mono">{openInvites.length}</span>)</button>
-          <button type="button" className={filter === "all" ? "on" : ""} aria-pressed={filter === "all"} onClick={()=>setFilter("all")}>كل الدعوات (<span className="mono">{allInvites.length}</span>)</button>
-        </div>
+        <Segmented label={tt("تصفية الدعوات")} value={filter} onChange={setFilter} options={[
+          { value: "open", label: ttx("بانتظار القبول ({n})", { n: <span className="mono">{openInvites.length}</span> }) },
+          { value: "all", label: ttx("كل الدعوات ({n})", { n: <span className="mono">{allInvites.length}</span> }) },
+        ]}/>
       </div>
       <div className="tbl-scroll">
-        <table className="tbl invitations-table ca-cards">
+        <CardTable className="invitations-table">
           <thead><tr><th>المدعو</th><th>الحالة</th><th>تنتهي في</th><th>إجراءات</th></tr></thead>
           <tbody>
             {invites === null && !loadError && (
               <tr><td colSpan={4} style={{padding:0}}><SkeletonRow count={2}/></td></tr>
             )}
             {invites && shownInvites.length === 0 && (
-              <tr><td colSpan={4}><div className="tbl-empty"><I.Mail size={20}/><div>{filter === "open" ? "لا توجد دعوات بانتظار القبول." : "لم تُرسل أي دعوة بعد."}</div></div></td></tr>
+              <tr><td colSpan={4}><div className="tbl-empty"><I.Mail size={20}/><div>{filter === "open" ? tt("لا توجد دعوات بانتظار القبول.") : tt("لم تُرسل أي دعوة بعد.")}</div></div></td></tr>
             )}
             {shownInvites.map(inv => {
               const st = CA_INVITE_STATUS[inv.status] || { label: inv.status, cls: "b-grey" };
               const actionable = inv.status === "pending" || inv.status === "expired";
               const notSent = actionable && caEmailStatus(inv) === "failed";
-              const where = inv.role === "admin" ? "كل الفروع" : (caBranchNames(inv.branch_ids).join("، ") || "—");
+              const where = inv.role === "admin" ? tt("كل الفروع") : (caBranchNames(inv.branch_ids).join(CA_LIST_SEP) || "—");
               return (
                 <tr key={inv.id} data-invite={inv.email} data-status={inv.status}>
                   <td>
@@ -1549,24 +1553,24 @@ function StaffInvitesPanel() {
                       <span className="muted invite-branches">{where}</span>
                     </div>
                   </td>
-                  <td data-label="الحالة">
+                  <td>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                       <span className={"badge " + st.cls} style={{whiteSpace:"nowrap"}}><span className="dot"></span>{st.label}</span>
                       {actionable && <CaEmailBadge inv={inv}/>}
                     </div>
                   </td>
-                  <td data-label="تنتهي في" style={{fontSize:12.5,whiteSpace:"nowrap"}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>
-                  <td data-label="إجراءات">
+                  <td style={{fontSize:12.5,whiteSpace:"nowrap"}}>{actionable ? caFmtDate(inv.expires_at) : "—"}</td>
+                  <td>
                     {actionable ? (
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         <button type="button" className={"btn " + (notSent || inv.status === "expired" ? "btn-blue" : "btn-secondary")} style={{fontSize:12,padding:"5px 10px",whiteSpace:"nowrap"}}
-                          disabled={resendId === inv.id} aria-label={`إعادة إرسال دعوة ${inv.email}`} onClick={()=>resend(inv)}>
+                          disabled={resendId === inv.id} aria-label={tt("إعادة إرسال دعوة {email}", { email: inv.email })} onClick={()=>resend(inv)}>
                           {resendId === inv.id
                             ? <span className="spin" aria-hidden="true" style={{width:12,height:12,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%"}}/>
-                            : <I.Send size={12}/>} إعادة الإرسال
+                            : <I.Send size={12}/>} {tt("إعادة الإرسال")}
                         </button>
                         <button type="button" className="btn btn-ghost" style={{fontSize:12,padding:"5px 10px",color:"#A8443A",whiteSpace:"nowrap"}}
-                          aria-label={`إلغاء دعوة ${inv.email}`} onClick={()=>setRevokeRow(inv)}>
+                          aria-label={tt("إلغاء دعوة {email}", { email: inv.email })} onClick={()=>setRevokeRow(inv)}>
                           <I.X size={12}/> إلغاء
                         </button>
                       </div>
@@ -1576,12 +1580,12 @@ function StaffInvitesPanel() {
               );
             })}
           </tbody>
-        </table>
+        </CardTable>
       </div>
 
       {inviteOpen && <InviteStaffModal onClose={()=>setInviteOpen(false)} onDone={afterInvite}/>}
       {createOpen && <CreateUserModal onClose={()=>setCreateOpen(false)} onDone={()=>load()}/>}
-      {editMember && <EditMemberModal member={editMember} onClose={()=>setEditMember(null)} onDone={()=>{ toast("تم حفظ التغييرات"); load(); }}/>}
+      {editMember && <EditMemberModal member={editMember} onClose={()=>setEditMember(null)} onDone={()=>{ toast(tt("تم حفظ التغييرات")); load(); }}/>}
       {nameRow && <EditUserModal row={nameRow} nameOnly onClose={()=>{ setNameRow(null); load(); }}/>}
       {pwOpen && <ChangePasswordModal onClose={()=>setPwOpen(false)}/>}
       {profileOpen && <EditProfileModal onClose={()=>{ setProfileOpen(false); load(); }}/>}
@@ -1595,21 +1599,21 @@ function StaffInvitesPanel() {
           confirmLabel="إلغاء الدعوة"
           onConfirm={revoke}
           onClose={()=>setRevokeRow(null)}
-          message={<>لن يعمل رابط الدعوة المرسل إلى <b><bdi dir="ltr">{revokeRow.email}</bdi></b> بعد الآن، ويتحرر مقعده في الخطة. يمكنك إرسال دعوة جديدة لاحقًا.</>}
+          message={<>{ttx("لن يعمل رابط الدعوة المرسل إلى {email} بعد الآن، ويتحرر مقعده في الخطة. يمكنك إرسال دعوة جديدة لاحقًا.", { email: <b><bdi dir="ltr">{revokeRow.email}</bdi></b> })}</>}
         />
       )}
       {statusRow && (
         <ConfirmModal
-          title={statusRow.active ? "إعادة تفعيل الحساب" : "تعطيل الحساب"}
+          title={statusRow.active ? tt("إعادة تفعيل الحساب") : tt("تعطيل الحساب")}
           danger={!statusRow.active}
           busy={statusBusy}
           cancelLabel="رجوع"
-          confirmLabel={statusRow.active ? "تفعيل" : "تعطيل"}
+          confirmLabel={statusRow.active ? tt("تفعيل") : tt("تعطيل")}
           onConfirm={applyStatus}
           onClose={()=>setStatusRow(null)}
           message={statusRow.active
-            ? <>سيتمكّن <b>{statusRow.row.name}</b> (<bdi dir="ltr">{statusRow.row.email || "—"}</bdi>) من تسجيل الدخول إلى العيادة مجددًا بنفس البريد وكلمة المرور. يُحسب ضمن حد المستخدمين في خطتك.</>
-            : <>سيُمنع <b>{statusRow.row.name}</b> (<bdi dir="ltr">{statusRow.row.email || "—"}</bdi>) من دخول العيادة وتُنهى جلساته الحالية فورًا. تبقى جميع بياناته ومواعيده وسجل التدقيق كما هي، ويمكن إعادة التفعيل لاحقًا.</>}
+            ? <>{ttx("سيتمكّن {name} ({email}) من تسجيل الدخول إلى العيادة مجددًا بنفس البريد وكلمة المرور. يُحسب ضمن حد المستخدمين في خطتك.", { name: <b>{statusRow.row.name}</b>, email: <bdi dir="ltr">{statusRow.row.email || "—"}</bdi> })}</>
+            : <>{ttx("سيُمنع {name} ({email}) من دخول العيادة وتُنهى جلساته الحالية فورًا. تبقى جميع بياناته ومواعيده وسجل التدقيق كما هي، ويمكن إعادة التفعيل لاحقًا.", { name: <b>{statusRow.row.name}</b>, email: <bdi dir="ltr">{statusRow.row.email || "—"}</bdi> })}</>}
         />
       )}
     </div>
@@ -1633,10 +1637,10 @@ function InviteStaffModal({ onClose, onDone }) {
   async function submit() {
     const e = {};
     const addr = email.trim().toLowerCase();
-    if (!addr) e.email = "أدخل البريد الإلكتروني";
-    else if (!CA_EMAIL_RE.test(addr) || addr.length > 254) e.email = "بريد إلكتروني غير صحيح";
-    if (!CA_INVITE_ROLES.includes(role)) e.role = "اختر الدور";
-    if (role !== "admin" && !branchIds.length) e.branches = "اختر فرعًا واحدًا على الأقل";
+    if (!addr) e.email = tt("أدخل البريد الإلكتروني");
+    else if (!CA_EMAIL_RE.test(addr) || addr.length > 254) e.email = tt("بريد إلكتروني غير صحيح");
+    if (!CA_INVITE_ROLES.includes(role)) e.role = tt("اختر الدور");
+    if (role !== "admin" && !branchIds.length) e.branches = tt("اختر فرعًا واحدًا على الأقل");
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true);
@@ -1654,14 +1658,14 @@ function InviteStaffModal({ onClose, onDone }) {
       <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
       <button type="button" className="btn btn-blue" disabled={busy} onClick={submit} aria-busy={busy ? "true" : undefined}>
         {busy ? <span className="spin" aria-hidden="true" style={{width:13,height:13,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/> : <I.Send size={13}/>}
-        إرسال الدعوة
+        {tt("إرسال الدعوة")}
       </button>
     </>}>
       <form onSubmit={(e)=>{ e.preventDefault(); submit(); }} noValidate>
         {serverError && <CaAlert tone="error">{serverError}</CaAlert>}
         <label className="label" htmlFor="staff-invite-email">البريد الإلكتروني <span style={{color:"#A8443A"}}>*</span></label>
         <input id="staff-invite-email" className="input" type="email" dir="ltr" autoFocus placeholder="name@clinic.eg" value={email}
-          style={{textAlign:"right", ...(errors.email ? {borderColor:"var(--red)"} : {})}}
+          style={{textAlign:IS_RTL ? "right" : "left", ...(errors.email ? {borderColor:"var(--red)"} : {})}}
           aria-invalid={errors.email ? "true" : undefined} aria-describedby={errors.email ? "staff-invite-email-err" : undefined}
           onChange={e=>{ setEmail(e.target.value); setErrors(x=>({...x,email:undefined})); setServerError(""); }}/>
         {errors.email && <div id="staff-invite-email-err" style={errStyle}>{errors.email}</div>}
@@ -1671,7 +1675,7 @@ function InviteStaffModal({ onClose, onDone }) {
           {CA_INVITE_ROLES.map(r => <option key={r} value={r}>{CA_ROLE_AR[r]}</option>)}
         </select>
         <div style={{height:14}}/>
-        <div className="label" id="staff-invite-branches-label">الفروع {role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
+        <div className="label" id="staff-invite-branches-label">{tt("الفروع")} {role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
         {role === "admin"
           ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
           : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setErrors(x=>({...x,branches:undefined})); }} idPrefix="staff-invite-branch"
@@ -1696,7 +1700,7 @@ function EditMemberModal({ member, onClose, onDone }) {
   const [serverError, setServerError] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   async function submit() {
-    if (role !== "admin" && !branchIds.length) { setError("اختر فرعًا واحدًا على الأقل"); return; }
+    if (role !== "admin" && !branchIds.length) { setError(tt("اختر فرعًا واحدًا على الأقل")); return; }
     setBusy(true);
     setServerError("");
     const r = await window.OrgAdmin.updateMember(member.id, { role, branch_ids: role === "admin" ? [] : branchIds });
@@ -1706,7 +1710,7 @@ function EditMemberModal({ member, onClose, onDone }) {
     if (onDone) onDone(r.data);
   }
   return (
-    <Modal title={`تعديل ${member.name}`} onClose={busy ? undefined : onClose} footer={<>
+    <Modal title={tt("تعديل {name}", { name: member.name })} onClose={busy ? undefined : onClose} footer={<>
       <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>إلغاء</button>
       <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
     </>}>
@@ -1746,11 +1750,11 @@ function StaffRosterPanel() {
   const isMe = (s) => me.email && (s.email || "").toLowerCase() === (me.email || "").toLowerCase();
 
   async function removeMember(s) {
-    if (!window.confirm(`إزالة ${s.name} من القائمة؟`)) return;
+    if (!window.confirm(tt("إزالة {name} من القائمة؟", { name: s.name }))) return;
     try {
       await window.KineticData.remove("staff", s.staff_id || s.id);
-      window.showToast && window.showToast(`تم إزالة ${s.name}`, "success");
-    } catch (e) { console.warn(e); window.showToast && window.showToast("تعذّر الإزالة", "error"); }
+      window.showToast && window.showToast(tt("تم إزالة {name}", { name: s.name }), "success");
+    } catch (e) { console.warn(e); window.showToast && window.showToast(tt("تعذّر الإزالة"), "error"); }
   }
 
   async function applyStatus() {
@@ -1759,8 +1763,8 @@ function StaffRosterPanel() {
     setStatusBusy(true);
     const res = await window.adminSetStaffStatus({ staff_id: row.staff_id || row.id, active });
     setStatusBusy(false);
-    if (res.ok) window.showToast && window.showToast(active ? `تم تفعيل حساب ${row.name}` : `تم تعطيل حساب ${row.name}`, "success");
-    else window.showToast && window.showToast(res.error || "تعذّر تنفيذ العملية", "error");
+    if (res.ok) window.showToast && window.showToast(active ? tt("تم تفعيل حساب {name}", { name: row.name }) : tt("تم تعطيل حساب {name}", { name: row.name }), "success");
+    else window.showToast && window.showToast(res.error || tt("تعذّر تنفيذ العملية"), "error");
     setStatusRow(null);
   }
 
@@ -1778,7 +1782,7 @@ function StaffRosterPanel() {
       <div className="card" style={{padding:14,marginBottom:18,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap",background:"var(--blue-50)",border:"1px solid var(--blue-100)"}}>
         <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{(me.name||"?").split(" ").map(x=>x[0]||"").join("").slice(0,2)}</div>
         <div style={{flex:1,minWidth:160}}>
-          <div style={{fontWeight:600,fontSize:13.5}}>{me.name || "حسابي"} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{me.role || "مدير"}</span></div>
+          <div style={{fontWeight:600,fontSize:13.5}}>{me.name || tt("حسابي")} <span className="badge b-violet" style={{marginInlineStart:6}}><span className="dot"></span>{tt(me.role || "مدير")}</span></div>
           <div className="mono muted" style={{fontSize:12}}>{me.email || "—"}</div>
         </div>
         <button className="btn btn-secondary" style={{fontSize:12.5}} onClick={()=>setProfileOpen(true)}><I.Edit size={13}/> تعديل اسمي</button>
@@ -1787,7 +1791,7 @@ function StaffRosterPanel() {
 
       {/* Team table */}
       <div className="tbl-scroll">
-      <table className="tbl">
+      <CardTable>
         <thead><tr><th>الاسم</th><th>البريد الإلكتروني</th><th>الدور</th><th>حالة الحساب</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
         <tbody>
           {staff.length===0 && (
@@ -1808,21 +1812,21 @@ function StaffRosterPanel() {
               <td>
                 <RowMenu size={13} items={[
                   mine
-                    ? { label:"تغيير كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setPwOpen(true) }
-                    : { label:"إعادة تعيين كلمة المرور", icon:<I.Lock size={13}/>, onClick:()=>setResetRow(s) },
-                  { label:"تعديل البيانات", icon:<I.Edit size={13}/>, onClick:()=>setEditRow(s) },
+                    ? { label:tt("تغيير كلمة المرور"), icon:<I.Lock size={13}/>, onClick:()=>setPwOpen(true) }
+                    : { label:tt("إعادة تعيين كلمة المرور"), icon:<I.Lock size={13}/>, onClick:()=>setResetRow(s) },
+                  { label:tt("تعديل البيانات"), icon:<I.Edit size={13}/>, onClick:()=>setEditRow(s) },
                   ...(mine ? [] : [ st.active
-                    ? { label:"تعطيل الحساب", icon:<I.Lock size={13}/>, danger:true, onClick:()=>setStatusRow({ row:s, active:false }) }
-                    : { label:"إعادة تفعيل الحساب", icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:s, active:true }) }
+                    ? { label:tt("تعطيل الحساب"), icon:<I.Lock size={13}/>, danger:true, onClick:()=>setStatusRow({ row:s, active:false }) }
+                    : { label:tt("إعادة تفعيل الحساب"), icon:<I.Check size={13}/>, onClick:()=>setStatusRow({ row:s, active:true }) }
                   ]),
-                  { label:"نسخ البريد", icon:<I.Mail size={13}/>, onClick:()=>{ try{ navigator.clipboard.writeText(s.email||""); window.showToast&&window.showToast("تم نسخ البريد","success"); }catch(_){} } },
-                  ...(mine ? [] : [{ label:"إزالة الموظف", icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeMember(s) }]),
+                  { label:tt("نسخ البريد"), icon:<I.Mail size={13}/>, onClick:()=>{ try{ navigator.clipboard.writeText(s.email||""); window.showToast&&window.showToast(tt("تم نسخ البريد"),"success"); }catch(_){} } },
+                  ...(mine ? [] : [{ label:tt("إزالة الموظف"), icon:<I.Trash size={13}/>, danger:true, onClick:()=>removeMember(s) }]),
                 ]}/>
               </td>
             </tr>
           );})}
         </tbody>
-      </table>
+      </CardTable>
       </div>
 
       {createOpen && <CreateUserModal onClose={()=>setCreateOpen(false)}/>}
@@ -1832,15 +1836,15 @@ function StaffRosterPanel() {
       {resetRow && <AdminResetPasswordModal row={resetRow} onClose={()=>setResetRow(null)}/>}
       {statusRow && (
         <ConfirmModal
-          title={statusRow.active ? "إعادة تفعيل الحساب" : "تعطيل الحساب"}
+          title={statusRow.active ? tt("إعادة تفعيل الحساب") : tt("تعطيل الحساب")}
           danger={!statusRow.active}
           busy={statusBusy}
-          confirmLabel={statusRow.active ? "تفعيل" : "تعطيل"}
+          confirmLabel={statusRow.active ? tt("تفعيل") : tt("تعطيل")}
           onConfirm={applyStatus}
           onClose={()=>setStatusRow(null)}
           message={statusRow.active
-            ? <>سيتمكّن <b>{statusRow.row.name}</b> ({statusRow.row.email || "—"}) من تسجيل الدخول مجددًا بنفس البريد وكلمة المرور. لا يتأثر أي من بياناته.</>
-            : <>سيُمنع <b>{statusRow.row.name}</b> ({statusRow.row.email || "—"}) من تسجيل الدخول وستُنهى جلساته الحالية فورًا. تبقى جميع بياناته ومواعيده وجلساته وسجل التدقيق كما هي، ويمكن إعادة التفعيل لاحقًا.</>}
+            ? <>{ttx("سيتمكّن {name} ({email}) من تسجيل الدخول مجددًا بنفس البريد وكلمة المرور. لا يتأثر أي من بياناته.", { name: <b>{statusRow.row.name}</b>, email: statusRow.row.email || "—" })}</>
+            : <>{ttx("سيُمنع {name} ({email}) من تسجيل الدخول وستُنهى جلساته الحالية فورًا. تبقى جميع بياناته ومواعيده وجلساته وسجل التدقيق كما هي، ويمكن إعادة التفعيل لاحقًا.", { name: <b>{statusRow.row.name}</b>, email: statusRow.row.email || "—" })}</>}
         />
       )}
     </div>
@@ -1859,16 +1863,16 @@ function AdminResetPasswordModal({ row, onClose }) {
   const [busy, setBusy] = React.useState(false);
 
   function proceed() {
-    if (pw.length < 6) { window.showToast && window.showToast("كلمة المرور 6 أحرف على الأقل", "error"); return; }
-    if (pw !== pw2) { window.showToast && window.showToast("كلمتا المرور غير متطابقتين", "error"); return; }
+    if (pw.length < 6) { window.showToast && window.showToast(tt("كلمة المرور 6 أحرف على الأقل"), "error"); return; }
+    if (pw !== pw2) { window.showToast && window.showToast(tt("كلمتا المرور غير متطابقتين"), "error"); return; }
     setConfirming(true);
   }
   async function submit() {
     setBusy(true);
     const res = await window.adminResetPassword({ staff_id: row.staff_id || row.id, auth_uid: row.auth_uid, password: pw });
     setBusy(false);
-    if (res.ok) { window.showToast && window.showToast(res.demo ? "وضع تجريبي: لم تُحفظ" : `تم تغيير كلمة مرور ${row.name}`, "success"); onClose(); }
-    else { window.showToast && window.showToast(res.error || "تعذّر التغيير", "error"); setConfirming(false); }
+    if (res.ok) { window.showToast && window.showToast(res.demo ? tt("وضع تجريبي: لم تُحفظ") : tt("تم تغيير كلمة مرور {name}", { name: row.name }), "success"); onClose(); }
+    else { window.showToast && window.showToast(res.error || tt("تعذّر التغيير"), "error"); setConfirming(false); }
   }
 
   if (confirming) {
@@ -1879,13 +1883,13 @@ function AdminResetPasswordModal({ row, onClose }) {
         confirmLabel="تأكيد وتغيير"
         onConfirm={submit}
         onClose={()=>setConfirming(false)}
-        message={<>سيتم تعيين كلمة مرور جديدة للموظف <b>{row.name}</b> ({row.email || "—"}). سيستخدم كلمة المرور الجديدة في تسجيل الدخول القادم. لا يلزم إدخال كلمة المرور الحالية.</>}
+        message={<>{ttx("سيتم تعيين كلمة مرور جديدة للموظف {name} ({email}). سيستخدم كلمة المرور الجديدة في تسجيل الدخول القادم. لا يلزم إدخال كلمة المرور الحالية.", { name: <b>{row.name}</b>, email: row.email || "—" })}</>}
       />
     );
   }
 
   return (
-    <Modal title={`إعادة تعيين كلمة مرور — ${row.name}`} onClose={onClose}
+    <Modal title={tt("إعادة تعيين كلمة مرور — {name}", { name: row.name })} onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" onClick={proceed}><I.Lock size={13}/> متابعة</button>
@@ -1895,8 +1899,8 @@ function AdminResetPasswordModal({ row, onClose }) {
       </div>
       <Field label="كلمة المرور الجديدة" required hint="6 أحرف على الأقل">
         <div style={{position:"relative"}}>
-          <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingRight:38}} autoFocus/>
-          <button type="button" onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
+          <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingInlineStart:38}} autoFocus/>
+          <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
@@ -1921,14 +1925,14 @@ function CreateUserModal({ onClose, onDone }) {
   const [serverError, setServerError] = React.useState("");
   const set = (k,v)=>{ setForm(f=>({...f,[k]:v})); setServerError(""); };
   async function submit() {
-    if (!form.name.trim()) { setServerError("أدخل الاسم الكامل"); return; }
-    if (api && form.role !== "admin" && !branchIds.length) { setServerError("اختر فرعًا واحدًا على الأقل"); return; }
+    if (!form.name.trim()) { setServerError(tt("أدخل الاسم الكامل")); return; }
+    if (api && form.role !== "admin" && !branchIds.length) { setServerError(tt("اختر فرعًا واحدًا على الأقل")); return; }
     setBusy(true);
     const res = await window.adminCreateUser(api ? { ...form, branch_ids: form.role === "admin" ? [] : branchIds } : form);
     setBusy(false);
-    if (!res.ok) { setServerError(res.error || "تعذّر إنشاء المستخدم"); return; }
-    if (res.needsConfirm) window.showToast && window.showToast("تم الإنشاء — على المستخدم تأكيد بريده قبل الدخول", "success");
-    else window.showToast && window.showToast(res.demo ? "تم الإنشاء (وضع تجريبي)" : "تم إنشاء المستخدم", "success");
+    if (!res.ok) { setServerError(res.error || tt("تعذّر إنشاء المستخدم")); return; }
+    if (res.needsConfirm) window.showToast && window.showToast(tt("تم الإنشاء — على المستخدم تأكيد بريده قبل الدخول"), "success");
+    else window.showToast && window.showToast(res.demo ? tt("تم الإنشاء (وضع تجريبي)") : tt("تم إنشاء المستخدم"), "success");
     onClose();
     if (onDone) onDone(res);
   }
@@ -1946,13 +1950,13 @@ function CreateUserModal({ onClose, onDone }) {
       </Field>
       <div style={{height:12}}/>
       <Field label="البريد الإلكتروني" required>
-        <input className="input" aria-label="البريد الإلكتروني" type="email" dir="ltr" style={{textAlign:"right"}} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
+        <input className="input" aria-label="البريد الإلكتروني" type="email" dir="ltr" style={{textAlign:IS_RTL ? "right" : "left"}} value={form.email} onChange={e=>set("email",e.target.value)} placeholder="user@clinic.eg"/>
       </Field>
       <div style={{height:12}}/>
       <Field label="كلمة المرور" required hint="6 أحرف على الأقل">
         <div style={{position:"relative"}}>
-          <input className="input" aria-label="كلمة المرور" type={showPw?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} style={{paddingRight:38}}/>
-          <button type="button" aria-label={showPw ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
+          <input className="input" aria-label={tt("كلمة المرور")} type={showPw?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} style={{paddingInlineStart:38}}/>
+          <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
@@ -1964,7 +1968,7 @@ function CreateUserModal({ onClose, onDone }) {
       {api && (
         <>
           <div style={{height:12}}/>
-          <div className="label">الفروع {form.role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
+          <div className="label">{tt("الفروع")} {form.role !== "admin" && <span style={{color:"#A8443A"}}>*</span>}</div>
           {form.role === "admin"
             ? <div className="muted" style={{fontSize:12.5}}>مدير العيادة يعمل في كل الفروع.</div>
             : <CaBranchChecks value={branchIds} onChange={(v)=>{ setBranchIds(v); setServerError(""); }} idPrefix="create-user-branch"/>}
@@ -1985,17 +1989,17 @@ function EditUserModal({ row, onClose, nameOnly }) {
   const [role, setRole] = React.useState(row.role || "receptionist");
   const [busy, setBusy] = React.useState(false);
   async function submit() {
-    if (!name.trim()) { window.showToast && window.showToast("أدخل الاسم", "error"); return; }
+    if (!name.trim()) { window.showToast && window.showToast(tt("أدخل الاسم"), "error"); return; }
     setBusy(true);
     const res = await window.updateStaffMember(row.staff_id || row.id, nameOnly ? { name: name.trim() } : { name: name.trim(), role });
     setBusy(false);
-    if (res.ok) window.showToast && window.showToast("تم حفظ التغييرات", "success");
-    else window.showToast && window.showToast(res.error || "تعذّر الحفظ", "error");
+    if (res.ok) window.showToast && window.showToast(tt("تم حفظ التغييرات"), "success");
+    else window.showToast && window.showToast(res.error || tt("تعذّر الحفظ"), "error");
     onClose();
   }
   const roleChanged = !nameOnly && role !== (row.role || "receptionist");
   return (
-    <Modal title={`تعديل ${row.name || "المستخدم"}`} onClose={onClose}
+    <Modal title={tt("تعديل {name}", { name: row.name || tt("المستخدم") })} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> حفظ</button>
@@ -2003,7 +2007,7 @@ function EditUserModal({ row, onClose, nameOnly }) {
       <Field label="الاسم"><input className="input" aria-label="الاسم" value={name} onChange={e=>setName(e.target.value)}/></Field>
       <div style={{height:12}}/>
       <Field label="البريد الإلكتروني" hint="لا يمكن تغييره من هنا">
-        <input className="input" dir="ltr" style={{opacity:.7,textAlign:"right"}} value={row.email || "—"} disabled/>
+        <input className="input" dir="ltr" style={{opacity:.7,textAlign:IS_RTL ? "right" : "left"}} value={row.email || "—"} disabled/>
       </Field>
       {!nameOnly && (
         <>
@@ -2030,12 +2034,12 @@ function ChangePasswordModal({ onClose }) {
   const [busy, setBusy] = React.useState(false);
   const [showPw, setShowPw] = React.useState(false);
   async function submit() {
-    if (pw !== pw2) { window.showToast && window.showToast("كلمتا المرور غير متطابقتين", "error"); return; }
+    if (pw !== pw2) { window.showToast && window.showToast(tt("كلمتا المرور غير متطابقتين"), "error"); return; }
     setBusy(true);
     const res = await window.updateOwnPassword(pw);
     setBusy(false);
-    if (res.ok) { window.showToast && window.showToast(res.demo ? "وضع تجريبي: لم تُحفظ" : "تم تغيير كلمة المرور", "success"); onClose(); }
-    else window.showToast && window.showToast(res.error || "تعذّر التغيير", "error");
+    if (res.ok) { window.showToast && window.showToast(res.demo ? tt("وضع تجريبي: لم تُحفظ") : tt("تم تغيير كلمة المرور"), "success"); onClose(); }
+    else window.showToast && window.showToast(res.error || tt("تعذّر التغيير"), "error");
   }
   return (
     <Modal title="تغيير كلمة المرور" onClose={onClose}
@@ -2045,8 +2049,8 @@ function ChangePasswordModal({ onClose }) {
       </>}>
       <Field label="كلمة المرور الجديدة" required hint="6 أحرف على الأقل">
         <div style={{position:"relative"}}>
-          <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingRight:38}}/>
-          <button type="button" onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",right:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
+          <input className="input" type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} style={{paddingInlineStart:38}}/>
+          <button type="button" aria-label={showPw ? tt("إخفاء كلمة المرور") : tt("إظهار كلمة المرور")} onClick={()=>setShowPw(s=>!s)} style={{position:"absolute",insetInlineStart:6,top:5,padding:6,border:"none",background:"transparent",cursor:"pointer",color:"var(--ink-500)"}}><I.Eye size={15}/></button>
         </div>
       </Field>
       <div style={{height:12}}/>
@@ -2064,8 +2068,8 @@ function EditProfileModal({ onClose }) {
     setBusy(true);
     const res = await window.updateOwnProfile({ name });
     setBusy(false);
-    if (res.ok) { window.showToast && window.showToast("تم حفظ الملف", "success"); onClose(); }
-    else window.showToast && window.showToast(res.error || "تعذّر الحفظ", "error");
+    if (res.ok) { window.showToast && window.showToast(tt("تم حفظ الملف"), "success"); onClose(); }
+    else window.showToast && window.showToast(res.error || tt("تعذّر الحفظ"), "error");
   }
   return (
     <Modal title="تعديل ملفي" onClose={onClose}
@@ -2122,23 +2126,23 @@ function ClinicDetailsPanel() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   async function onSave() {
-    if (!form.name.trim()) { if (window.showToast) window.showToast("أدخل اسم العيادة","error"); return; }
+    if (!form.name.trim()) { if (window.showToast) window.showToast(tt("أدخل اسم العيادة"),"error"); return; }
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-      if (window.showToast) window.showToast("صيغة البريد الإلكتروني غير صحيحة","error"); return;
+      if (window.showToast) window.showToast(tt("صيغة البريد الإلكتروني غير صحيحة"),"error"); return;
     }
     const dur = parseInt(form.appointment_duration, 10);
     if (!Number.isFinite(dur) || dur < 5 || dur > 240) {
-      if (window.showToast) window.showToast("مدة الجلسة بين 5 و 240 دقيقة","error"); return;
+      if (window.showToast) window.showToast(tt("مدة الجلسة بين 5 و 240 دقيقة"),"error"); return;
     }
     const hm = /^([01]\d|2[0-3]):[0-5]\d$/;
     if (!hm.test(form.calendar_start) || !hm.test(form.calendar_end)) {
-      if (window.showToast) window.showToast("أدخل بداية ونهاية دوام صحيحتين (HH:MM)","error"); return;
+      if (window.showToast) window.showToast(tt("أدخل بداية ونهاية دوام صحيحتين (HH:MM)"),"error"); return;
     }
     if (form.calendar_end <= form.calendar_start) {
-      if (window.showToast) window.showToast("نهاية الدوام يجب أن تكون بعد بدايته","error"); return;
+      if (window.showToast) window.showToast(tt("نهاية الدوام يجب أن تكون بعد بدايته"),"error"); return;
     }
     if (!window.saveClinic) {
-      if (window.showToast) window.showToast("قاعدة البيانات غير متصلة","error");
+      if (window.showToast) window.showToast(tt("قاعدة البيانات غير متصلة"),"error");
       return;
     }
     setSaving(true);
@@ -2146,10 +2150,10 @@ function ClinicDetailsPanel() {
       const payload = { ...form, appointment_duration: dur };
       const fresh = await window.saveClinic(payload);
       setForm(seedFromForm(fresh));
-      if (window.showToast) window.showToast("تم حفظ التغييرات","success");
+      if (window.showToast) window.showToast(tt("تم حفظ التغييرات"),"success");
     } catch (e) {
       console.error("save clinic details failed", e);
-      const msg = (e && e.message) ? e.message : "تعذّر حفظ التغييرات";
+      const msg = (e && e.message) ? e.message : tt("تعذّر حفظ التغييرات");
       if (window.showToast) window.showToast(msg, "error");
     } finally { setSaving(false); }
   }
@@ -2198,7 +2202,7 @@ function ClinicDetailsPanel() {
         </Field>
       </div>
       <button className="btn btn-blue" style={{marginTop:18}} disabled={saving||loading} onClick={onSave}>
-        <I.Check size={13}/> {saving ? "جاري الحفظ…" : "حفظ التغييرات"}
+        <I.Check size={13}/> {saving ? tt("جاري الحفظ…") : tt("حفظ التغييرات")}
       </button>
     </div>
   );
@@ -2231,11 +2235,11 @@ function BrandingPanel() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     if (!/^image\//.test(file.type)) {
-      if (window.showToast) window.showToast("يجب اختيار ملف صورة","error");
+      if (window.showToast) window.showToast(tt("يجب اختيار ملف صورة"),"error");
       return;
     }
     if (file.size > 512*1024) {
-      if (window.showToast) window.showToast("حجم الصورة أكبر من 512KB","error");
+      if (window.showToast) window.showToast(tt("حجم الصورة أكبر من 512KB"),"error");
       return;
     }
     const reader = new FileReader();
@@ -2245,17 +2249,17 @@ function BrandingPanel() {
 
   async function onSave() {
     if (!window.saveClinic) {
-      if (window.showToast) window.showToast("قاعدة البيانات غير متصلة","error");
+      if (window.showToast) window.showToast(tt("قاعدة البيانات غير متصلة"),"error");
       return;
     }
     setSaving(true);
     try {
       const fresh = await window.saveClinic(clinic);
       setClinic(fresh);
-      if (window.showToast) window.showToast("تم حفظ الهوية البصرية","success");
+      if (window.showToast) window.showToast(tt("تم حفظ الهوية البصرية"),"success");
     } catch (e) {
       console.error("save branding failed", e);
-      const msg = (e && e.message) ? e.message : "تعذّر حفظ الهوية البصرية";
+      const msg = (e && e.message) ? e.message : tt("تعذّر حفظ الهوية البصرية");
       if (window.showToast) window.showToast(msg,"error");
     } finally { setSaving(false); }
   }
@@ -2269,7 +2273,7 @@ function BrandingPanel() {
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
           <div style={{width:140,height:140,borderRadius:20,border:"1px dashed var(--ink-300)",background:"var(--ink-50)",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
             {clinic.logo
-              ? <img src={clinic.logo} alt="logo" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              ? <img src={clinic.logo} alt={tt("شعار العيادة")} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
               : <I.Image size={40} style={{color:"var(--ink-300)"}}/>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={onPickFile}/>
@@ -2300,7 +2304,7 @@ function BrandingPanel() {
       </div>
 
       <button className="btn btn-blue" style={{marginTop:22}} disabled={saving} onClick={onSave}>
-        <I.Check size={13}/> {saving ? "جاري الحفظ…" : "حفظ التغييرات"}
+        <I.Check size={13}/> {saving ? tt("جاري الحفظ…") : tt("حفظ التغييرات")}
       </button>
     </div>
   );
@@ -2319,12 +2323,12 @@ function CustomSectionsPanel() {
   },[]);
 
   function startNew() {
-    setEditing({ id:null, label:"", slug:"", icon:"Layers", group:"مخصص", description:"", content:"", visible:true });
+    setEditing({ id:null, label:"", slug:"", icon:"Layers", group:tt("مخصص"), description:"", content:"", visible:true });
   }
   async function onDelete(s) {
-    if (!confirm(`حذف قسم "${s.label}"؟`)) return;
+    if (!confirm(tt("حذف قسم \"{name}\"؟", { name: s.label }))) return;
     if (window.removeSection) await window.removeSection(s.id);
-    if (window.showToast) window.showToast("تم حذف القسم","success");
+    if (window.showToast) window.showToast(tt("تم حذف القسم"),"success");
   }
 
   return (
@@ -2341,7 +2345,7 @@ function CustomSectionsPanel() {
         <EmptyState icon={<I.Layers size={22}/>} title="لا توجد أقسام مخصصة بعد" body="اضغط «قسم جديد» لإضافة قسم يظهر في القائمة الجانبية."/>
       ) : (
         <div className="tbl-scroll">
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>القسم</th><th>المجموعة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {sections.map(s=>{
@@ -2360,8 +2364,8 @@ function CustomSectionsPanel() {
                     </div>
                   </td>
                   <td>{s.group}</td>
-                  <td><span className={"badge " + (s.visible!==false?"b-green":"b-grey")}><span className="dot"></span>{s.visible!==false?"ظاهر":"مخفي"}</span></td>
-                  <td style={{textAlign:"left"}}>
+                  <td><span className={"badge " + (s.visible!==false?"b-green":"b-grey")}><span className="dot"></span>{s.visible!==false?tt("ظاهر"):tt("مخفي")}</span></td>
+                  <td style={{textAlign:"end"}}>
                     <button className="btn btn-ghost btn-icon" title="تعديل" onClick={()=>setEditing({...s})}><I.Edit size={13}/></button>
                     <button className="btn btn-ghost btn-icon" title="حذف" onClick={()=>onDelete(s)}><I.Trash size={13}/></button>
                   </td>
@@ -2369,7 +2373,7 @@ function CustomSectionsPanel() {
               );
             })}
           </tbody>
-        </table>
+        </CardTable>
         </div>
       )}
 
@@ -2385,7 +2389,7 @@ function SectionEditorModal({ draft, onClose }) {
   function set(k, v) { setD(x => ({ ...x, [k]: v })); }
 
   async function onSave() {
-    if (!d.label || !d.label.trim()) { if(window.showToast) window.showToast("أدخل اسم القسم","error"); return; }
+    if (!d.label || !d.label.trim()) { if(window.showToast) window.showToast(tt("أدخل اسم القسم"),"error"); return; }
     setSaving(true);
     try {
       if (d.id && window.updateSection) {
@@ -2396,17 +2400,17 @@ function SectionEditorModal({ draft, onClose }) {
       } else if (window.addSection) {
         await window.addSection(d);
       }
-      if (window.showToast) window.showToast(d.id ? "تم تحديث القسم" : "تمت إضافة القسم","success");
+      if (window.showToast) window.showToast(d.id ? tt("تم تحديث القسم") : tt("تمت إضافة القسم"),"success");
       onClose();
     } finally { setSaving(false); }
   }
 
   return (
-    <Modal title={d.id ? "تعديل قسم" : "قسم جديد"} onClose={onClose}
+    <Modal title={d.id ? tt("تعديل قسم") : tt("قسم جديد")} onClose={onClose}
       footer={<>
         <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
         <button className="btn btn-blue" disabled={saving} onClick={onSave}>
-          <I.Check size={13}/> {saving ? "جاري الحفظ…" : "حفظ"}
+          <I.Check size={13}/> {saving ? tt("جاري الحفظ…") : tt("حفظ")}
         </button>
       </>}>
       <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12}}>
@@ -2449,7 +2453,7 @@ function CustomSectionPage({ id }) {
   const Ico = I[s.icon] || I.Layers;
   return (
     <Page>
-      <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>{s.group||"مخصص"}</span><I.Chevron size={11}/><span>{s.label}</span></div>
+      <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>{s.group||tt("مخصص")}</span><I.Chevron size={11}/><span>{s.label}</span></div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
         <div style={{width:44,height:44,borderRadius:12,background:"var(--blue-100)",color:"var(--blue-700)",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <Ico size={22}/>
@@ -2460,7 +2464,7 @@ function CustomSectionPage({ id }) {
         </div>
       </div>
       <div className="card card-pad" style={{whiteSpace:"pre-wrap",fontSize:14,lineHeight:1.7,color:"var(--ink-700)"}}>
-        {s.content || "لا يوجد محتوى بعد. يمكن للمدير تعديل هذا القسم من الإعدادات."}
+        {s.content || tt("لا يوجد محتوى بعد. يمكن للمدير تعديل هذا القسم من الإعدادات.")}
       </div>
     </Page>
   );
@@ -2479,7 +2483,55 @@ function NotFound({ go }) {
   );
 }
 
-Object.assign(window, { Reports, SettingsPage, NotFound });
+// A page the signed-in role may not open (docs/03 «Entry points», task
+// 3.11): said plainly, like the module-disabled page, instead of showing
+// another page; the address keeps the page that was asked for.
+function ClinicNoPermission({ go, role, reason }) {
+  const home = window.roleDefaultRoute ? window.roleDefaultRoute(role) : "dashboard";
+  const homeLabel = (window.ROLE_DASH_LABEL || {})[role] || "لوحة التحكم";
+  return (
+    <Page>
+      <div className="card clinic-no-permission" role="alert" data-no-permission=""
+        style={{maxWidth:520,margin:"60px auto",textAlign:"center",padding:"32px 28px"}}>
+        <div aria-hidden="true" style={{width:52,height:52,borderRadius:14,margin:"0 auto 16px",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--ink-100)",color:"var(--ink-700)"}}>
+          <I.Lock size={22}/>
+        </div>
+        <h1 className="h2" style={{marginBottom:10}}>{tt("ليست لديك صلاحية لهذه الصفحة")}</h1>
+        <p className="muted" style={{fontSize:14,lineHeight:1.7,margin:"0 0 18px"}}>
+          {reason || tt("هذه الصفحة غير متاحة لدورك في العيادة. إذا كنت تحتاجها فتواصل مع مدير العيادة.")}
+        </p>
+        <button type="button" className="btn btn-blue" onClick={()=>go && go(home)}>
+          {tt("العودة إلى {page}", { page: tt(homeLabel) })}
+        </button>
+      </div>
+    </Page>
+  );
+}
+
+// Every page of the clinic shell (a route outside it is not a page).
+const CLINIC_PAGES = ["dashboard","patients","appointments","treatments","sessions","payments","packages","campaigns","reports","branches","settings"];
+const clinicIsPage = (r) => typeof r === "string" && (CLINIC_PAGES.includes(r) || r.startsWith("custom:"));
+
+// The language switch of the top bars: «EN» / «ع» on phones.
+function useCaMedia(query) {
+  const read = () => !!(window.matchMedia && window.matchMedia(query).matches);
+  const [on, setOn] = React.useState(read);
+  React.useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(query);
+    const h = () => setOn(mq.matches);
+    h();
+    if (mq.addEventListener) mq.addEventListener("change", h); else mq.addListener(h);
+    return () => { if (mq.removeEventListener) mq.removeEventListener("change", h); else mq.removeListener(h); };
+  }, [query]);
+  return on;
+}
+function CaLangSwitch() {
+  const phone = useCaMedia("(max-width: 640px)");
+  return <LangSwitch compact={phone} className="btn btn-ghost" style={{fontSize:12.5,padding:"6px 10px",flexShrink:0}}/>;
+}
+
+Object.assign(window, { Reports, SettingsPage, NotFound, ClinicNoPermission });
 
 
 // ─────────── App entrypoint ───────────
@@ -2522,6 +2574,7 @@ function ClinicApp({ ctx }) {
       const sub  = c.subtitle || "";
       const t = [base, sub].filter(Boolean).join(" — ");
       if (t) document.title = t;
+      else if (!IS_RTL) document.title = "ClinicSystem EG";
     };
     applyTitle();
     window.addEventListener("kinetic:clinic-updated", applyTitle);
@@ -2575,7 +2628,7 @@ function ClinicApp({ ctx }) {
     const chunk = window.KINETIC_CHUNKS && window.KINETIC_CHUNKS.importPage;
     if (!importMode || importGateReady || !chunk) return;
     loadScriptOnce(chunk).then(() => setImportGateReady(true)).catch(() =>
-      window.showToast && window.showToast("تعذّر تحميل صفحة الاستيراد — تحقق من الاتصال", "error"));
+      window.showToast && window.showToast(tt("تعذّر تحميل صفحة الاستيراد — تحقق من الاتصال"), "error"));
   }, [importMode, importGateReady]);
 
   // ⌘K / Ctrl+K opens the global command palette (PRD 5.10)
@@ -2597,11 +2650,12 @@ function ClinicApp({ ctx }) {
     localStorage.setItem("kinetic.route", rawRoute);
   },[rawRoute]);
 
-  // The page in the address bar (#/<route>) while someone is signed in; a
-  // route this role may not open is replaced by the role's home page.
+  // The page in the address bar (#/<route>) while someone is signed in. A
+  // page this role may not open stays there and says so (ClinicNoPermission,
+  // task 3.11); something that is not a page at all goes to the home page.
   React.useEffect(() => {
     if (!user || importMode || user.role === "مريض" || !window.tenantWriteRouteHash) return;
-    if (window.roleAllows && !window.roleAllows(user.role, rawRoute)) {
+    if (!clinicIsPage(rawRoute)) {
       navMode.current = "replace";
       setRoute(window.roleDefaultRoute ? window.roleDefaultRoute(user.role) : "dashboard");
       return;
@@ -2661,9 +2715,9 @@ function ClinicApp({ ctx }) {
     window.tenantLoadClinicData().then((res) => {
       if (res.ok) return;
       if (res.status === 401 || res.status === 403) {
-        doLogout({ kind: "error", text: res.error || "انتهت الجلسة — سجّل الدخول من جديد" });
+        doLogout({ kind: "error", text: res.error || tt("انتهت الجلسة — سجّل الدخول من جديد") });
       } else if (window.showToast) {
-        window.showToast(res.error || "تعذّر تحميل بيانات العيادة", "error");
+        window.showToast(res.error || tt("تعذّر تحميل بيانات العيادة"), "error");
       }
     }).catch((e) => console.warn("loading the clinic failed", e));
   }
@@ -2723,8 +2777,8 @@ function ClinicApp({ ctx }) {
         if (res.ok && stillMember) return;
         if (res.ok || ["account-inactive", "invalid-session", "no-session", "staff-lookup-failed"].includes(res.reason)) {
           const text = res.ok || res.reason === "staff-lookup-failed"
-            ? "لم تعد لديك عضوية نشطة في هذه العيادة — تم تسجيل خروجك"
-            : (res.error || "انتهت الجلسة — سجّل الدخول من جديد");
+            ? tt("لم تعد لديك عضوية نشطة في هذه العيادة — تم تسجيل خروجك")
+            : (res.error || tt("انتهت الجلسة — سجّل الدخول من جديد"));
           if (window.showToast) window.showToast(text, "error");
           doLogout({ kind: "error", text });
         }
@@ -2761,13 +2815,13 @@ function ClinicApp({ ctx }) {
       const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
       setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
     }
-    setToast({ msg: `أهلاً بعودتك، ${u.name.split(" ")[0]}`, kind:"success" });
+    setToast({ msg: tt("أهلاً بعودتك، {name}", { name: u.name.split(" ")[0] }), kind:"success" });
     setTimeout(()=>setToast(null), 2400);
   }
 
   if (publicBooking) return <PublicBookingScreen onBack={()=>setPublicBooking(false)} onDone={()=>{
     setPublicBooking(false);
-    setToast({ msg:"Booking confirmed — واتساب sent.", kind:"success" });
+    setToast({ msg:tt("تم تأكيد الحجز — أُرسل التأكيد عبر واتساب."), kind:"success" });
     setTimeout(()=>setToast(null), 3500);
   }}/>;
 
@@ -2814,13 +2868,14 @@ function ClinicApp({ ctx }) {
   };
   // Make the logged-in identity available to data-scoping helpers.
   window.ME = acct;
-  // Guard: if the stored route isn't allowed for this job, fall back to its home.
-  const route = (window.roleAllows && !window.roleAllows(user.role, rawRoute))
-    ? (window.roleDefaultRoute ? window.roleDefaultRoute(user.role) : "dashboard")
-    : rawRoute;
+  // A page this job may not open (a link, the stored route, a button
+  // inside a page) shows «ليست لديك صلاحية لهذه الصفحة»; not a page at all
+  // shows the home page (the effect above also fixes the address).
+  const route = clinicIsPage(rawRoute) ? rawRoute : (window.roleDefaultRoute ? window.roleDefaultRoute(user.role) : "dashboard");
+  const forbidden = !!(window.roleAllows && !window.roleAllows(user.role, route));
   // A route of a module the clinic has not enabled (stored route, a link
   // inside a page, the command palette) shows why instead of the page.
-  const moduleOff = !!(window.routeModuleEnabled && !window.routeModuleEnabled(route));
+  const moduleOff = !forbidden && !!(window.routeModuleEnabled && !window.routeModuleEnabled(route));
 
   const titles = {
     dashboard:    { title:"لوحة التحكم",            crumb:["الرئيسية","لوحة التحكم"] },
@@ -2839,9 +2894,9 @@ function ClinicApp({ ctx }) {
   // Notifications derived from real data — latest bookings, payments and
   // logged sessions (no canned entries).
   const notifs = [
-    ...DATA.appts.filter(a=>a.status!=="متاح").slice(-2).map(a=>({ title:`موعد — ${a.patient}${a.time?` ${a.time}`:""}`, time:a.date||"", dot:"var(--blue-500)" })),
-    ...DATA.payments.slice(-2).map(p=>({ title:`فاتورة ${p.id} — EGP ${(p.paid||0).toLocaleString("en-US")}`, time:p.date||"", dot:"var(--green)" })),
-    ...DATA.sessions.slice(0,1).map(s=>({ title:`جلسة مسجلة — ${s.patient||""} #${s.session||""}`, time:s.date||"", dot:"var(--amber)" })),
+    ...DATA.appts.filter(a=>a.status!=="متاح").slice(-2).map(a=>({ title:tt("موعد — {name}", { name: `${a.patient}${a.time?` ${a.time}`:""}` }), time:a.date||"", dot:"var(--blue-500)" })),
+    ...DATA.payments.slice(-2).map(p=>({ title:tt("فاتورة {id} — {amount}", { id: p.id, amount: fmtMoney(p.paid||0) }), time:p.date||"", dot:"var(--green)" })),
+    ...DATA.sessions.slice(0,1).map(s=>({ title:tt("جلسة مسجلة — {name} #{n}", { name: s.patient||"", n: s.session||"" }), time:s.date||"", dot:"var(--amber)" })),
   ].slice(0,5);
 
   return (
@@ -2857,7 +2912,7 @@ function ClinicApp({ ctx }) {
             <I.Menu size={18}/>
           </button>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-            <span style={{fontSize:12,color:"var(--ink-500)",whiteSpace:"nowrap"}}>{acct.role}</span>
+            <span style={{fontSize:12,color:"var(--ink-500)",whiteSpace:"nowrap"}}>{tt(acct.role)}</span>
             <span aria-hidden="true" style={{color:"var(--ink-300)"}}>·</span>
             <span style={{fontSize:13,color:"var(--ink-700)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{activeBranchName()}</span>
             <span className="badge b-green topbar-online"><span className="dot" aria-hidden="true"></span>متصل</span>
@@ -2867,18 +2922,18 @@ function ClinicApp({ ctx }) {
             style={{position:"relative",width:"min(340px, 32vw)",height:36,padding:"0 34px",borderRadius:10,
               border:"1px solid var(--ink-200)",background:"var(--ink-50)",cursor:"pointer",
               alignItems:"center",gap:8,color:"var(--ink-500)",fontSize:13,fontFamily:"inherit"}}>
-            <I.Search size={15} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-500)"}}/>
+            <I.Search size={15} style={{position:"absolute",insetInlineEnd:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-500)"}}/>
             <span style={{flex:1,textAlign:"start"}}>ابحث عن مرضى، مواعيد، فواتير…</span>
-            <kbd className="mono" aria-hidden="true" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-500)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</kbd>
+            <kbd className="mono" aria-hidden="true" style={{position:"absolute",insetInlineStart:10,top:"50%",transform:"translateY(-50%)",fontSize:10,color:"var(--ink-500)",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:5,padding:"1px 5px"}}>⌘K</kbd>
           </button>
           {/* Phone: the full search bar collapses to this icon (opens the same palette) */}
           <button type="button" className="btn btn-ghost btn-icon mobile-search-btn" title="بحث" aria-label="فتح البحث الشامل" aria-haspopup="dialog" onClick={()=>setPaletteOpen(true)}>
             <I.Search size={17}/>
           </button>
           <div style={{position:"relative"}}>
-            <button type="button" className="btn btn-ghost btn-icon" title="الإشعارات" aria-label={notifs.length ? `الإشعارات (${notifs.length})` : "الإشعارات"} aria-expanded={notifsOpen ? "true" : "false"} style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
+            <button type="button" className="btn btn-ghost btn-icon" title="الإشعارات" aria-label={notifs.length ? tt("الإشعارات ({n})", { n: notifs.length }) : tt("الإشعارات")} aria-expanded={notifsOpen ? "true" : "false"} style={{position:"relative"}} onClick={()=>setNotifsOpen(o=>!o)}>
               <I.Bell size={17}/>
-              {notifs.length>0 && <span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>}
+              {notifs.length>0 && <span style={{position:"absolute",top:6,insetInlineStart:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>}
             </button>
             {notifsOpen && (
               <div style={{position:"fixed",top:60,insetInlineEnd:"max(8px, min(56px, 4vw))",width:"min(320px, calc(100vw - 16px))",background:"#fff",border:"1px solid var(--ink-200)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,.12)",zIndex:999,padding:"12px 0"}}>
@@ -2900,15 +2955,17 @@ function ClinicApp({ ctx }) {
               </div>
             )}
           </div>
-          <button type="button" className="btn btn-ghost btn-icon" title="مساعدة" aria-label="مساعدة" onClick={()=>window.showToast&&window.showToast("المساعدة قريبًا","info")}>
+          <button type="button" className="btn btn-ghost btn-icon" title="مساعدة" aria-label="مساعدة" onClick={()=>window.showToast&&window.showToast(tt("المساعدة قريبًا"),"info")}>
             <I.Sparkle size={17}/>
           </button>
+          <CaLangSwitch/>
         </div>
 
         <main id="clinic-main" tabIndex={-1} style={{flex:1,outline:"none"}}>
           {!demo && <InactiveBranchBanner/>}
+          {forbidden && <ClinicNoPermission go={go} role={acct.role}/>}
           {moduleOff && <TenantModuleDisabled go={go}/>}
-          {!moduleOff && <>
+          {!forbidden && !moduleOff && <>
           {route==="dashboard" && <RoleHome role={acct.role} go={go} user={acct}/>}
           {route==="patients" && <Patients go={go}/>}
           {route==="appointments" && <Appointments go={go}/>}
@@ -2944,7 +3001,12 @@ root.render(<App/>);
 // an unmatched login gets a minimal identity derived from the account.
 // Placeholder "next visit" when the patient has nothing booked — keeps the
 // portal UI stable without inventing an appointment.
-const NEXT_NONE = { none:true, date:"—", time:"—", dur:0, with:"—", room:"—", type:"لا حجز قادم" };
+const NEXT_NONE = { none:true, date:"—", time:"—", dur:0, with:"—", room:"—", type:tt("لا حجز قادم") };
+// A date of the portal: an ISO day reads «السبت، 24 أكتوبر» / "Saturday 24
+// October"; anything else (e.g. «اليوم») is shown as is.
+function ptDate(v) {
+  return /^\d{4}-\d{2}-\d{2}/.test(String(v || "")) ? fmtDate(String(v).slice(0, 10), "weekdayDate") : (v || "—");
+}
 
 function getPatientMe(){
   const ME = window.ME || {};
@@ -2952,7 +3014,7 @@ function getPatientMe(){
   const pid = ME.patient_id || ME.match || null;
   const row = pid ? patients.find(p => p.patient_id === pid || p.id === pid || p.name === pid) : null;
   if (!row) {
-    const nm = ME.name || "مريض";
+    const nm = ME.name || tt("مريض");
     return {
       name: nm,
       initials: nm.split(" ").map(x=>x[0]||"").join("").slice(0,2).toUpperCase() || "—",
@@ -2971,7 +3033,7 @@ function getPatientMe(){
   const upcoming = ((window.DATA && window.DATA.appts) || []).find(a =>
     (a.pid === file || a.patient === row.name) && a.status !== "مكتمل" && a.status !== "ملغي" && a.status !== "متاح");
   const next = upcoming ? {
-    date: upcoming.date || "اليوم", time: upcoming.time || "—", dur: upcoming.dur || 30,
+    date: upcoming.date || tt("اليوم"), time: upcoming.time || "—", dur: upcoming.dur || 30,
     with: upcoming.th || "—", room: upcoming.room || "—", type: upcoming.type || "",
   } : NEXT_NONE;
   return {
@@ -3008,7 +3070,7 @@ function PatientPortal({ onLogout }) {
 
   function handleBookingComplete(slot) {
     setBookingOpen(false);
-    setToast({ msg: `تم حجز موعدك يوم ${slot.date} الساعة ${slot.time}`, kind:"success" });
+    setToast({ msg: tt("تم حجز موعدك يوم {date} الساعة {time}", { date: ptDate(slot.date), time: slot.time }), kind:"success" });
     setTimeout(()=>setToast(null), 3000);
     setRoute("appointments");
   }
@@ -3029,17 +3091,17 @@ function PatientPortal({ onLogout }) {
 
       {/* Mobile bottom nav (visible always — patient portal feels app-like) */}
       <div style={{
-        position:"fixed",bottom:0,left:0,right:0,
+        position:"fixed",bottom:0,insetInlineStart:0,insetInlineEnd:0,
         background:"#fff",borderTop:"1px solid var(--ink-200)",
         padding:"8px 12px calc(12px + env(safe-area-inset-bottom, 0px))",display:"flex",justifyContent:"space-around",
         boxShadow:"0 -2px 14px rgba(15,30,43,.05)", zIndex: 20
       }}>
         {[
-          { id:"home", l:"الرئيسية", ic:<I.Heart size={18}/> },
-          { id:"appointments", l:"زيارات", ic:<I.Calendar size={18}/> },
-          { id:"book", l:"حجز", ic:<I.Plus size={20}/>, primary:true },
-          { id:"messages", l:"messages", ic:<I.WhatsApp size={18}/> },
-          { id:"profile", l:"حسابي", ic:<I.User size={18}/> },
+          { id:"home", l:tt("الرئيسية"), ic:<I.Heart size={18}/> },
+          { id:"appointments", l:tt("زيارات"), ic:<I.Calendar size={18}/> },
+          { id:"book", l:tt("حجز"), ic:<I.Plus size={20}/>, primary:true },
+          { id:"messages", l:tt("الرسائل"), ic:<I.WhatsApp size={18}/> },
+          { id:"profile", l:tt("حسابي"), ic:<I.User size={18}/> },
         ].map(it => (
           <button key={it.id} onClick={()=>go(it.id)}
             style={{
@@ -3081,13 +3143,13 @@ function PatientTopbar({ onNav, active }) {
             <span style={{fontSize:10,color:"var(--ink-500)",letterSpacing:".06em",textTransform:"uppercase"}}>بوابة المريض</span>
           </div>
         </div>
-        <nav className="pt-nav" style={{marginLeft:12}}>
+        <nav className="pt-nav" style={{marginInlineEnd:12}}>
           {[
-            { id:"home", l:"الرئيسية" },
-            { id:"appointments", l:"زياراتي" },
-            { id:"plan", l:"خطة العلاج" },
-            { id:"messages", l:"messages" },
-            { id:"bills", l:"الفواتير" },
+            { id:"home", l:tt("الرئيسية") },
+            { id:"appointments", l:tt("زياراتي") },
+            { id:"plan", l:tt("خطة العلاج") },
+            { id:"messages", l:tt("الرسائل") },
+            { id:"bills", l:tt("الفواتير") },
           ].map(it=>(
             <button key={it.id} onClick={()=>onNav(it.id)} style={{
               border:"none",background: active===it.id?"var(--blue-100)":"transparent",
@@ -3097,15 +3159,16 @@ function PatientTopbar({ onNav, active }) {
             }}>{it.l}</button>
           ))}
         </nav>
-        <button className="btn btn-ghost btn-icon" style={{position:"relative"}}>
+        <button className="btn btn-ghost btn-icon" style={{position:"relative"}} aria-label={tt("الإشعارات")}>
           <I.Bell size={16}/>
-          <span style={{position:"absolute",top:6,right:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>
+          <span style={{position:"absolute",top:6,insetInlineStart:6,width:7,height:7,background:"var(--red)",borderRadius:"50%",border:"2px solid #fff"}}></span>
         </button>
-        <button onClick={()=>onNav("profile")} style={{border:"none",background:"transparent",padding:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+        <button onClick={()=>onNav("profile")} aria-label={tt("حسابي")} style={{border:"none",background:"transparent",padding:0,cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
           <div className="av md" style={{background:"var(--blue-700)",color:"#fff"}}>{PATIENT_ME.initials}</div>
           <I.ChevronDown size={12} style={{color:"var(--ink-500)"}}/>
         </button>
-        <button className="btn btn-ghost btn-icon" title="تسجيل الخروج" onClick={()=>onNav("logout")}>
+        <CaLangSwitch/>
+        <button className="btn btn-ghost btn-icon" title={tt("تسجيل الخروج")} aria-label={tt("تسجيل الخروج")} onClick={()=>onNav("logout")}>
           <I.Logout size={15}/>
         </button>
       </div>
@@ -3130,14 +3193,14 @@ function PatientHome({ onBook, go }) {
         });
       }
       setNextCancelled(true);
-      if (window.showToast) window.showToast("تم إلغاء الموعد","success");
+      if (window.showToast) window.showToast(tt("تم إلغاء الموعد"),"success");
     } catch (e) {
       console.warn("cancel next appt failed", e);
-      if (window.showToast) window.showToast("تعذّر إلغاء الموعد","error");
+      if (window.showToast) window.showToast(tt("تعذّر إلغاء الموعد"),"error");
     }
   };
   const confirmReschedule = async () => {
-    if (!reTime) { if (window.showToast) window.showToast("اختر وقتًا جديدًا","error"); return; }
+    if (!reTime) { if (window.showToast) window.showToast(tt("اختر وقتًا جديدًا"),"error"); return; }
     try {
       if (window.KineticData) {
         await window.KineticData.upsert("appts", {
@@ -3149,19 +3212,19 @@ function PatientHome({ onBook, go }) {
       }
       setNextTime(reTime);
       setRescheduling(false);
-      if (window.showToast) window.showToast("تم إعادة جدولة الموعد","success");
+      if (window.showToast) window.showToast(tt("تم إعادة جدولة الموعد"),"success");
     } catch (e) {
       console.warn("reschedule next appt failed", e);
-      if (window.showToast) window.showToast("تعذّر إعادة الجدولة","error");
+      if (window.showToast) window.showToast(tt("تعذّر إعادة الجدولة"),"error");
     }
   };
   return (
     <div>
       {/* Greeting */}
       <div style={{marginBottom:24}}>
-        <div className="muted" style={{fontSize:13.5,marginBottom:4}}>الأحد، 24 مايو</div>
+        <div className="muted" style={{fontSize:13.5,marginBottom:4}}>{fmtDate(new Date(), "weekdayDate")}</div>
         <h1 style={{fontSize:"clamp(24px, 5.5vw, 32px)",fontWeight:600,letterSpacing:"-.015em",margin:0}}>
-          أهلاً <span className="serif" style={{fontWeight:400, fontStyle:"italic"}}>{(PATIENT_ME.name||"").split(" ")[0]}</span> — نتمنى لك تحسّنًا دائمًا
+          {ttx("أهلاً {name} — نتمنى لك تحسّنًا دائمًا", { name: <span className="serif" style={{fontWeight:400, fontStyle:"italic"}}>{(PATIENT_ME.name||"").split(" ")[0]}</span> })}
         </h1>
       </div>
 
@@ -3171,7 +3234,7 @@ function PatientHome({ onBook, go }) {
           background:"linear-gradient(135deg, #7BBDE8 0%, #BDD8E9 80%)",
           padding:"22px 26px", color:"#0F1E2B", position:"relative", overflow:"hidden"
         }}>
-          <svg style={{position:"absolute",top:-40,right:-40,opacity:.25}} width="220" height="220" viewBox="0 0 200 200">
+          <svg aria-hidden="true" style={{position:"absolute",top:-40,insetInlineStart:-40,opacity:.25}} width="220" height="220" viewBox="0 0 200 200">
             <circle cx="100" cy="100" r="80" fill="none" stroke="#fff" strokeWidth="1.5"/>
             <circle cx="100" cy="100" r="50" fill="none" stroke="#fff" strokeWidth="1.5"/>
             <circle cx="100" cy="100" r="20" fill="#fff" opacity=".6"/>
@@ -3180,18 +3243,18 @@ function PatientHome({ onBook, go }) {
             <div>
               <div style={{fontSize:11.5,letterSpacing:".06em",textTransform:"uppercase",color:"#1E4A6E",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
                 <span style={{width:6,height:6,borderRadius:999,background:"#1E4A6E",animation:"pulse 1.8s infinite"}}></span>
-                Your next جلسة
+                {tt("جلستك القادمة")}
               </div>
               <div className="serif" style={{fontSize:"clamp(28px, 6vw, 40px)",lineHeight:1.05,letterSpacing:"-.01em"}}>
-                {PATIENT_ME.next.date}
+                {ptDate(PATIENT_ME.next.date)}
               </div>
               <div className="mono" style={{fontSize:18,marginTop:6,color:"#1E4A6E",fontWeight:600}}>
-                {nextTime} · {PATIENT_ME.next.dur} min
+                {nextTime} · {tt("{n} دقيقة", { n: PATIENT_ME.next.dur })}
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px 14px",marginTop:14,fontSize:13,flexWrap:"wrap"}}>
                 <span style={{display:"flex",alignItems:"center",gap:6}}>
-                  <div className="av sm" style={{background:"#fff",color:"var(--blue-700)"}}>KS</div>
-                  مع {PATIENT_ME.next.with}
+                  <div className="av sm" aria-hidden="true" style={{background:"#fff",color:"var(--blue-700)"}}>{initialsOf(PATIENT_ME.next.with) || "—"}</div>
+                  {tt("مع {name}", { name: PATIENT_ME.next.with })}
                 </span>
                 <span style={{color:"#1E4A6E",opacity:.7}}>·</span>
                 <span style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3209,10 +3272,10 @@ function PatientHome({ onBook, go }) {
           <button className="btn btn-secondary" onClick={cancelNext}><I.X size={13}/> إلغاء</button>
           <div style={{flex:1}}/>
           <button className="btn btn-ghost" style={{fontSize:12.5}} onClick={()=>{
-            const ics=`BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:جلسة كينيتك - ${PATIENT_ME.next.with}\nDTSTART:20260601T100000Z\nDTEND:20260601T110000Z\nLOCATION:${PATIENT_ME.next.room}\nEND:VEVENT\nEND:VCALENDAR`;
+            const ics=`BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${tt("جلسة كينيتك - {name}", { name: PATIENT_ME.next.with })}\nDTSTART:20260601T100000Z\nDTEND:20260601T110000Z\nLOCATION:${PATIENT_ME.next.room}\nEND:VEVENT\nEND:VCALENDAR`;
             const blob=new Blob([ics],{type:"text/calendar"});
             const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="appointment.ics";a.click();URL.revokeObjectURL(url);
-            if(window.showToast)window.showToast("تم تنزيل الموعد للتقويم","success");
+            if(window.showToast)window.showToast(tt("تم تنزيل الموعد للتقويم"),"success");
           }}><I.Download size={13}/> أضف إلى التقويم</button>
         </div>
       </div>}
@@ -3232,20 +3295,20 @@ function PatientHome({ onBook, go }) {
             <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> تأكيد</button>
           </>}>
           <Field label="الوقت الجديد"><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
-          <div className="muted" style={{fontSize:12,marginTop:10}}>سيتم إبلاغ {PATIENT_ME.next.with}.</div>
+          <div className="muted" style={{fontSize:12,marginTop:10}}>{tt("سيتم إبلاغ {name}.", { name: PATIENT_ME.next.with })}</div>
         </Modal>
       )}
 
       {/* إجراءات سريعة */}
       <div className="rgrid c-sm" style={{"--gtc":"repeat(3,1fr)",gap:14,marginBottom:24}}>
         {[
-          { l:"احجز زيارة",   sub:"45 ثانية للحجز",       ic:<I.Calendar size={20}/>, color:"#7BBDE8", onClick:onBook },
-          { l:"الرسالة therapist", sub:"الرد عادةً خلال ساعتين", ic:<I.WhatsApp size={20}/>, color:"#25D366", onClick:()=>go("messages") },
-          { l:"اعرض خطتي",   sub:"أهداف · تمارين · ملاحظات", ic:<I.Clipboard size={20}/>, color:"#7E6BD3", onClick:()=>go("plan") },
+          { l:tt("احجز زيارة"),   sub:tt("45 ثانية للحجز"),       ic:<I.Calendar size={20}/>, color:"#7BBDE8", onClick:onBook },
+          { l:tt("راسل أخصائيك"), sub:tt("الرد عادةً خلال ساعتين"), ic:<I.WhatsApp size={20}/>, color:"#25D366", onClick:()=>go("messages") },
+          { l:tt("اعرض خطتي"),   sub:tt("أهداف · تمارين · ملاحظات"), ic:<I.Clipboard size={20}/>, color:"#7E6BD3", onClick:()=>go("plan") },
         ].map((q,i)=>(
           <button key={i} onClick={q.onClick} style={{
             background:"#fff",border:"1px solid var(--ink-200)",borderRadius:14,
-            padding:"18px",textAlign:"left",cursor:"pointer",
+            padding:"18px",textAlign:"end",cursor:"pointer",
             display:"flex",alignItems:"center",gap:14,transition:"all .15s",
             fontFamily:"inherit"
           }}
@@ -3259,7 +3322,7 @@ function PatientHome({ onBook, go }) {
               <div style={{fontWeight:600,fontSize:14.5}}>{q.l}</div>
               <div className="muted" style={{fontSize:12,marginTop:2}}>{q.sub}</div>
             </div>
-            <I.ArrowRight size={16} style={{color:"var(--ink-300)",marginLeft:"auto"}}/>
+            <I.ArrowRight size={16} style={{color:"var(--ink-300)",marginInlineEnd:"auto"}}/>
           </button>
         ))}
       </div>
@@ -3270,21 +3333,21 @@ function PatientHome({ onBook, go }) {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
             <div>
               <div className="h2">تعافيك</div>
-              <div className="muted" style={{fontSize:12.5,marginTop:2}}>الألم has dropped بواسطة 4 points in 4 weeks 🎉</div>
+              <div className="muted" style={{fontSize:12.5,marginTop:2}}>{tt("تطوّر الألم والجلسات منذ بداية خطتك.")}</div>
             </div>
             <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>go("plan")}>افتح الخطة <I.ArrowRight size={11}/></button>
           </div>
 
           <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
             <span className="mono" style={{fontSize:38,fontWeight:600,letterSpacing:"-.01em"}}>{progress}</span>
-            <span className="muted">من {PATIENT_ME.total} Sessions مكتملة</span>
+            <span className="muted">{tt("من {total} جلسة مكتملة", { total: PATIENT_ME.total })}</span>
           </div>
           <div style={{height:10,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",marginBottom:16}}>
-            <div style={{height:"100%",width:`${progress/PATIENT_ME.total*100}%`,background:"linear-gradient(90deg, var(--blue-500), var(--blue-700))",borderRadius:999,transition:"width .6s"}}/>
+            <div style={{height:"100%",width:`${PATIENT_ME.total ? progress/PATIENT_ME.total*100 : 0}%`,background:"linear-gradient(90deg, var(--blue-500), var(--blue-700))",borderRadius:999,transition:"width .6s"}}/>
           </div>
 
           <div style={{padding:14,background:"var(--blue-50)",borderRadius:12,marginBottom:14}}>
-            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>الألم trend · last 7 Sessions</div>
+            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>{tt("تطور الألم · آخر 7 جلسات")}</div>
             <PainTrendChart/>
           </div>
 
@@ -3315,8 +3378,8 @@ function PatientHome({ onBook, go }) {
         <div className="h2" style={{marginBottom:14}}>فريق الرعاية</div>
         <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:14}}>
           {[
-            { name:PATIENT_ME.doctor, role:"الطبيب المسؤول", color:"#7E6BD3" },
-            { name:PATIENT_ME.therapist, role:"الأخصائي الأساسي", color:"#7BBDE8",
+            { name:PATIENT_ME.doctor, role:tt("الطبيب المسؤول"), color:"#7E6BD3" },
+            { name:PATIENT_ME.therapist, role:tt("الأخصائي الأساسي"), color:"#7BBDE8",
               spec:(((window.DATA&&window.DATA.therapists)||[]).find(t=>t.name===PATIENT_ME.therapist)||{}).spec },
           ].map((c,i)=>{
             const clinicPhone = ((window.BRANCHES||[])[0]||{}).phone || "";
@@ -3345,7 +3408,7 @@ function PatientAppointments({ onBook }) {
     return ((window.DATA && window.DATA.appts) || [])
       .filter(a => (a.pid === me.file || a.patient === me.name)
         && a.status !== "مكتمل" && a.status !== "ملغي" && a.status !== "ملغى" && a.status !== "متاح")
-      .map(a => ({ id: a.id, date: a.date || "اليوم", time: a.time || "—", dur: a.dur || 30,
+      .map(a => ({ id: a.id, date: a.date || tt("اليوم"), time: a.time || "—", dur: a.dur || 30,
         th: a.th || "—", type: a.type || "", status: a.status, room: a.room || "—" }));
   });
   const [rescheduling, setRescheduling] = React.useState(null);
@@ -3360,14 +3423,14 @@ function PatientAppointments({ onBook }) {
         });
       }
       setUpcoming(list => list.filter(x => x.id !== a.id));
-      if (window.showToast) window.showToast("تم إلغاء الموعد","success");
+      if (window.showToast) window.showToast(tt("تم إلغاء الموعد"),"success");
     } catch (e) {
       console.warn("cancel appt failed", e);
-      if (window.showToast) window.showToast("تعذّر إلغاء الموعد","error");
+      if (window.showToast) window.showToast(tt("تعذّر إلغاء الموعد"),"error");
     }
   };
   const confirmReschedule = async () => {
-    if (!reTime) { if (window.showToast) window.showToast("اختر وقتًا جديدًا","error"); return; }
+    if (!reTime) { if (window.showToast) window.showToast(tt("اختر وقتًا جديدًا"),"error"); return; }
     const a = rescheduling;
     try {
       if (window.KineticData) {
@@ -3379,12 +3442,12 @@ function PatientAppointments({ onBook }) {
         });
       }
       setUpcoming(list => list.map(x => x.id === a.id ? { ...x, time: reTime, status: "مؤكد" } : x));
-      if (window.showToast) window.showToast("تم إعادة جدولة الموعد","success");
+      if (window.showToast) window.showToast(tt("تم إعادة جدولة الموعد"),"success");
       setRescheduling(null);
       setReTime("");
     } catch (e) {
       console.warn("reschedule appt failed", e);
-      if (window.showToast) window.showToast("تعذّر إعادة الجدولة","error");
+      if (window.showToast) window.showToast(tt("تعذّر إعادة الجدولة"),"error");
     }
   };
   // Past visits from the patient's real logged sessions.
@@ -3393,7 +3456,7 @@ function PatientAppointments({ onBook }) {
     return ((window.DATA && window.DATA.sessions) || [])
       .filter(s => s.patient_id === me.file || s.patient === me.name)
       .map(s => ({ date: s.date || "—", time: "", dur: 0, th: s.therapist || "—",
-        type: `جلسة #${s.session ?? s.session_number ?? "—"}`, status: "مكتمل",
+        type: tt("جلسة #{n}", { n: s.session ?? s.session_number ?? "—" }), status: "مكتمل",
         pain: `${s.pain ?? s.pain_score ?? "—"}/10`, notes: s.notes || s.session_notes || "" }));
   })();
 
@@ -3402,7 +3465,7 @@ function PatientAppointments({ onBook }) {
       <div className="page-head" style={{alignItems:"flex-end"}}>
         <div>
           <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:0}}>زياراتي</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{upcoming.length} قادمة · {past.length} مكتملة</div>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("{up} قادمة · {done} مكتملة", { up: upcoming.length, done: past.length })}</div>
         </div>
         <button className="btn btn-blue" onClick={onBook}><I.Plus size={13}/> احجز زيارة</button>
       </div>
@@ -3419,16 +3482,16 @@ function PatientAppointments({ onBook }) {
               display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               flexShrink:0
             }}>
-              <div className="mono" style={{fontSize:11,opacity:.8,fontWeight:500}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? new Date(a.date).toLocaleDateString("ar-EG-u-nu-latn",{month:"short"}) : a.date.split("،")[0].slice(0,4)}</div>
+              <div className="mono" style={{fontSize:11,opacity:.8,fontWeight:500}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? fmtDate(a.date.slice(0,10), { month:"short" }) : a.date.split("،")[0].slice(0,4)}</div>
               <div className="mono" style={{fontSize:22,fontWeight:600,lineHeight:1}}>{/^\d{4}-\d{2}-\d{2}/.test(a.date) ? a.date.slice(8,10) : (a.date.match(/\d+/)?.[0] || "—")}</div>
             </div>
             <div style={{flex:1,minWidth:200}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
-                <span style={{fontWeight:600,fontSize:14.5}}>{a.date} · {a.time}</span>
+                <span style={{fontWeight:600,fontSize:14.5}}>{ptDate(a.date)} · {a.time}</span>
                 <ApptBadge s={a.status}/>
               </div>
               <div className="muted" style={{fontSize:12.5}}>
-                {a.type} مع {a.th} · {a.dur} min · {a.room}
+                {a.type} {tt("مع {name}", { name: a.th })} · {tt("{n} دقيقة", { n: a.dur })} · {a.room}
               </div>
             </div>
             <div style={{display:"flex",gap:6}}>
@@ -3444,12 +3507,12 @@ function PatientAppointments({ onBook }) {
         {past.map((a,i)=>(
           <div key={i} className="rgrid pvisit-row" style={{padding:"14px 18px","--gtc":"140px 1fr 100px 110px 90px",alignItems:"center",gap:12,borderBottom:i<past.length-1?"1px solid var(--ink-100)":"none"}}>
             <div>
-              <div style={{fontSize:13,fontWeight:500}}>{a.date}</div>
-              <div className="mono" style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.time} · {a.dur} د</div>
+              <div style={{fontSize:13,fontWeight:500}}>{ptDate(a.date)}</div>
+              <div className="mono" style={{fontSize:11.5,color:"var(--ink-500)"}}>{a.time} · {tt("{n} د", { n: a.dur })}</div>
             </div>
             <div>
               <div style={{fontSize:13}}>{a.type}</div>
-              <div className="muted" style={{fontSize:11.5}}>مع {a.th}</div>
+              <div className="muted" style={{fontSize:11.5}}>{tt("مع {name}", { name: a.th })}</div>
             </div>
             <div style={{textAlign:"center"}}>
               <div className="muted" style={{fontSize:11}}>الألم</div>
@@ -3461,24 +3524,24 @@ function PatientAppointments({ onBook }) {
         ))}
       </div>
       {notesModal && (
-        <Modal title={`ملاحظات جلسة ${notesModal.date}`} onClose={()=>setNotesModal(null)}>
+        <Modal title={tt("ملاحظات جلسة {date}", { date: ptDate(notesModal.date) })} onClose={()=>setNotesModal(null)}>
           <div style={{fontSize:13,lineHeight:1.7,marginBottom:12}}>
-            <strong>{notesModal.type}</strong> مع {notesModal.th}<br/>
-            مستوى الألم: <span style={{color:"var(--green)",fontWeight:600}}>{notesModal.pain}</span>
+            <strong>{notesModal.type}</strong> {tt("مع {name}", { name: notesModal.th })}<br/>
+            {tt("مستوى الألم:")} <span style={{color:"var(--green)",fontWeight:600}}>{notesModal.pain}</span>
           </div>
           <div style={{padding:14,background:"var(--ink-50)",borderRadius:10,fontSize:13,color:"var(--ink-700)"}}>
-            {notesModal.notes || "لا ملاحظات مسجلة لهذه الجلسة."}
+            {notesModal.notes || tt("لا ملاحظات مسجلة لهذه الجلسة.")}
           </div>
         </Modal>
       )}
       {rescheduling && (
-        <Modal title={`إعادة جدولة موعد ${rescheduling.date}`} onClose={()=>{setRescheduling(null);setReTime("");}}
+        <Modal title={tt("إعادة جدولة موعد {date}", { date: ptDate(rescheduling.date) })} onClose={()=>{setRescheduling(null);setReTime("");}}
           footer={<>
             <button className="btn btn-ghost" onClick={()=>{setRescheduling(null);setReTime("");}}>إلغاء</button>
             <button className="btn btn-blue" onClick={confirmReschedule}><I.Check size={13}/> تأكيد</button>
           </>}>
           <Field label="الوقت الجديد"><input className="input" type="time" value={reTime} onChange={e=>setReTime(e.target.value)}/></Field>
-          <div className="muted" style={{fontSize:12,marginTop:10}}>سيتم إشعار الأخصائي {rescheduling.th}.</div>
+          <div className="muted" style={{fontSize:12,marginTop:10}}>{tt("سيتم إشعار الأخصائي {name}.", { name: rescheduling.th })}</div>
         </Modal>
       )}
     </div>
@@ -3491,7 +3554,7 @@ function PatientPlanView() {
   return (
     <div>
       <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>خطة علاجك</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{me.diag}{row && row.registered ? ` · بدأت ${row.registered}` : ""}</div>
+      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{me.diag}{row && row.registered ? " · " + tt("بدأت {date}", { date: row.registered }) : ""}</div>
       <PatientTreatmentPlan p={row}/>
     </div>
   );
@@ -3516,7 +3579,7 @@ function PatientBills() {
   const me = getPatientMe();
   const bills = ((window.DATA && window.DATA.payments) || [])
     .filter(b => b.patient === me.name || b.patient_id === me.file)
-    .map(b => ({ id: b.id, date: b.date || "—", desc: b.desc || "فاتورة علاج",
+    .map(b => ({ id: b.id, date: b.date || "—", desc: b.desc || tt("فاتورة علاج"),
       amount: b.amount || 0, paid: b.paid || 0, method: b.method || "—", status: b.status }));
   const yearNow = new Date().getFullYear();
   const paidThisYear = bills.filter(b => String(b.date).includes(String(yearNow))).reduce((s,b)=>s+b.paid,0);
@@ -3524,16 +3587,16 @@ function PatientBills() {
   return (
     <div>
       <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>الفواتير</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>Your full payment history مع Kinetic.</div>
+      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("سجل مدفوعاتك الكامل في العيادة.")}</div>
 
       <div className="rgrid c-sm" style={{"--gtc":"repeat(3,1fr)",gap:14,marginBottom:24}}>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>مدفوع هذه السنة</div>
-          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>EGP {paidThisYear.toLocaleString("en-US")}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4}}>{fmtMoney(paidThisYear)}</div>
         </div>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>معلّق</div>
-          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4,color:pending>0?"var(--red)":"var(--green)"}}>EGP {pending.toLocaleString("en-US")}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:600,marginTop:4,color:pending>0?"var(--red)":"var(--green)"}}>{fmtMoney(pending)}</div>
         </div>
         <div className="card card-pad">
           <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em"}}>جلسات متبقية</div>
@@ -3543,7 +3606,7 @@ function PatientBills() {
 
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
-        <table className="tbl">
+        <CardTable>
           <thead><tr><th>فاتورة</th><th>التاريخ</th><th>البند</th><th>المبلغ</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th></tr></thead>
           <tbody>
             {bills.length===0 && (
@@ -3554,18 +3617,18 @@ function PatientBills() {
                 <td className="mono">{b.id}</td>
                 <td>{b.date}</td>
                 <td>{b.desc}</td>
-                <td className="mono" style={{fontWeight:600}}>EGP {b.amount.toLocaleString("en-US")}</td>
-                <td>{b.method}</td>
+                <td className="mono" style={{fontWeight:600}}>{fmtMoney(b.amount)}</td>
+                <td>{tt(b.method)}</td>
                 <td><PayBadge s={b.status}/></td>
-                <td><button className="btn btn-ghost btn-icon" onClick={()=>{
-                  const rows=["الفاتورة,التاريخ,البند,المبلغ,الطريقة,الحالة",`${b.id},${b.date},${b.desc},${b.amount},${b.method},${b.status}`];
+                <td><button className="btn btn-ghost btn-icon" aria-label={tt("تحميل الفاتورة {id}", { id: b.id })} onClick={()=>{
+                  const rows=[tt("الفاتورة,التاريخ,البند,المبلغ,الطريقة,الحالة"),`${b.id},${b.date},${b.desc},${b.amount},${tt(b.method)},${tt(b.status)}`];
                   downloadCsv(rows, `${b.id}.csv`);
-                  if(window.showToast)window.showToast("تم تحميل الفاتورة","success");
+                  if(window.showToast)window.showToast(tt("تم تحميل الفاتورة"),"success");
                 }}><I.Download size={13}/></button></td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
         </div>
       </div>
     </div>
@@ -3576,12 +3639,12 @@ function PatientProfile() {
   const [editOpen, setEditOpen] = React.useState(false);
   const [form, setForm] = React.useState(() => {
     const row = ((window.DATA && window.DATA.patients) || []).find(p => (p.patient_id||p.id) === PATIENT_ME.file) || {};
-    return { name:PATIENT_ME.name, phone:PATIENT_ME.phone, email:(window.ME && window.ME.email) || "", address: row.address || "" };
+    return { name:PATIENT_ME.name, phone:PATIENT_ME.phone, email:(window.ME && window.ME.email) || "", address: row.address || "", dob: row.date_of_birth || "" };
   });
   return (
     <div>
       <h1 style={{fontSize:"clamp(22px, 5vw, 28px)",fontWeight:600,letterSpacing:"-.01em",margin:"0 0 4px"}}>ملفي الشخصي</h1>
-      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>بياناتك on file مع Kinetic.</div>
+      <div className="muted" style={{fontSize:13.5,marginBottom:20}}>{tt("بياناتك المسجلة لدى العيادة.")}</div>
 
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr"}}>
         <div className="card card-pad">
@@ -3590,16 +3653,16 @@ function PatientProfile() {
           <InfoRow k="الاسم الكامل" v={form.name}/>
           <InfoRow k="الهاتف" v={form.phone}/>
           <InfoRow k="البريد" v={form.email}/>
-          <InfoRow k="التاريخ من birth" v="Mar 12, 1992"/>
+          <InfoRow k={tt("تاريخ الميلاد")} v={form.dob ? fmtDate(String(form.dob).slice(0,10)) : "—"}/>
           <InfoRow k="العنوان" v={form.address}/>
-          <button className="btn btn-secondary" style={{marginTop:14}} onClick={()=>setEditOpen(true)}><I.Edit size={13}/> تعديل details</button>
+          <button className="btn btn-secondary" style={{marginTop:14}} onClick={()=>setEditOpen(true)}><I.Edit size={13}/> {tt("تعديل البيانات")}</button>
         </div>
       {editOpen && (
         <Modal title="تعديل البيانات الشخصية" onClose={()=>setEditOpen(false)}
           footer={<>
             <button className="btn btn-ghost" onClick={()=>setEditOpen(false)}>إلغاء</button>
             <button className="btn btn-blue" onClick={async ()=>{
-              if (!form.name.trim()) { if (window.showToast) window.showToast("أدخل الاسم","error"); return; }
+              if (!form.name.trim()) { if (window.showToast) window.showToast(tt("أدخل الاسم"),"error"); return; }
               try {
                 if (window.KineticData) {
                   await window.KineticData.upsert("patients", {
@@ -3608,11 +3671,11 @@ function PatientProfile() {
                     phone: form.phone || null,
                   });
                 }
-                if (window.showToast) window.showToast("تم حفظ التغييرات","success");
+                if (window.showToast) window.showToast(tt("تم حفظ التغييرات"),"success");
                 setEditOpen(false);
               } catch (e) {
                 console.warn("patient profile save failed", e);
-                if (window.showToast) window.showToast("تعذّر حفظ التغييرات","error");
+                if (window.showToast) window.showToast(tt("تعذّر حفظ التغييرات"),"error");
               }
             }}>
               <I.Check size={13}/> حفظ
@@ -3630,10 +3693,10 @@ function PatientProfile() {
         <div className="card card-pad">
           <div className="h3" style={{marginBottom:14}}>التفضيلات</div>
           {[
-            { l:"تذكير appointments", sub:"رسالة واتساب قبل 24 ساعة", on:true },
-            { l:"الأخصائي messages", sub:"بريد + إشعار عندما يراسلك الأخصائي", on:true },
-            { l:"تسويق وعروض", sub:"عروض ومستجدات العيادة أحيانًا", on:false },
-            { l:"مشاركة التقدّم مع الطبيب", sub:"إرسال ملخص أسبوعي للدكتورة ياسمين", on:true },
+            { l:tt("تذكير المواعيد"), sub:tt("رسالة واتساب قبل 24 ساعة"), on:true },
+            { l:tt("رسائل الأخصائي"), sub:tt("بريد + إشعار عندما يراسلك الأخصائي"), on:true },
+            { l:tt("تسويق وعروض"), sub:tt("عروض ومستجدات العيادة أحيانًا"), on:false },
+            { l:tt("مشاركة التقدّم مع الطبيب"), sub:tt("إرسال ملخص أسبوعي لطبيبك"), on:true },
           ].map((p,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:i<3?"1px dashed var(--ink-100)":"none"}}>
               <div style={{flex:1}}>
@@ -3663,15 +3726,23 @@ function __bkSlots() {
     "12:00","13:00","13:30","14:00","14:30","15:00","15:30","16:00","16:30","17:00"
   ];
 }
+// English: the locale's short names ("Sun", "Oct") for the day tiles.
+const __BK_WD = IS_RTL ? __BK_AR_WD : weekdayNames("short");
+const __BK_MO = IS_RTL ? __BK_AR_MO : monthNames("short");
 function __bkIso(d){ const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 function __bkFormat(iso, offset) {
   const d = new Date(iso + "T00:00:00");
-  const wd = __BK_AR_WD[d.getDay()], mo = __BK_AR_MO[d.getMonth()], day = d.getDate();
-  const label = offset === 0 ? `اليوم، ${day} ${mo}`
-              : offset === 1 ? `غدًا، ${day} ${mo}`
-              : `${wd}، ${day} ${mo}`;
+  const wd = __BK_WD[d.getDay()], mo = __BK_MO[d.getMonth()], day = d.getDate();
+  const label = offset === 0 ? tt("اليوم، {day} {month}", { day, month: mo })
+              : offset === 1 ? tt("غدًا، {day} {month}", { day, month: mo })
+              : IS_RTL ? `${wd}، ${day} ${mo}` : `${wd} ${day} ${mo}`;
   return { iso, weekday: wd, day, month: mo, label };
 }
+// «أي أخصائي» is stored as the choice; it is translated where shown.
+const BK_ANY = "أي أخصائي";
+const bkTherapistLabel = (name) => (name === BK_ANY ? tt(BK_ANY) : name);
+// "Next" arrow of a choice card (outside .btn, so not flipped by the CSS).
+const BkNextArrow = (p) => (IS_RTL ? I.ArrowLeft : I.ArrowRight)(p);
 // Build `count` rolling days starting today; each carries the ISO
 // date and a per-day availability count derived from live bookings.
 function __bkDays(count, therapistName, excludeId) {
@@ -3734,16 +3805,16 @@ function PatientBookingFlow({ onClose, onDone }) {
     if (patch) setPicks(cur);
     // Validate the current step before advancing so incomplete state can't
     // silently slip through to booking. Each step guards its own field.
-    if (step === 1 && !cur.reason) { if (window.showToast) window.showToast("اختر سبب الزيارة", "error"); return; }
-    if (step === 2 && !cur.therapist) { if (window.showToast) window.showToast("اختر المعالج", "error"); return; }
-    if (step === 3 && (!cur.date || !cur.time)) { if (window.showToast) window.showToast("اختر التاريخ والوقت", "error"); return; }
+    if (step === 1 && !cur.reason) { if (window.showToast) window.showToast(tt("اختر سبب الزيارة"), "error"); return; }
+    if (step === 2 && !cur.therapist) { if (window.showToast) window.showToast(tt("اختر المعالج"), "error"); return; }
+    if (step === 3 && (!cur.date || !cur.time)) { if (window.showToast) window.showToast(tt("اختر التاريخ والوقت"), "error"); return; }
     // Reject past dates/times before persisting so the DB never sees them.
     if (step === 3) {
       const now = new Date(nowTick);
       const todayIso = __bkIso(now);
       const nowHM = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
       if (cur.date < todayIso || (cur.date === todayIso && cur.time <= nowHM)) {
-        if (window.showToast) window.showToast("لا يمكن الحجز في وقت سابق", "error");
+        if (window.showToast) window.showToast(tt("لا يمكن الحجز في وقت سابق"), "error");
         return;
       }
     }
@@ -3783,7 +3854,7 @@ function PatientBookingFlow({ onClose, onDone }) {
           </div>
           <div style={{flex:1}}>
             <h2 className="h3" id={titleId}>احجز زيارة</h2>
-            <div className="muted" style={{fontSize:12}}>خطوة {step} من 4 — تستغرق عادةً 30 ثانية</div>
+            <div className="muted" style={{fontSize:12}}>{tt("خطوة {step} من 4 — تستغرق عادةً 30 ثانية", { step })}</div>
           </div>
           <button type="button" className="btn btn-ghost btn-icon" aria-label="إغلاق" onClick={onClose} disabled={confirming}><I.X size={16}/></button>
         </div>
@@ -3807,7 +3878,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                 <I.Check size={28}/>
               </div>
               <div className="serif" style={{fontSize:30,marginBottom:6}}>تم حجزك!</div>
-              <div className="muted" role="status">سيصلك التأكيد عبر واتساب على <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi>.</div>
+              <div className="muted" role="status">{ttx("سيصلك التأكيد عبر واتساب على {phone}.", { phone: <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi> })}</div>
             </div>
           ) : step===1 ? (
             <div>
@@ -3816,10 +3887,10 @@ function PatientBookingFlow({ onClose, onDone }) {
 
               <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                 {[
-                  { id:"continue", l:"متابعة خطتي",     sub:`${PATIENT_ME.remaining} جلسات متبقية${PATIENT_ME.diag&&PATIENT_ME.diag!=="—"?` · ${PATIENT_ME.diag}`:""}`, ic:<I.Heart size={18}/>, primary:true },
-                  { id:"new",      l:"مشكلة جديدة",            sub:"شيء جديد يضايقك",                                  ic:<I.Plus size={18}/> },
-                  { id:"followup", l:"متابعة مع الطبيب", sub:PATIENT_ME.doctor&&PATIENT_ME.doctor!=="—"?`متابعة مع ${PATIENT_ME.doctor}`:"متابعة مع طبيبك",                                   ic:<I.Stethoscope size={18}/> },
-                  { id:"assess",   l:"تقييم أولي",   sub:"أول زيارة",                                                  ic:<I.Sparkle size={18}/> },
+                  { id:"continue", l:tt("متابعة خطتي"),     sub:`${tt("{n} جلسات متبقية", { n: PATIENT_ME.remaining })}${PATIENT_ME.diag&&PATIENT_ME.diag!=="—"?` · ${PATIENT_ME.diag}`:""}`, ic:<I.Heart size={18}/>, primary:true },
+                  { id:"new",      l:tt("مشكلة جديدة"),            sub:tt("شيء جديد يضايقك"),                                  ic:<I.Plus size={18}/> },
+                  { id:"followup", l:tt("متابعة مع الطبيب"), sub:PATIENT_ME.doctor&&PATIENT_ME.doctor!=="—"?tt("متابعة مع {name}", { name: PATIENT_ME.doctor }):tt("متابعة مع طبيبك"),                                   ic:<I.Stethoscope size={18}/> },
+                  { id:"assess",   l:tt("تقييم أولي"),   sub:tt("أول زيارة"),                                                  ic:<I.Sparkle size={18}/> },
                 ].map(o=>(
                   <button type="button" key={o.id} aria-pressed={picks.reason===o.id ? "true" : "false"} onClick={()=>next({ reason:o.id })} style={{
                     padding:18,textAlign:"start",cursor:"pointer",fontFamily:"inherit",
@@ -3831,10 +3902,10 @@ function PatientBookingFlow({ onClose, onDone }) {
                       {o.ic}
                     </div>
                     <div style={{flex:1}}>
-                      <div style={{fontWeight:600,fontSize:14}}>{o.l} {o.primary && <span className="badge b-blue" style={{marginLeft:4,fontSize:10}}>موصى به</span>}</div>
+                      <div style={{fontWeight:600,fontSize:14}}>{o.l} {o.primary && <span className="badge b-blue" style={{marginInlineEnd:4,fontSize:10}}>{tt("موصى به")}</span>}</div>
                       <div className="muted" style={{fontSize:12,marginTop:3}}>{o.sub}</div>
                     </div>
-                    <I.ArrowLeft size={14} style={{color:"var(--ink-500)"}}/>
+                    <BkNextArrow size={14} style={{color:"var(--ink-500)"}}/>
                   </button>
                 ))}
               </div>
@@ -3847,7 +3918,7 @@ function PatientBookingFlow({ onClose, onDone }) {
               <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                 {[
                   ...DATA.therapists.filter(t=>t.active!==false).map(t=>({ name:t.name, spec:t.spec||"", color:t.color||"#7BBDE8", yourUsual: t.name===PATIENT_ME.therapist })),
-                  { name:"أي أخصائي", spec:"الأقرب توفرًا", color:"#BDD8E9", any:true },
+                  { name:BK_ANY, spec:tt("الأقرب توفرًا"), color:"#BDD8E9", any:true },
                 ].map((t,i)=>(
                   <button type="button" key={i} aria-pressed={picks.therapist===t.name ? "true" : "false"} onClick={()=>next({ therapist:t.name })} style={{
                     padding:16,textAlign:"start",cursor:"pointer",fontFamily:"inherit",
@@ -3864,8 +3935,8 @@ function PatientBookingFlow({ onClose, onDone }) {
                     )}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <span style={{fontWeight:600,fontSize:14}}>{t.name}</span>
-                        {t.yourUsual && <span className="badge b-blue" style={{fontSize:10}}>المعتاد</span>}
+                        <span style={{fontWeight:600,fontSize:14}}>{t.any ? tt(t.name) : t.name}</span>
+                        {t.yourUsual && <span className="badge b-blue" style={{fontSize:10}}>{tt("المعتاد")}</span>}
                       </div>
                       <div className="muted" style={{fontSize:11.5,marginTop:1}}>{t.spec}</div>
                     </div>
@@ -3876,7 +3947,7 @@ function PatientBookingFlow({ onClose, onDone }) {
           ) : step===3 ? (
             <div>
               <div className="serif" style={{fontSize:26,marginBottom:6}}>ما الوقت المناسب لك؟</div>
-              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>المواعيد المتاحة الآن مع {picks.therapist}.</div>
+              <div className="muted" style={{fontSize:13.5,marginBottom:22}}>{tt("المواعيد المتاحة الآن مع {name}.", { name: bkTherapistLabel(picks.therapist) })}</div>
 
               {(() => {
                 const bookingDays = __bkDays(7, picks.therapist, null);
@@ -3901,7 +3972,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                             <div style={{fontWeight:600,fontSize:13}}>{d.weekday}</div>
                             <div className="mono" style={{fontSize:10.5,opacity:.7}}>{d.day} {d.month}</div>
                             <div style={{fontSize:10,marginTop:3,color:sel?"#fff":full?"var(--ink-500)":"#2C8067"}}>
-                              {full ? "ممتلئ" : `متاح: ${d.slots}`}
+                              {full ? tt("ممتلئ") : tt("متاح: {n}", { n: d.slots })}
                             </div>
                           </button>
                         );
@@ -3917,7 +3988,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                         const sel     = picks.time === t && !unavail;
                         return (
                           <button type="button" key={t} disabled={unavail} aria-pressed={sel ? "true" : "false"} onClick={()=> !unavail && setPicks({...picks,time:t})}
-                            title={isPast?"وقت سابق":isTaken?"محجوز":""}
+                            title={isPast?tt("وقت سابق"):isTaken?tt("محجوز"):""}
                             style={{
                               padding:"8px 14px",minHeight:40,fontFamily:"inherit",cursor:unavail?"not-allowed":"pointer",
                               border:`1px solid ${sel?"var(--blue-700)":"var(--ink-200)"}`,
@@ -3946,8 +4017,8 @@ function PatientBookingFlow({ onClose, onDone }) {
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:14}}>
                   <div>
                     <div style={{fontSize:11,color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
-                    <div className="mono" style={{fontSize:26,lineHeight:1.1}}>{picks.date}</div>
-                    <div style={{fontSize:18,marginTop:4,color:"var(--blue-900)",fontWeight:600}}><span className="mono">{picks.time}</span> · {(window.calendarConfig ? window.calendarConfig().slotMinutes : 45)} دقيقة</div>
+                    <div className="mono" style={{fontSize:26,lineHeight:1.1}}>{ptDate(picks.date)}</div>
+                    <div style={{fontSize:18,marginTop:4,color:"var(--blue-900)",fontWeight:600}}><span className="mono">{picks.time}</span> · {tt("{n} دقيقة", { n: (window.calendarConfig ? window.calendarConfig().slotMinutes : 45) })}</div>
                   </div>
                   <I.Calendar size={28} style={{color:"var(--blue-500)"}}/>
                 </div>
@@ -3955,11 +4026,11 @@ function PatientBookingFlow({ onClose, onDone }) {
                 <div className="rgrid half-sm" style={{"--gtc":"1fr 1fr",gap:12,fontSize:13}}>
                   <div>
                     <div className="muted" style={{fontSize:11}}>الأخصائي</div>
-                    <div style={{fontWeight:500}}>{picks.therapist}</div>
+                    <div style={{fontWeight:500}}>{bkTherapistLabel(picks.therapist)}</div>
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>النوع</div>
-                    <div style={{fontWeight:500}}>{picks.reason==="new"?"تقييم مشكلة جديدة":picks.reason==="followup"?"متابعة مع الطبيب":picks.reason==="assess"?"تقييم أولي":"متابعة خطة العلاج"}</div>
+                    <div style={{fontWeight:500}}>{picks.reason==="new"?tt("تقييم مشكلة جديدة"):picks.reason==="followup"?tt("متابعة مع الطبيب"):picks.reason==="assess"?tt("تقييم أولي"):tt("متابعة خطة العلاج")}</div>
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>المكان</div>
@@ -3967,14 +4038,14 @@ function PatientBookingFlow({ onClose, onDone }) {
                   </div>
                   <div>
                     <div className="muted" style={{fontSize:11}}>التكلفة</div>
-                    <div style={{fontWeight:500}}>{picks.reason==="continue" ? "من الباقة" : "EGP 850"}</div>
+                    <div style={{fontWeight:500}}>{picks.reason==="continue" ? tt("من الباقة") : fmtMoney(850)}</div>
                   </div>
                 </div>
               </div>
 
               <label style={{display:"flex",alignItems:"flex-start",gap:10,padding:14,background:"var(--ink-50)",borderRadius:10,fontSize:12.5,cursor:"pointer"}}>
                 <input type="checkbox" defaultChecked style={{marginTop:2}}/>
-                <span>أرسل لي تذكيرًا عبر واتساب قبل الزيارة بـ 24 ساعة على <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi>.</span>
+                <span>{ttx("أرسل لي تذكيرًا عبر واتساب قبل الزيارة بـ 24 ساعة على {phone}.", { phone: <bdi dir="ltr" className="mono">{PATIENT_ME.phone}</bdi> })}</span>
               </label>
             </div>
           )}
@@ -3984,7 +4055,7 @@ function PatientBookingFlow({ onClose, onDone }) {
         {!confirming && (
           <div style={{padding:"14px 24px",borderTop:"1px solid var(--ink-100)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",flexWrap:"wrap",gap:8}}>
             <button type="button" className="btn btn-ghost" onClick={step===1?onClose:()=>setStep(step-1)}>
-              {step===1 ? "إلغاء" : <><I.ArrowLeft size={13}/> رجوع</>}
+              {step===1 ? tt("إلغاء") : <><I.ArrowLeft size={13}/> {tt("رجوع")}</>}
             </button>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
               {step>=3 && (
@@ -3993,7 +4064,7 @@ function PatientBookingFlow({ onClose, onDone }) {
                 </span>
               )}
               <button type="button" className="btn btn-blue" onClick={()=>next()} disabled={step===1 && !picks.reason}>
-                {step<4 ? "متابعة" : "تأكيد الحجز"} <I.ArrowRight size={13}/>
+                {step<4 ? tt("متابعة") : tt("تأكيد الحجز")} <I.ArrowRight size={13}/>
               </button>
             </div>
           </div>
@@ -4036,14 +4107,14 @@ function PublicBookingScreen({ onBack, onDone }) {
     // receives an invalid booking.
     if (step === 3) {
       if (!picks.date || !picks.time) {
-        if (window.showToast) window.showToast("اختر التاريخ والوقت", "error");
+        if (window.showToast) window.showToast(tt("اختر التاريخ والوقت"), "error");
         return;
       }
       const now = new Date(nowTick);
       const todayIso = __bkIso(now);
       const nowHM = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
       if (picks.date < todayIso || (picks.date === todayIso && picks.time <= nowHM)) {
-        if (window.showToast) window.showToast("لا يمكن الحجز في وقت سابق", "error");
+        if (window.showToast) window.showToast(tt("لا يمكن الحجز في وقت سابق"), "error");
         return;
       }
     }
@@ -4068,7 +4139,8 @@ function PublicBookingScreen({ onBack, onDone }) {
     setTimeout(()=>{ onDone(picks); }, 1400);
   }
 
-  const stepsMeta = ["السبب","الأخصائي","التاريخ & time","بياناتك","التأكيد"];
+  const stepsMeta = [tt("السبب"),tt("الأخصائي"),tt("التاريخ والوقت"),tt("بياناتك"),tt("التأكيد")];
+  const place = (typeof activeBranchName === "function" && activeBranchName()) || (window.CLINIC && window.CLINIC.name) || "—";
 
   return (
     <div style={{minHeight:"100vh",background:"var(--blue-50)",display:"flex",flexDirection:"column"}}>
@@ -4093,7 +4165,7 @@ function PublicBookingScreen({ onBack, onDone }) {
             <div style={{textAlign:"center",marginBottom:28}}>
               <div className="muted" style={{fontSize:13,letterSpacing:".06em",textTransform:"uppercase",marginBottom:8}}>احجز زيارة</div>
               <div className="serif" style={{fontSize:"clamp(28px, 6.5vw, 44px)",lineHeight:1.05,letterSpacing:"-.01em",color:"var(--ink-900)",maxWidth:560,margin:"0 auto"}}>
-                {step===1 && <>هيا بنا نعيدك إلى <em>الحركة</em> من جديد.</>}
+                {step===1 && <>{ttx("هيا بنا نعيدك إلى {move} من جديد.", { move: <em>{tt("الحركة")}</em> })}</>}
                 {step===2 && <>اختر من تود زيارته.</>}
                 {step===3 && <>ما الوقت المناسب لك؟</>}
                 {step===4 && <>آخر خطوة — كيف نتواصل معك؟</>}
@@ -4104,7 +4176,7 @@ function PublicBookingScreen({ onBack, onDone }) {
 
           {/* Stepper */}
           {!confirming && (
-            <div style={{display:"flex",gap:6,marginBottom:22,maxWidth:560,marginLeft:"auto",marginRight:"auto"}}>
+            <div style={{display:"flex",gap:6,marginBottom:22,maxWidth:560,marginInline:"auto"}}>
               {stepsMeta.map((s,i)=>(
                 <div key={i} style={{flex:1}}>
                   <div style={{
@@ -4135,30 +4207,30 @@ function PublicBookingScreen({ onBack, onDone }) {
                   </div>
                   <div className="serif" style={{fontSize:38,lineHeight:1.1,marginBottom:8}}>تم حجزك!</div>
                   <div className="muted" style={{fontSize:14,maxWidth:380,margin:"0 auto"}}>
-                    A واتساب confirmation just went to <span className="mono">{picks.phone || "your phone"}</span> بكل التفاصيل.
+                    {ttx("أُرسل تأكيد عبر واتساب إلى {phone} بكل التفاصيل.", { phone: <bdi dir="ltr" className="mono">{picks.phone || tt("هاتفك")}</bdi> })}
                   </div>
 
                   <div style={{
                     marginTop:30, padding:18,
                     background:"linear-gradient(135deg, var(--blue-50), #fff)",
                     border:"1px solid var(--blue-100)",borderRadius:14,
-                    maxWidth:380,margin:"30px auto 0",textAlign:"left"
+                    maxWidth:380,margin:"30px auto 0",textAlign:"end"
                   }}>
                     <div className="muted" style={{fontSize:11,letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>زيارتك</div>
                     <div className="serif" style={{fontSize:24,lineHeight:1.1}}>{(() => {
                       const d = new Date(picks.date + "T00:00:00");
                       if (isNaN(d)) return picks.date;
-                      return `${__BK_AR_WD[d.getDay()]}، ${d.getDate()} ${__BK_AR_MO[d.getMonth()]}`;
+                      return IS_RTL ? `${__BK_AR_WD[d.getDay()]}، ${d.getDate()} ${__BK_AR_MO[d.getMonth()]}` : fmtDate(d, "weekdayDate");
                     })()}</div>
                     <div className="mono" style={{fontSize:16,color:"var(--blue-700)",fontWeight:600,marginTop:4}}>{picks.time || "—"}</div>
                     <hr className="sep" style={{margin:"12px 0"}}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,fontSize:12.5}}>
-                      <div><div className="muted" style={{fontSize:10.5}}>الأخصائي</div>{picks.therapist || "أي متاح"}</div>
-                      <div><div className="muted" style={{fontSize:10.5}}>المكان</div>مصر الجديدة · غرفة 2</div>
+                      <div><div className="muted" style={{fontSize:10.5}}>{tt("الأخصائي")}</div>{picks.therapist || tt("أي متاح")}</div>
+                      <div><div className="muted" style={{fontSize:10.5}}>{tt("المكان")}</div>{place}</div>
                     </div>
                   </div>
 
-                  <button className="btn btn-secondary" style={{marginTop:24}} onClick={onBack}>رجوع to home</button>
+                  <button className="btn btn-secondary" style={{marginTop:24}} onClick={onBack}>{tt("العودة إلى البداية")}</button>
                 </div>
               )}
 
@@ -4168,13 +4240,13 @@ function PublicBookingScreen({ onBack, onDone }) {
                   <div className="label" style={{marginBottom:10}}>ما الذي يحضرك إلينا؟</div>
                   <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                     {[
-                      { id:"existing-pain",  l:"ألم أو إصابة موجودة", sub:"ظهر، رقبة، ركبة، كتف، إلخ.",      ic:<I.Heart size={18}/> },
-                      { id:"post-op",        l:"التعافي بعد جراحة",  sub:"رباط صليبي، استبدال مفصل، إلخ.",          ic:<I.Activity size={18}/> },
-                      { id:"sports",         l:"إصابة رياضية",           sub:"شدّ، التواء، العودة للنشاط",        ic:<I.Sparkle size={18}/> },
-                      { id:"assess",         l:"تقييم فقط",      sub:"لست متأكدًا بعد — لنتحدث أولًا",        ic:<I.Stethoscope size={18}/> },
+                      { id:"existing-pain",  l:tt("ألم أو إصابة موجودة"), sub:tt("ظهر، رقبة، ركبة، كتف، إلخ."),      ic:<I.Heart size={18}/> },
+                      { id:"post-op",        l:tt("التعافي بعد جراحة"),  sub:tt("رباط صليبي، استبدال مفصل، إلخ."),          ic:<I.Activity size={18}/> },
+                      { id:"sports",         l:tt("إصابة رياضية"),           sub:tt("شدّ، التواء، العودة للنشاط"),        ic:<I.Sparkle size={18}/> },
+                      { id:"assess",         l:tt("تقييم فقط"),      sub:tt("لست متأكدًا بعد — لنتحدث أولًا"),        ic:<I.Stethoscope size={18}/> },
                     ].map(o=>(
                       <button key={o.id} onClick={()=>{update("reason",o.id); next();}} style={{
-                        padding:18,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                        padding:18,textAlign:"end",cursor:"pointer",fontFamily:"inherit",
                         border:`1px solid ${picks.reason===o.id?"var(--blue-500)":"var(--ink-200)"}`,
                         background:picks.reason===o.id?"var(--blue-50)":"#fff",
                         borderRadius:14,display:"flex",alignItems:"center",gap:14,transition:"all .15s"
@@ -4199,10 +4271,10 @@ function PublicBookingScreen({ onBack, onDone }) {
                       <I.User size={15} style={{color:"var(--ink-500)"}}/>
                       <span>هل أنت مريض حالي؟</span>
                     </div>
-                    <div className="seg">
-                      <button className={picks.isExisting===true?"on":""}  onClick={()=>update("isExisting",true)}>نعم</button>
-                      <button className={picks.isExisting===false?"on":""} onClick={()=>update("isExisting",false)}>لا، أول مرة</button>
-                    </div>
+                    <Segmented label={tt("هل أنت مريض حالي؟")} value={picks.isExisting} onChange={(v)=>update("isExisting",v)} options={[
+                      { value: true, label: tt("نعم") },
+                      { value: false, label: tt("لا، أول مرة") },
+                    ]}/>
                   </div>
                 </div>
               )}
@@ -4213,11 +4285,11 @@ function PublicBookingScreen({ onBack, onDone }) {
                   <div className="label" style={{marginBottom:10}}>اختر أخصائيًا</div>
                   <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10}}>
                     {[
-                      { name:"أي أخصائي",  spec:"أقرب موعد",        color:"#BDD8E9", any:true, recommended:true },
+                      { name:BK_ANY,  spec:tt("أقرب موعد"),        color:"#BDD8E9", any:true, recommended:true },
                       ...DATA.therapists.filter(t=>t.active!==false).map(t=>({ name:t.name, spec:t.spec, color:t.color }))
                     ].map((t,i)=>(
                       <button key={i} onClick={()=>{update("therapist",t.any?null:t.name); next();}} style={{
-                        padding:16,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                        padding:16,textAlign:"end",cursor:"pointer",fontFamily:"inherit",
                         border:`1px solid ${picks.therapist===(t.any?null:t.name)?"var(--blue-500)":"var(--ink-200)"}`,
                         background:picks.therapist===(t.any?null:t.name)?"var(--blue-50)":"#fff",
                         borderRadius:14,display:"flex",alignItems:"center",gap:12,transition:"all .15s"
@@ -4231,8 +4303,8 @@ function PublicBookingScreen({ onBack, onDone }) {
                         )}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{fontWeight:600,fontSize:14}}>{t.name}</span>
-                            {t.recommended && <span className="badge b-blue" style={{fontSize:10}}>الأسرع</span>}
+                            <span style={{fontWeight:600,fontSize:14}}>{t.any ? tt(t.name) : t.name}</span>
+                            {t.recommended && <span className="badge b-blue" style={{fontSize:10}}>{tt("الأسرع")}</span>}
                           </div>
                           <div className="muted" style={{fontSize:11.5,marginTop:1}}>{t.spec}</div>
                         </div>
@@ -4257,7 +4329,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                       const full = d.slots === 0;
                       return (
                         <button key={d.iso} disabled={full} onClick={()=> !full && update("date",d.iso)}
-                          title={full?"لا تتوفر مواعيد":`${d.slots} موعد متاح`}
+                          title={full?tt("لا تتوفر مواعيد"):tt("{n} موعد متاح", { n: d.slots })}
                           style={{
                             padding:"12px 4px",cursor:full?"not-allowed":"pointer",fontFamily:"inherit",
                             border:`1px solid ${sel?"var(--blue-500)":"var(--ink-200)"}`,
@@ -4268,7 +4340,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                           <div style={{fontWeight:600,fontSize:13}}>{d.weekday}</div>
                           <div className="mono" style={{fontSize:10.5,opacity:.7}}>{d.day} {d.month}</div>
                           <div style={{fontSize:10,marginTop:3,color:sel?"#fff":full?"var(--ink-400)":"var(--green)"}}>
-                            ● {full ? "ممتلئ" : `${d.slots} متاح`}
+                            ● {full ? tt("ممتلئ") : tt("{n} متاح", { n: d.slots })}
                           </div>
                         </button>
                       );
@@ -4284,7 +4356,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                       const sel     = picks.time === t && !unavail;
                       return (
                         <button key={t} disabled={unavail} onClick={()=> !unavail && update("time",t)}
-                          title={isPast?"وقت سابق":isTaken?"محجوز":""}
+                          title={isPast?tt("وقت سابق"):isTaken?tt("محجوز"):""}
                           style={{
                             padding:"10px 16px",fontFamily:"inherit",cursor:unavail?"not-allowed":"pointer",
                             border:`1px solid ${sel?"var(--blue-500)":"var(--ink-200)"}`,
@@ -4322,7 +4394,7 @@ function PublicBookingScreen({ onBack, onDone }) {
                     )}
                     <label style={{display:"flex",alignItems:"flex-start",gap:10,padding:12,background:"var(--ink-50)",borderRadius:10,fontSize:12.5,cursor:"pointer"}}>
                       <input type="checkbox" defaultChecked style={{marginTop:2}}/>
-                      <span>I agree to receive a واتساب confirmation and a reminder 24 hours before my visit.</span>
+                      <span>{tt("أوافق على استلام تأكيد عبر واتساب وتذكير قبل زيارتي بـ 24 ساعة.")}</span>
                     </label>
                   </div>
                 </div>
@@ -4339,8 +4411,8 @@ function PublicBookingScreen({ onBack, onDone }) {
                     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:16}}>
                       <div>
                         <div className="mono" style={{fontSize:10.5,letterSpacing:".06em",textTransform:"uppercase",color:"var(--ink-500)",marginBottom:4}}>موعدك</div>
-                        <div className="serif" style={{fontSize:36,lineHeight:1.05}}>{picks.date}</div>
-                        <div className="mono" style={{fontSize:20,marginTop:6,color:"var(--blue-700)",fontWeight:600}}>{picks.time} · 45 minutes</div>
+                        <div className="serif" style={{fontSize:36,lineHeight:1.05}}>{ptDate(picks.date)}</div>
+                        <div className="mono" style={{fontSize:20,marginTop:6,color:"var(--blue-700)",fontWeight:600}}>{picks.time} · {tt("{n} دقيقة", { n: 45 })}</div>
                       </div>
                       <I.Calendar size={30} style={{color:"var(--blue-500)"}}/>
                     </div>
@@ -4348,15 +4420,15 @@ function PublicBookingScreen({ onBack, onDone }) {
                     <div className="rgrid half-sm" style={{"--gtc":"1fr 1fr",gap:14,fontSize:13}}>
                       <div>
                         <div className="muted" style={{fontSize:11}}>الأخصائي</div>
-                        <div style={{fontWeight:500}}>{picks.therapist || "أي متاح"}</div>
+                        <div style={{fontWeight:500}}>{picks.therapist || tt("أي متاح")}</div>
                       </div>
                       <div>
                         <div className="muted" style={{fontSize:11}}>السبب</div>
                         <div style={{fontWeight:500}}>{({
-                          "existing-pain":"ألم أو إصابة موجودة",
-                          "post-op":"التعافي بعد جراحة",
-                          "sports":"إصابة رياضية",
-                          "assess":"Assessment",
+                          "existing-pain":tt("ألم أو إصابة موجودة"),
+                          "post-op":tt("التعافي بعد جراحة"),
+                          "sports":tt("إصابة رياضية"),
+                          "assess":tt("تقييم فقط"),
                         })[picks.reason] || "—"}</div>
                       </div>
                       <div>
@@ -4369,11 +4441,11 @@ function PublicBookingScreen({ onBack, onDone }) {
                       </div>
                       <div>
                         <div className="muted" style={{fontSize:11}}>المكان</div>
-                        <div style={{fontWeight:500}}>BeActive مصر الجديدة · غرفة 2</div>
+                        <div style={{fontWeight:500}}>{place}</div>
                       </div>
                       <div>
                         <div className="muted" style={{fontSize:11}}>التكلفة</div>
-                        <div style={{fontWeight:500}}>850 ج.م — تُدفع بالعيادة</div>
+                        <div style={{fontWeight:500}}>{tt("{amount} — تُدفع بالعيادة", { amount: fmtMoney(850) })}</div>
                       </div>
                     </div>
                   </div>
@@ -4391,11 +4463,11 @@ function PublicBookingScreen({ onBack, onDone }) {
             {!confirming && (
               <div style={{padding:"14px 24px",borderTop:"1px solid var(--ink-100)",display:"flex",justifyContent:"space-between",background:"var(--ink-50)",flexWrap:"wrap",gap:8}}>
                 <button className="btn btn-secondary" onClick={step===1?onBack:()=>setStep(step-1)}>
-                  <I.ArrowLeft size={13}/> {step===1?"إلغاء":"رجوع"}
+                  <I.ArrowLeft size={13}/> {step===1?tt("إلغاء"):tt("رجوع")}
                 </button>
                 <button className="btn btn-blue" onClick={next}
                   disabled={(step===1 && !picks.reason) || (step===4 && (!picks.name || !picks.phone))}>
-                  {step<5 ? "متابعة" : "تأكيد الحجز"} <I.ArrowRight size={13}/>
+                  {step<5 ? tt("متابعة") : tt("تأكيد الحجز")} <I.ArrowRight size={13}/>
                 </button>
               </div>
             )}

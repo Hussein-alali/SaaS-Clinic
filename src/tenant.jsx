@@ -171,12 +171,12 @@ function tenantTakeFlash() {
 // ── Plain JSON requests to /api ───────────────────────────────
 // Resolves (never throws) to { ok, status, data, error: null | {message, code, status} }.
 // Uses window.ClinicApi.request (src/apiclient.jsx) when present, else the
-// same transport: cookie session, X-Requested-With, X-Org-Slug, X-Branch-Id.
+// same transport: cookie session, X-Requested-With, X-Lang, X-Org-Slug, X-Branch-Id.
 function tenantRequest(method, path, body) {
   const api = window.ClinicApi;
   if (api && typeof api.request === "function") return api.request(method, path, body);
   const m = String(method || "GET").toUpperCase();
-  const headers = { "Accept": "application/json", "X-Requested-With": "clinicsys" };
+  const headers = { "Accept": "application/json", "X-Requested-With": "clinicsys", "X-Lang": LANG === "en" ? "en" : "ar" };
   const init = { method: m, credentials: "include", headers };
   if (body !== undefined && m !== "GET" && m !== "HEAD") {
     headers["Content-Type"] = "application/json";
@@ -577,6 +577,11 @@ function TenantBackIcon() {
   const Ico = I[IS_RTL ? "ArrowRight" : "ArrowLeft"];
   return <Ico size={13} />;
 }
+// «افتح / التالي»: towards the end of the line (left in Arabic).
+function TenantForwardIcon(props) {
+  const Ico = I[IS_RTL ? "ArrowLeft" : "ArrowRight"];
+  return <Ico {...props} />;
+}
 
 // «نسيت كلمة المرور»: one generic answer whatever the address (the API
 // never reveals whether an account exists).
@@ -622,6 +627,7 @@ function TenantForgotForm({ onBack, initialEmail }) {
 // ══════════════════════════════════════════════════════════════
 // S06 — status pages
 // ══════════════════════════════════════════════════════════════
+// Titles and texts are Arabic source text, translated where shown.
 const TENANT_STATUS = {
   "not-found":      { icon: "MapPin",   tone: "grey",  title: "لا توجد عيادة بهذا الرابط",
                       body: "تأكد من كتابة الرابط كما وصلك، أو ارجع إلى الموقع الرئيسي." },
@@ -659,28 +665,29 @@ function TenantStatusScreen({ status, email, isSuperAdmin, onLogout, onRetry, ch
   const t = TENANT_STATUS[status] || TENANT_STATUS.error;
   const tone = TENANT_TONES[t.tone] || TENANT_TONES.grey;
   const Ico = I[t.icon] || I.X;
-  React.useEffect(() => { document.title = t.title + " — ClinicSystem EG"; }, [t.title]);
+  React.useEffect(() => { document.title = tt(t.title) + " — ClinicSystem EG"; }, [t.title]);
   const linkBtn = { height: 40, justifyContent: "center" };
   return (
     <main className="tenant-status" data-status={status}
-      style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "var(--ink-50)" }}>
+      style={{ position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "68px 24px 24px", background: "var(--ink-50)" }}>
+      <TenantLangCorner />
       <div className="card" style={{ maxWidth: 480, width: "100%", textAlign: "center", padding: "32px 28px" }}>
         <div aria-hidden="true" style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", background: tone.bg, color: tone.fg }}>
           <Ico size={22} />
         </div>
-        <h1 className="h2" style={{ marginBottom: 10 }}>{t.title}</h1>
-        <p className="muted" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 8px" }}>{t.body}</p>
-        {email && <p style={{ fontSize: 13, margin: "0 0 8px", color: "var(--ink-700)" }}>الحساب: <bdi className="mono" dir="ltr">{email}</bdi></p>}
+        <h1 className="h2" style={{ marginBottom: 10 }}>{tt(t.title)}</h1>
+        <p className="muted" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 8px" }}>{tt(t.body)}</p>
+        {email && <p style={{ fontSize: 13, margin: "0 0 8px", color: "var(--ink-700)" }}>{ttx("الحساب: {email}", { email: <bdi className="mono" dir="ltr">{email}</bdi> })}</p>}
         {isSuperAdmin && (
-          <p style={{ fontSize: 13, margin: "0 0 8px", color: "var(--ink-700)" }}>أنت مدير المنصة: يمكنك فتح لوحة إدارة المنصة.</p>
+          <p style={{ fontSize: 13, margin: "0 0 8px", color: "var(--ink-700)" }}>{tt("أنت مدير المنصة: يمكنك فتح لوحة إدارة المنصة.")}</p>
         )}
         {children}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 18 }}>
-          {onRetry && <button type="button" className="btn btn-blue" style={linkBtn} onClick={onRetry}>إعادة المحاولة</button>}
-          {isSuperAdmin && <a className="btn btn-blue" style={linkBtn} href={tenantPlatformUrl()}><I.Settings size={14} /> لوحة إدارة المنصة</a>}
-          {onLogout && <button type="button" className="btn btn-secondary" style={linkBtn} onClick={onLogout}><I.Logout size={14} /> تسجيل الخروج</button>}
+          {onRetry && <button type="button" className="btn btn-blue" style={linkBtn} onClick={onRetry}>{tt("إعادة المحاولة")}</button>}
+          {isSuperAdmin && <a className="btn btn-blue" style={linkBtn} href={tenantPlatformUrl()}><I.Settings size={14} /> {tt("لوحة إدارة المنصة")}</a>}
+          {onLogout && <button type="button" className="btn btn-secondary" style={linkBtn} onClick={onLogout}><I.Logout size={14} /> {tt("تسجيل الخروج")}</button>}
           <a className="btn btn-secondary" style={linkBtn} href={tenantRootUrl()}
-            onClick={(e) => { e.preventDefault(); tenantGoRoot(); }}>الموقع الرئيسي</a>
+            onClick={(e) => { e.preventDefault(); tenantGoRoot(); }}>{tt("الموقع الرئيسي")}</a>
         </div>
       </div>
     </main>
@@ -695,9 +702,9 @@ function TenantClinicPicker({ session, onLogout }) {
   const ms = (session && session.memberships) || [];
   return (
     <>
-      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>اختر العيادة</h1>
-      <div className="muted" style={{ fontSize: 14, marginBottom: 20 }}>حسابك عضو في أكثر من عيادة. اختر العيادة التي تريد فتحها الآن.</div>
-      <ul aria-label="عياداتك" style={{ listStyle: "none", padding: 0, margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>{tt("اختر العيادة")}</h1>
+      <div className="muted" style={{ fontSize: 14, marginBottom: 20 }}>{tt("حسابك عضو في أكثر من عيادة. اختر العيادة التي تريد فتحها الآن.")}</div>
+      <ul aria-label={tt("عياداتك")} style={{ listStyle: "none", padding: 0, margin: "0 0 18px", display: "flex", flexDirection: "column", gap: 10 }}>
         {ms.map(m => (
           <li key={m.organization_id || m.slug}>
             <a href={tenantClinicUrl(m.slug)} className="card tenant-clinic-card" data-slug={m.slug}
@@ -708,23 +715,24 @@ function TenantClinicPicker({ session, onLogout }) {
               <span style={{ flex: 1, minWidth: 0, display: "block" }}>
                 <span style={{ display: "block", fontWeight: 600, fontSize: 14.5, color: "var(--ink-900)" }}>{m.name}</span>
                 <span style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                  {TENANT_SPECIALTY_AR[m.specialty_code] && <span className="badge b-violet">{TENANT_SPECIALTY_AR[m.specialty_code]}</span>}
-                  <span className="badge b-grey">{TENANT_ROLE_AR[m.role] || m.role}</span>
+                  {TENANT_SPECIALTY_AR[m.specialty_code] && <span className="badge b-violet">{tt(TENANT_SPECIALTY_AR[m.specialty_code])}</span>}
+                  <span className="badge b-grey">{tt(TENANT_ROLE_AR[m.role] || m.role)}</span>
                 </span>
-                <bdi className="mono" dir="ltr" style={{ display: "block", fontSize: 11.5, color: "var(--ink-500)", marginTop: 6, textAlign: "right" }}>{tenantClinicLabel(m.slug)}</bdi>
+                {/* dir=ltr on the address itself: align it with the page's start edge. */}
+                <bdi className="mono" dir="ltr" style={{ display: "block", fontSize: 11.5, color: "var(--ink-500)", marginTop: 6, textAlign: IS_RTL ? "right" : "left" }}>{tenantClinicLabel(m.slug)}</bdi>
               </span>
-              <I.ArrowLeft size={16} style={{ color: "var(--ink-400)", flexShrink: 0 }} />
+              <TenantForwardIcon size={16} style={{ color: "var(--ink-400)", flexShrink: 0 }} />
             </a>
           </li>
         ))}
       </ul>
       {session && session.is_super_admin && (
         <a href={tenantPlatformUrl()} className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", height: 40, marginBottom: 10 }}>
-          <I.Settings size={14} /> لوحة إدارة المنصة
+          <I.Settings size={14} /> {tt("لوحة إدارة المنصة")}
         </a>
       )}
       <button type="button" className="btn btn-ghost" onClick={onLogout} style={{ width: "100%", justifyContent: "center", height: 40 }}>
-        <I.Logout size={14} /> تسجيل الخروج
+        <I.Logout size={14} /> {tt("تسجيل الخروج")}
       </button>
     </>
   );
@@ -755,7 +763,7 @@ function TenantRootPortal() {
   }
 
   React.useEffect(() => {
-    document.title = "ClinicSystem EG — نظام إدارة العيادات";
+    document.title = "ClinicSystem EG — " + tt("نظام إدارة العيادات");
     // The main site has no clinic: stop sending a remembered X-Org-Slug.
     tenantStoreRemove("session", TENANT_KEYS.org);
     let cancelled = false;
@@ -777,8 +785,8 @@ function TenantRootPortal() {
     e && e.preventDefault();
     const v = email.trim();
     const errs = {};
-    if (!TENANT_EMAIL_RE.test(v)) errs.email = "أدخل بريدًا إلكترونيًا صحيحًا";
-    if (!pw) errs.pw = "أدخل كلمة المرور";
+    if (!TENANT_EMAIL_RE.test(v)) errs.email = tt("أدخل بريدًا إلكترونيًا صحيحًا");
+    if (!pw) errs.pw = tt("أدخل كلمة المرور");
     setErrors(errs);
     if (Object.keys(errs).length) return;
     const client = window.SB;
@@ -804,8 +812,8 @@ function TenantRootPortal() {
     setPhase("login");
   }
 
-  if (phase === "checking") return <TenantLoading text="جارٍ التحقق من الجلسة…" />;
-  if (phase === "redirecting") return <TenantLoading text="جارٍ فتح عيادتك…" />;
+  if (phase === "checking") return <TenantLoading text={tt("جارٍ التحقق من الجلسة…")} />;
+  if (phase === "redirecting") return <TenantLoading text={tt("جارٍ فتح عيادتك…")} />;
   if (phase === "none") {
     return <TenantStatusScreen status="no-clinic" email={session && session.user && session.user.email}
       isSuperAdmin={!!(session && session.is_super_admin)} onLogout={logout} />;
@@ -813,9 +821,9 @@ function TenantRootPortal() {
 
   const panel = (
     <TenantBrandPanel
-      title={<>عيادتك كلها، <em>في مكان واحد</em>.</>}
-      lead="المواعيد، والمرضى، والجلسات، والفواتير، والفروع — لكل عيادة مساحتها الخاصة ورابطها الخاص."
-      points={["الدخول بدعوة فقط من مدير العيادة", "كل عيادة ترى بياناتها فقط", "يعمل على الحاسوب والجوال"]} />
+      title={ttx("عيادتك كلها، {em}.", { em: <em>{tt("في مكان واحد")}</em> })}
+      lead={tt("المواعيد، والمرضى، والجلسات، والفواتير، والفروع — لكل عيادة مساحتها الخاصة ورابطها الخاص.")}
+      points={[tt("الدخول بدعوة فقط من مدير العيادة"), tt("كل عيادة ترى بياناتها فقط"), tt("يعمل على الحاسوب والجوال")]} />
   );
 
   return (
@@ -825,23 +833,23 @@ function TenantRootPortal() {
       {phase === "forgot" && <TenantForgotForm initialEmail={email} onBack={() => setPhase("login")} />}
       {phase === "login" && (
         <>
-          <h1 className="h1" style={{ fontSize: 30, marginBottom: 6 }}>تسجيل الدخول</h1>
+          <h1 className="h1" style={{ fontSize: 30, marginBottom: 6 }}>{tt("تسجيل الدخول")}</h1>
           <div className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
-            سجّل الدخول وسننقلك إلى عيادتك. ليس لديك حساب؟ يُنشأ الحساب بدعوة من مدير العيادة.
+            {tt("سجّل الدخول وسننقلك إلى عيادتك. ليس لديك حساب؟ يُنشأ الحساب بدعوة من مدير العيادة.")}
           </div>
           <form onSubmit={submit} noValidate>
-            <TenantField id="root-email" label="البريد الإلكتروني" type="email" dir="ltr" autoComplete="username"
+            <TenantField id="root-email" label={tt("البريد الإلكتروني")} type="email" dir="ltr" autoComplete="username"
               value={email} onChange={setEmail} error={errors.email} />
-            <TenantField id="root-password" label="كلمة المرور" type="password" autoComplete="current-password"
+            <TenantField id="root-password" label={tt("كلمة المرور")} type="password" autoComplete="current-password"
               value={pw} onChange={setPw} error={errors.pw} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "2px 0 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, margin: "2px 0 14px" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--ink-700)", minHeight: 32 }}>
-                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> أبقني مسجلاً لمدة 30 يومًا
+                <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> {tt("أبقني مسجلاً لمدة 30 يومًا")}
               </label>
               <button type="button" className="auth-link" onClick={() => { setNotice(null); setPhase("forgot"); }}
-                style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>نسيت كلمة المرور؟</button>
+                style={{ background: "none", border: "none", color: "var(--blue-700)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{tt("نسيت كلمة المرور؟")}</button>
             </div>
-            <TenantSubmit busy={busy}>تسجيل الدخول</TenantSubmit>
+            <TenantSubmit busy={busy}>{tt("تسجيل الدخول")}</TenantSubmit>
           </form>
         </>
       )}
@@ -868,7 +876,7 @@ function TenantInviteScreen({ token }) {
     const r = await tenantRequest("GET", "/invitations/" + encodeURIComponent(token));
     if (r.ok && r.data) {
       setState({ phase: "ready", inv: r.data });
-      document.title = `دعوة للانضمام إلى ${(r.data.organization && r.data.organization.name) || "العيادة"} — ClinicSystem EG`;
+      document.title = tt("دعوة للانضمام إلى {clinic}", { clinic: (r.data.organization && r.data.organization.name) || tt("العيادة") }) + " — ClinicSystem EG";
       return;
     }
     if (r.status === 404 || r.status === 410 || r.status === 403) {
@@ -881,8 +889,8 @@ function TenantInviteScreen({ token }) {
 
   React.useEffect(() => { load(); }, [load]);
 
-  if (state.phase === "loading") return <TenantLoading text="جارٍ التحقق من الدعوة…" />;
-  if (state.phase === "entering") return <TenantLoading text="تم قبول الدعوة — جارٍ فتح العيادة…" />;
+  if (state.phase === "loading") return <TenantLoading text={tt("جارٍ التحقق من الدعوة…")} />;
+  if (state.phase === "entering") return <TenantLoading text={tt("تم قبول الدعوة — جارٍ فتح العيادة…")} />;
   if (state.phase === "gone") return <TenantStatusScreen status={state.code} />;
   if (state.phase === "error") return <TenantStatusScreen status="error" onRetry={load} />;
 
@@ -895,13 +903,13 @@ function TenantInviteScreen({ token }) {
     e && e.preventDefault();
     const errs = {};
     if (exists) {
-      if (!pw) errs.pw = "أدخل كلمة مرور حسابك";
+      if (!pw) errs.pw = tt("أدخل كلمة مرور حسابك");
     } else {
-      if (!name.trim()) errs.name = "أدخل اسمك الكامل";
-      else if (name.trim().length > 120) errs.name = "الاسم حتى 120 حرفًا";
+      if (!name.trim()) errs.name = tt("أدخل اسمك الكامل");
+      else if (name.trim().length > 120) errs.name = tt("الاسم حتى 120 حرفًا");
       const p = tenantPasswordProblem(pw);
       if (p) errs.pw = p;
-      else if (confirm !== pw) errs.confirm = "كلمتا المرور غير متطابقتين";
+      else if (confirm !== pw) errs.confirm = tt("كلمتا المرور غير متطابقتين");
     }
     setErrors(errs);
     if (Object.keys(errs).length) return;
@@ -920,7 +928,7 @@ function TenantInviteScreen({ token }) {
       setState({ phase: "gone", code: code === "org_inactive" ? "invitation_org_inactive" : (TENANT_STATUS[code] ? code : "invitation_not_found") });
       return;
     }
-    if (code === "invalid_credentials") { setErrors({ pw: "كلمة المرور غير صحيحة لهذا الحساب" }); return; }
+    if (code === "invalid_credentials") { setErrors({ pw: tt("كلمة المرور غير صحيحة لهذا الحساب") }); return; }
     if (code === "weak_password") { setErrors({ pw: tenantFriendly("weak_password") }); return; }
     if (code === "invalid_name") { setErrors({ name: tenantFriendly("invalid_name") }); return; }
     setNotice({ kind: "error", text: tenantFriendly(code || (r.status ? "" : "network_error"), "تعذّر قبول الدعوة — أعد المحاولة") });
@@ -928,40 +936,40 @@ function TenantInviteScreen({ token }) {
 
   const panel = (
     <TenantBrandPanel
-      title={<>دعوة للانضمام إلى <em>{org.name}</em></>}
+      title={ttx("دعوة للانضمام إلى {clinic}", { clinic: <em>{org.name}</em> })}
       lead={exists
-        ? "ستُضاف هذه العيادة إلى حسابك الحالي، وتدخل إليها بالبريد وكلمة المرور نفسيهما."
-        : "أنشئ حسابك لتبدأ العمل في العيادة. ستدخل بهذا البريد وكلمة المرور التي تختارها الآن."} />
+        ? tt("ستُضاف هذه العيادة إلى حسابك الحالي، وتدخل إليها بالبريد وكلمة المرور نفسيهما.")
+        : tt("أنشئ حسابك لتبدأ العمل في العيادة. ستدخل بهذا البريد وكلمة المرور التي تختارها الآن.")} />
   );
 
   return (
     <TenantSplit panel={panel}>
-      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>قبول الدعوة</h1>
+      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>{tt("قبول الدعوة")}</h1>
       <div className="muted" style={{ fontSize: 14, marginBottom: 18 }}>
         {exists
-          ? "لديك حساب بهذا البريد بالفعل. أدخل كلمة مرور حسابك الحالية لقبول الدعوة — لن تتغير كلمة مرورك."
-          : "اكتب اسمك واختر كلمة مرور لحسابك الجديد."}
+          ? tt("لديك حساب بهذا البريد بالفعل. أدخل كلمة مرور حسابك الحالية لقبول الدعوة — لن تتغير كلمة مرورك.")
+          : tt("اكتب اسمك واختر كلمة مرور لحسابك الجديد.")}
       </div>
       <dl className="card tenant-invite-summary" style={{ padding: "12px 16px", margin: "0 0 18px", display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 14px", fontSize: 13 }}>
-        <dt className="muted">العيادة</dt><dd style={{ margin: 0, fontWeight: 600 }}>{org.name}</dd>
-        <dt className="muted">البريد</dt><dd style={{ margin: 0 }}><bdi className="mono" dir="ltr">{inv.email}</bdi></dd>
-        <dt className="muted">الدور</dt><dd style={{ margin: 0 }}><span className="badge b-grey">{roleAr}</span></dd>
+        <dt className="muted">{tt("العيادة")}</dt><dd style={{ margin: 0, fontWeight: 600 }}>{org.name}</dd>
+        <dt className="muted">{tt("البريد")}</dt><dd style={{ margin: 0 }}><bdi className="mono" dir="ltr">{inv.email}</bdi></dd>
+        <dt className="muted">{tt("الدور")}</dt><dd style={{ margin: 0 }}><span className="badge b-grey">{tt(roleAr)}</span></dd>
       </dl>
       <TenantNotice notice={notice} />
       <form onSubmit={submit} noValidate data-mode={exists ? "existing" : "new"}>
         {!exists && (
-          <TenantField id="invite-name" label="الاسم الكامل" autoComplete="name" required
+          <TenantField id="invite-name" label={tt("الاسم الكامل")} autoComplete="name" required
             value={name} onChange={setName} error={errors.name} />
         )}
-        <TenantField id="invite-password" label={exists ? "كلمة مرور حسابك" : "كلمة المرور"} type="password" required
+        <TenantField id="invite-password" label={exists ? tt("كلمة مرور حسابك") : tt("كلمة المرور")} type="password" required
           autoComplete={exists ? "current-password" : "new-password"}
-          hint={exists ? "" : "6 أحرف على الأقل"}
+          hint={exists ? "" : tt("6 أحرف على الأقل")}
           value={pw} onChange={setPw} error={errors.pw} />
         {!exists && (
-          <TenantField id="invite-confirm" label="تأكيد كلمة المرور" type="password" autoComplete="new-password" required
+          <TenantField id="invite-confirm" label={tt("تأكيد كلمة المرور")} type="password" autoComplete="new-password" required
             value={confirm} onChange={setConfirm} error={errors.confirm} />
         )}
-        <TenantSubmit busy={busy}>{exists ? "قبول الدعوة والدخول" : "تفعيل الحساب والدخول"}</TenantSubmit>
+        <TenantSubmit busy={busy}>{exists ? tt("قبول الدعوة والدخول") : tt("تفعيل الحساب والدخول")}</TenantSubmit>
       </form>
     </TenantSplit>
   );
@@ -977,7 +985,7 @@ function TenantResetScreen({ token }) {
   const [errors, setErrors] = React.useState({});
   const [notice, setNotice] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
-  React.useEffect(() => { document.title = "كلمة مرور جديدة — ClinicSystem EG"; }, []);
+  React.useEffect(() => { document.title = tt("كلمة مرور جديدة") + " — ClinicSystem EG"; }, []);
 
   function loginUrl() {
     try {
@@ -992,41 +1000,41 @@ function TenantResetScreen({ token }) {
     const errs = {};
     const p = tenantPasswordProblem(pw);
     if (p) errs.pw = p;
-    else if (confirm !== pw) errs.confirm = "كلمتا المرور غير متطابقتين";
+    else if (confirm !== pw) errs.confirm = tt("كلمتا المرور غير متطابقتين");
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true); setNotice(null);
     const r = await tenantRequest("POST", "/auth/reset/confirm", { token, password: pw });
     setBusy(false);
     if (r.ok) {
-      tenantSetFlash("success", "تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.");
+      tenantSetFlash("success", tt("تم تغيير كلمة المرور. سجّل الدخول بكلمة المرور الجديدة."));
       window.location.replace(loginUrl());
       return;
     }
     const code = (r.error && r.error.code) || "";
     if (code === "weak_password") { setErrors({ pw: tenantFriendly("weak_password") }); return; }
     if (code === "invalid_token") {
-      setNotice({ kind: "error", text: "رابط إعادة التعيين غير صالح أو انتهت صلاحيته (يعمل مرة واحدة خلال ساعة). اطلب رابطًا جديدًا من شاشة الدخول." });
+      setNotice({ kind: "error", text: tt("رابط إعادة التعيين غير صالح أو انتهت صلاحيته (يعمل مرة واحدة خلال ساعة). اطلب رابطًا جديدًا من شاشة الدخول.") });
       return;
     }
     setNotice({ kind: "error", text: tenantFriendly(code || (r.status ? "" : "network_error"), "تعذّر تغيير كلمة المرور — أعد المحاولة") });
   }
 
-  const panel = <TenantBrandPanel title="كلمة مرور جديدة" lead="اختر كلمة مرور جديدة لحسابك. ستنتهي كل الجلسات المفتوحة على أجهزتك الأخرى." />;
+  const panel = <TenantBrandPanel title={tt("كلمة مرور جديدة")} lead={tt("اختر كلمة مرور جديدة لحسابك. ستنتهي كل الجلسات المفتوحة على أجهزتك الأخرى.")} />;
   return (
     <TenantSplit panel={panel}>
-      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>تعيين كلمة مرور جديدة</h1>
-      <div className="muted" style={{ fontSize: 14, marginBottom: 22 }}>اكتب كلمة المرور الجديدة مرتين.</div>
+      <h1 className="h1" style={{ fontSize: 28, marginBottom: 6 }}>{tt("تعيين كلمة مرور جديدة")}</h1>
+      <div className="muted" style={{ fontSize: 14, marginBottom: 22 }}>{tt("اكتب كلمة المرور الجديدة مرتين.")}</div>
       <TenantNotice notice={notice} />
       <form onSubmit={submit} noValidate>
-        <TenantField id="reset-password" label="كلمة المرور الجديدة" type="password" autoComplete="new-password" required autoFocus
-          hint="6 أحرف على الأقل" value={pw} onChange={setPw} error={errors.pw} />
-        <TenantField id="reset-confirm" label="تأكيد كلمة المرور" type="password" autoComplete="new-password" required
+        <TenantField id="reset-password" label={tt("كلمة المرور الجديدة")} type="password" autoComplete="new-password" required autoFocus
+          hint={tt("6 أحرف على الأقل")} value={pw} onChange={setPw} error={errors.pw} />
+        <TenantField id="reset-confirm" label={tt("تأكيد كلمة المرور")} type="password" autoComplete="new-password" required
           value={confirm} onChange={setConfirm} error={errors.confirm} />
-        <TenantSubmit busy={busy}>حفظ كلمة المرور</TenantSubmit>
+        <TenantSubmit busy={busy}>{tt("حفظ كلمة المرور")}</TenantSubmit>
       </form>
       <a href={loginUrl()} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--blue-700)", fontSize: 13, marginTop: 8, minHeight: 40 }}>
-        <I.ArrowRight size={13} /> العودة لتسجيل الدخول
+        <TenantBackIcon /> {tt("العودة لتسجيل الدخول")}
       </a>
     </TenantSplit>
   );
@@ -1053,12 +1061,12 @@ function TenantModuleDisabled({ go }) {
         <div aria-hidden="true" style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--ink-100)", color: "var(--ink-700)" }}>
           <I.Lock size={22} />
         </div>
-        <h1 className="h2" style={{ marginBottom: 10 }}>هذه الميزة غير مفعلة لعيادتك</h1>
+        <h1 className="h2" style={{ marginBottom: 10 }}>{tt("هذه الميزة غير مفعلة لعيادتك")}</h1>
         <p className="muted" style={{ fontSize: 14, lineHeight: 1.7, margin: "0 0 18px" }}>
-          تُفعَّل ميزات العيادة من إدارة المنصة. بيانات هذه الميزة — إن وُجدت — محفوظة ولم تُحذف.
+          {tt("تُفعَّل ميزات العيادة من إدارة المنصة. بيانات هذه الميزة — إن وُجدت — محفوظة ولم تُحذف.")}
         </p>
         <button type="button" className="btn btn-blue" onClick={() => go && go("dashboard")}>
-          العودة إلى لوحة التحكم
+          {tt("العودة إلى لوحة التحكم")}
         </button>
       </div>
     </Page>
@@ -1071,5 +1079,5 @@ Object.assign(window, {
   tenantLoginVerdict, tenantRestoreSession, tenantLoadClinicData, tenantSetFlash, tenantTakeFlash,
   tenantSetSession, tenantRouteFromHash, tenantWriteRouteHash, tenantClearRouteHash,
   TenantRootPortal, TenantStatusScreen, TenantInviteScreen, TenantResetScreen, TenantForgotForm,
-  TenantPlatformGate, TenantModuleDisabled, TenantLoading, TenantNotice,
+  TenantPlatformGate, TenantModuleDisabled, TenantLoading, TenantNotice, TenantLangCorner,
 });

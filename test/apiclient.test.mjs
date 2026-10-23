@@ -969,6 +969,51 @@ describe("context headers: X-Org-Slug and X-Branch-Id", () => {
 });
 
 // ════════════════════════════════════════════════════════════════
+describe("X-Lang: the interface language on every request (task 3.29)", () => {
+  const every = async (env) => {
+    const sb = env.client();
+    await sb.from("patients").select("*");
+    await sb.rpc("list_treatments", {});
+    await sb.storage.from("b").upload("p", new Blob(["x"]));
+    await sb.auth.signInWithPassword({ email: "a@b.co", password: "x" });
+    await sb.auth.resetPasswordForEmail("a@b.co");
+    await sb.functions.invoke("admin-create-user", { body: {} });
+    await env.win.ClinicApi.request("POST", "/org/invitations", { email: "a@b.co" });
+    return env.requests;
+  };
+  const ok = () => json(200, { data: [], user: LOGIN_PAYLOAD.user, signedUrl: "/s" });
+
+  test("Arabic (the default) → X-Lang: ar", async () => {
+    const reqs = await every(boot({ handler: ok }));
+    assert.equal(reqs.length, 7);
+    for (const r of reqs) assert.equal(r.headers["X-Lang"], "ar", r.path);
+  });
+
+  test("English (?lang=en, or the saved choice) → X-Lang: en", async () => {
+    for (const opts of [{ search: "?lang=en" }, { local: { "clinicsys.lang": "en" } }]) {
+      const reqs = await every(boot({ handler: ok, ...opts }));
+      for (const r of reqs) assert.equal(r.headers["X-Lang"], "en", r.path);
+    }
+  });
+
+  test("without src/i18n.jsx (no LANG global) the client still sends X-Lang: ar", async () => {
+    const env = boot({ code: compile(["src/apiclient.jsx"]), handler: ok });
+    await env.win.ClinicApi.request("GET", "/orgs/current");
+    assert.equal(env.requests[0].headers["X-Lang"], "ar");
+  });
+
+  test("the sign-up refusal is in the interface language", async () => {
+    const ar = await boot().client().auth.signUp({ email: "a@b.co", password: "x" });
+    assert.match(ar.error.message, /[؀-ۿ]/);
+    const en = boot({ code: compile(["src/lang/en-tenant.jsx", "src/i18n.jsx", "src/apiclient.jsx"]), search: "?lang=en" });
+    const r = await en.client().auth.signUp({ email: "a@b.co", password: "x" });
+    assert.equal(r.error.code, "signup_disabled");
+    assert.doesNotMatch(r.error.message, /[؀-ۿ]/);
+    assert.deepEqual([...en.win.I18N_MISSING], []);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
 describe("platform context: X-Platform: 1 (plan task 3.6)", () => {
   const every = async (env) => {
     const sb = env.client();
@@ -1479,6 +1524,22 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.equal(env.win.DATA_LOADED, false);
     assert.equal(env.win.CLINIC_LOADED, false);
     assert.equal(vm.runInContext("__AUTH_ERRORS.module_disabled", env.win), "هذه الميزة غير مفعلة لعيادتك");
+  });
+
+  test("English: the error-code messages and data-layer errors come from the dictionary (no Arabic left)", async () => {
+    const code = compile(["src/lang/en-tenant.jsx", "src/i18n.jsx", "src/apiclient.jsx", "src/supabase.jsx"]);
+    const env = await bootApp({ "/api/auth/login": () => json(401, { error: { message: "Invalid login credentials", code: "invalid_credentials" } }) },
+      { code, search: "?lang=en" });
+    const res = await env.win.signInEmail("a@b.co", "bad");
+    assert.equal(res.code, "invalid_credentials");
+    assert.equal(res.error, "Wrong e-mail or password");
+    const maps = vm.runInContext("[__AUTH_ERRORS, __ADMIN_ACTION_ERRORS]", env.win);
+    for (const map of maps) for (const [k, v] of Object.entries(map)) assert.doesNotMatch(v, /[؀-ۿ]/, k);
+    assert.equal(env.win.friendlyAuthError(null, "plan_limit:branches"), maps[0]["plan_limit:branches"]);
+    await assert.rejects(env.win.addBranch({ name: " " }), (e) => e.friendly === true && e.message === "Branch name is required");
+    assert.deepEqual(plain(env.win.BRANCH_DAYS.map((d) => d.label)), ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
+    assert.equal(env.win.BRANCH_DAYS[0].ar, "السبت", "the Arabic name stays for older callers");
+    assert.deepEqual([...env.win.I18N_MISSING], []);
   });
 
   test("the active branch from setActiveBranch() is sent as X-Branch-Id", async () => {

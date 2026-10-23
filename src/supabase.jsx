@@ -81,7 +81,7 @@ async function loadClinic() {
   const { data, error } = await sb.from("clinic_settings").select("*").eq("id", 1).maybeSingle();
   if (error) {
     console.error("[clinic] loadClinic failed", error);
-    throw new Error(error.message || "تعذّر تحميل بيانات العيادة");
+    throw new Error(error.message || tt("تعذّر تحميل بيانات العيادة"));
   }
   const merged = { ...DEFAULT_CLINIC, ...(data || {}) };
   window.CLINIC = merged;
@@ -146,7 +146,7 @@ function calendarHours() {
 Object.assign(window, { calendarConfig, calendarSlots, calendarHours });
 
 async function saveClinic(patch) {
-  if (!sb) throw new Error("قاعدة البيانات غير متصلة");
+  if (!sb) throw __uiError(tt("قاعدة البيانات غير متصلة"));
   const merged = { ...(window.CLINIC || DEFAULT_CLINIC), ...patch };
 
   // Whitelist projection so PostgREST never sees a stray column.
@@ -166,8 +166,8 @@ async function saveClinic(patch) {
     .select("*")
     .maybeSingle();
   console.info("[clinic] update result", { status, error, data });
-  if (error) throw new Error(error.message || "تعذّر حفظ بيانات العيادة");
-  if (!data) throw new Error("لم يتم تحديث أي صف — تحقق من صلاحيات الحفظ");
+  if (error) throw new Error(error.message || tt("تعذّر حفظ بيانات العيادة"));
+  if (!data) throw __uiError(tt("لم يتم تحديث أي صف — تحقق من صلاحيات الحفظ"));
 
   const authoritative = { ...DEFAULT_CLINIC, ...data };
   window.CLINIC = authoritative;
@@ -252,7 +252,7 @@ async function removeSection(id) {
 // ── Branches (multi-branch support) ───────────────────────────
 // Neutral placeholder until the clinic defines its branches in Settings.
 const DEFAULT_BRANCHES = [
-  { id: "br_main", name: "الفرع الرئيسي", therapists: 0, rooms: 0, address: "", phone: "" },
+  { id: "br_main", name: tt("الفرع الرئيسي"), therapists: 0, rooms: 0, address: "", phone: "" },
 ];
 
 function nextBranchId() {
@@ -302,7 +302,7 @@ function __ensureActiveBranch(list) {
   return window.ACTIVE_BRANCH_ID;
 }
 
-const INACTIVE_BRANCH_BOOKING = "هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.";
+const INACTIVE_BRANCH_BOOKING = tt("هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.");
 
 // The API refuses every write on an inactive branch with 409
 // {code:"branch_inactive"} (e.g. deactivated by another admin meanwhile):
@@ -311,12 +311,12 @@ function __branchInactiveText(error) {
   return error && error.code === "branch_inactive" ? __AUTH_ERRORS.branch_inactive : null;
 }
 
-// Arabic reason for a refused branch write (docs/03 «إضافة فرع»).
+// The reason for a refused branch write (docs/03 «إضافة فرع»), in the page language.
 function __branchSaveError(error) {
   const code = (error && error.code) || "";
-  if (code === "23505") return "يوجد فرع بهذا الاسم في عيادتك بالفعل — اختر اسمًا آخر";
-  if (code === "42501") return "لا تملك صلاحية تعديل الفروع — يتطلب دور «مدير»";
-  return __friendlyAuthError(code === "PL422" ? null : code, (error && error.message) || "") || "تعذّر حفظ الفرع";
+  if (code === "23505") return tt("يوجد فرع بهذا الاسم في عيادتك بالفعل — اختر اسمًا آخر");
+  if (code === "42501") return tt("لا تملك صلاحية تعديل الفروع — يتطلب دور «مدير»");
+  return __friendlyAuthError(code === "PL422" ? null : code, (error && error.message) || "") || tt("تعذّر حفظ الفرع");
 }
 
 // Same name as another branch of the clinic (names are unique per clinic,
@@ -328,11 +328,13 @@ function __branchNameTaken(name, exceptId) {
 
 // working_hours as the schema stores it (docs/05 "branches"):
 // { "sat": ["09:00","21:00"], … } — a missing day is closed.
+// `ar` is the Arabic name (kept for older callers), `label` the name in
+// the page language.
 const BRANCH_DAYS = [
   { key: "sat", ar: "السبت" }, { key: "sun", ar: "الأحد" }, { key: "mon", ar: "الاثنين" },
   { key: "tue", ar: "الثلاثاء" }, { key: "wed", ar: "الأربعاء" }, { key: "thu", ar: "الخميس" },
   { key: "fri", ar: "الجمعة" },
-];
+].map(d => ({ ...d, label: tt(d.ar) }));
 function __cleanWorkingHours(wh) {
   if (wh === undefined) return undefined;
   if (!wh || typeof wh !== "object") return null;
@@ -376,8 +378,8 @@ async function loadBranches() {
 async function addBranch(branch) {
   const list = window.BRANCHES || [];
   const name = String((branch && branch.name) || "").trim();
-  if (!name) throw new Error("اسم الفرع مطلوب");
-  if (__branchNameTaken(name)) throw new Error(__branchSaveError({ code: "23505" }));
+  if (!name) throw __uiError(tt("اسم الفرع مطلوب"));
+  if (__branchNameTaken(name)) throw __uiError(__branchSaveError({ code: "23505" }));
   const item = {
     id: branch.id || nextBranchId(),
     name,
@@ -393,7 +395,7 @@ async function addBranch(branch) {
     const { error } = await sb.from("branches").insert(item);
     if (error) {
       console.warn("addBranch insert failed", error.message || error);
-      throw new Error(__branchSaveError(error));
+      throw __uiError(__branchSaveError(error));
     }
     // A clinic admin may use every branch, including the new one.
     if (Array.isArray(window.ACCESSIBLE_BRANCH_IDS) && window.TENANT_ROLE === "admin") {
@@ -419,16 +421,16 @@ async function updateBranch(id, patch) {
   if (cleanPatch.working_hours !== undefined) cleanPatch.working_hours = __cleanWorkingHours(cleanPatch.working_hours);
   if (typeof cleanPatch.name === "string") {
     cleanPatch.name = cleanPatch.name.trim();
-    if (!cleanPatch.name) throw new Error("اسم الفرع مطلوب");
-    if (__branchNameTaken(cleanPatch.name, id)) throw new Error(__branchSaveError({ code: "23505" }));
+    if (!cleanPatch.name) throw __uiError(tt("اسم الفرع مطلوب"));
+    if (__branchNameTaken(cleanPatch.name, id)) throw __uiError(__branchSaveError({ code: "23505" }));
   }
   if (sb) {
     const { data, error } = await sb.from("branches").update(cleanPatch).eq("id", id).select("id");
     if (error) {
       console.warn("updateBranch failed", error.message || error);
-      throw new Error(__branchSaveError(error));
+      throw __uiError(__branchSaveError(error));
     }
-    if (Array.isArray(data) && !data.length) throw new Error(__branchSaveError({ code: "42501" }));
+    if (Array.isArray(data) && !data.length) throw __uiError(__branchSaveError({ code: "42501" }));
   }
   const next = (window.BRANCHES || list).map(b => b.id === id ? { ...b, ...cleanPatch } : b);
   window.BRANCHES = next;
@@ -447,9 +449,9 @@ async function setBranchStatus(id, status) {
   const target = status === "inactive" ? "inactive" : "active";
   const list = window.BRANCHES || [];
   const branch = list.find(b => b.id === id);
-  if (!branch) throw new Error("الفرع غير موجود");
+  if (!branch) throw __uiError(tt("الفرع غير موجود"));
   if (target === "inactive" && !list.some(b => b.id !== id && branchIsActive(b))) {
-    throw new Error("لا يمكن تعطيل آخر فرع نشط — أضف فرعًا آخر أولًا");
+    throw __uiError(tt("لا يمكن تعطيل آخر فرع نشط — أضف فرعًا آخر أولًا"));
   }
   await updateBranch(id, { status: target });
   if (target === "inactive" && window.ACTIVE_BRANCH_ID === id) __ensureActiveBranch(window.BRANCHES || []);
@@ -526,7 +528,7 @@ async function signInEmail(email, password, opts) {
   const { data, error } = await sb.auth.signInWithPassword(credentials);
   if (error) {
     const code = error.code || (error.status === 0 ? "network_error" : "");
-    return { ok: false, code, error: __friendlyAuthError(code, "") || "تعذّر تسجيل الدخول" };
+    return { ok: false, code, error: __friendlyAuthError(code, "") || tt("تعذّر تسجيل الدخول") };
   }
   let role = null, staffRow = null;
   const uid = data.user && data.user.id;
@@ -542,7 +544,7 @@ async function signInEmail(email, password, opts) {
   if (staffRow && String(staffRow.status || "active") !== "active") {
     try { await sb.auth.signOut({ scope: "local" }); } catch {}
     return { ok: false, reason: "account-inactive",
-             error: "هذا الحساب معطّل. تواصل مع مدير النظام لإعادة تفعيله." };
+             error: tt("هذا الحساب معطّل. تواصل مع مدير النظام لإعادة تفعيله.") };
   }
   // The staff table in PostgreSQL is authoritative (it's what RLS's
   // app_role() reads); user_metadata is only a display fallback for
@@ -604,7 +606,7 @@ async function getSession() {
 //     error (Arabic), role?, code? }
 const STAFF_ROLES = ["admin", "receptionist", "doctor", "therapist"];
 async function getAuthStaff() {
-  if (!sb) return { ok: false, reason: "no-database", error: "لم يتم تكوين قاعدة البيانات" };
+  if (!sb) return { ok: false, reason: "no-database", error: tt("لم يتم تكوين قاعدة البيانات") };
 
   let session = null;
   try {
@@ -620,7 +622,7 @@ async function getAuthStaff() {
     return { ok: false, reason: "no-session", error: __AUTH_ERRORS.invalid_session };
   }
   if (!session || !session.user) {
-    return { ok: false, reason: "no-session", error: "لا توجد جلسة مسجّلة" };
+    return { ok: false, reason: "no-session", error: tt("لا توجد جلسة مسجّلة") };
   }
 
   // Revalidate against the Auth server — a locally cached but revoked or
@@ -663,24 +665,24 @@ async function getAuthStaff() {
     }
     if (q.status >= 500) {
       return { ok: false, reason: "server-error", session, user,
-               error: "تعذّر التحقق من الحساب الآن — أعد المحاولة بعد قليل" };
+               error: tt("تعذّر التحقق من الحساب الآن — أعد المحاولة بعد قليل") };
     }
     return { ok: false, reason: "staff-lookup-failed", session, user, code: q.error.code || "",
-             error: __friendlyAuthError(q.error.code, "") || "تعذّرت قراءة سجل الموظف" };
+             error: __friendlyAuthError(q.error.code, "") || tt("تعذّرت قراءة سجل الموظف") };
   }
   if (!q.data || !q.data.role) {
     return { ok: false, reason: "no-staff-role", session, user,
-             error: "لا يوجد سجل موظف مرتبط بهذا الحساب في قاعدة البيانات" };
+             error: tt("لا يوجد سجل موظف مرتبط بهذا الحساب في قاعدة البيانات") };
   }
   // Deactivated accounts lose access even with a still-valid token.
   if (String(q.data.status || "active") !== "active") {
     return { ok: false, reason: "account-inactive", session, user, staff: q.data,
-             error: "هذا الحساب معطّل. تواصل مع مدير النظام لإعادة تفعيله." };
+             error: tt("هذا الحساب معطّل. تواصل مع مدير النظام لإعادة تفعيله.") };
   }
   const role = String(q.data.role).trim();
   if (!STAFF_ROLES.includes(role)) {
     return { ok: false, reason: "role-not-staff", session, user, role, staff: q.data,
-             error: `الدور «${role}» ليس دور موظف` };
+             error: tt("الدور «{role}» ليس دور موظف", { role }) };
   }
   return { ok: true, session, user, role, staff: q.data };
 }
@@ -701,10 +703,25 @@ function nextStaffId() {
 }
 
 // Map the API's error codes (docs/02-TRD.md "رموز الأخطاء") onto friendly
-// Arabic messages. Never show a raw server message or code in the UI.
+// messages. Never show a raw server message or code in the UI.
 // The plan-limit triggers answer 422 {code:"PL422", message:"plan_limit:<what>"}:
 // pass the message as `fallback` and it is recognised too.
-const __AUTH_ERRORS = {
+// The maps are written in Arabic (the dictionary keys, src/lang/en-tenant.jsx)
+// and hold the text in the page language.
+function __i18nValues(map) {
+  const out = {};
+  for (const k of Object.keys(map)) out[k] = tt(map[k]);
+  return out;
+}
+// A user-facing Error: its message is already in the page language and
+// `friendly` tells a screen it may show it as is (in English an
+// Arabic-script test cannot tell it from a raw server message).
+function __uiError(text) {
+  const e = new Error(text);
+  e.friendly = true;
+  return e;
+}
+const __AUTH_ERRORS = __i18nValues({
   invalid_credentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
   too_many_attempts:   "محاولات كثيرة متتالية — انتظر بضع دقائق ثم أعد المحاولة",
   not_a_member:        "ليست لديك عضوية نشطة في هذه العيادة",
@@ -767,7 +784,7 @@ const __AUTH_ERRORS = {
   server_misconfigured:"إعدادات الخادم غير مكتملة — تواصل مع الدعم",
   staff_insert_failed: "تم إنشاء الحساب لكن تعذّر حفظ سجل الموظف",
   method_not_allowed:  "طلب غير صالح",
-};
+});
 function __friendlyAuthError(code, fallback) {
   if (code && __AUTH_ERRORS[code]) return __AUTH_ERRORS[code];
   const raw = String(fallback || "");
@@ -781,8 +798,8 @@ function __friendlyAuthError(code, fallback) {
   if (t.includes("invalid email")) return __AUTH_ERRORS.invalid_email;
   if (t.includes("failed to fetch") || t.includes("network")) return __AUTH_ERRORS.network_error;
   // Arabic text from this file is already friendly; anything else is not shown.
-  if (raw && /[؀-ۿ]/.test(raw)) return raw;
-  return fallback === "" ? "" : "تعذّر تنفيذ العملية";
+  if (raw && /[؀-ۿ]/.test(raw)) return tt(raw);
+  return fallback === "" ? "" : tt("تعذّر تنفيذ العملية");
 }
 
 async function adminCreateUser({ email, password, name, role, phone, branch_ids }) {
@@ -904,13 +921,13 @@ async function sendPasswordReset(email) {
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
   if (error) {
     const code = error.code || (error.status === 0 ? "network_error" : "");
-    return { ok: false, code, error: __friendlyAuthError(code, "") || "تعذّر إرسال رابط إعادة التعيين" };
+    return { ok: false, code, error: __friendlyAuthError(code, "") || tt("تعذّر إرسال رابط إعادة التعيين") };
   }
   return { ok: true };
 }
 
 async function updateOwnPassword(newPassword) {
-  if (!newPassword || newPassword.length < 6) return { ok: false, error: "كلمة المرور 6 أحرف على الأقل" };
+  if (!newPassword || newPassword.length < 6) return { ok: false, error: tt("كلمة المرور 6 أحرف على الأقل") };
   if (!sb) return { ok: true, demo: true };
   const { error } = await sb.auth.updateUser({ password: newPassword });
   if (error) return { ok: false, error: __friendlyAuthError(error.code, error.message) };
@@ -919,7 +936,7 @@ async function updateOwnPassword(newPassword) {
 
 async function updateOwnProfile({ name }) {
   const displayName = (name || "").trim();
-  if (!displayName) return { ok: false, error: "أدخل الاسم" };
+  if (!displayName) return { ok: false, error: tt("أدخل الاسم") };
   if (sb) {
     const { error } = await sb.auth.updateUser({ data: { name: displayName } });
     if (error) return { ok: false, error: error.message };
@@ -945,7 +962,7 @@ async function updateStaffMember(staffId, patch) {
   try {
     const rows = await listTable("staff");
     const match = (rows || []).find(r => (r.staff_id || r.id) === staffId);
-    if (!match) return { ok: false, error: "المستخدم غير موجود" };
+    if (!match) return { ok: false, error: tt("المستخدم غير موجود") };
     await upsertRow("staff", { ...match, ...patch });
     return { ok: true };
   } catch (e) { return { ok: false, error: e.message || String(e) }; }
@@ -962,7 +979,7 @@ async function __edgeErrorBody(data, error) {
   return null;
 }
 
-const __ADMIN_ACTION_ERRORS = {
+const __ADMIN_ACTION_ERRORS = __i18nValues({
   shared_account:        __AUTH_ERRORS.shared_account,
   plan_limit_users:      __AUTH_ERRORS.plan_limit_users,
   invalid_status:        "حالة غير صالحة",
@@ -981,7 +998,7 @@ const __ADMIN_ACTION_ERRORS = {
   server_misconfigured:  "إعدادات الخادم غير مكتملة — تواصل مع الدعم",
   update_failed:         "تعذّر تنفيذ العملية",
   lookup_failed:         "تعذّرت قراءة سجل الموظف",
-};
+});
 function __adminActionError(code, fallback) {
   return (code && __ADMIN_ACTION_ERRORS[code]) || __friendlyAuthError(code, fallback);
 }
@@ -1063,11 +1080,11 @@ function __orgFailure(r, fallback) {
   else if (code === "PL422") text = __friendlyAuthError(null, message);
   else text = __friendlyAuthError(code, "");
   return { ok: false, status: r ? r.status : 0, code: code === "PL422" ? message : code, data: r ? r.data : null,
-           error: text || fallback || "تعذّر تنفيذ العملية" };
+           error: text || tt(fallback || "تعذّر تنفيذ العملية") };
 }
 async function __orgRequest(method, path, body, fallback) {
   if (!sb || !window.ClinicApi || typeof window.ClinicApi.request !== "function") {
-    return { ok: false, status: 0, code: "no_backend", data: null, error: "هذه الميزة تحتاج الاتصال بالخادم" };
+    return { ok: false, status: 0, code: "no_backend", data: null, error: tt("هذه الميزة تحتاج الاتصال بالخادم") };
   }
   const r = await window.ClinicApi.request(method, path, body);
   if (!r.ok) return __orgFailure(r, fallback);
@@ -1075,14 +1092,14 @@ async function __orgRequest(method, path, body, fallback) {
 }
 const OrgAdmin = {
   available: () => !!(sb && window.ClinicApi),
-  members: () => __orgRequest("GET", "/org/members", undefined, "تعذّر تحميل قائمة الموظفين"),
-  updateMember: (id, patch) => __orgRequest("PATCH", "/org/members/" + encodeURIComponent(id), patch, "تعذّر حفظ التغييرات"),
-  usage: () => __orgRequest("GET", "/org/usage", undefined, "تعذّر تحميل حدود الخطة"),
-  invitations: () => __orgRequest("GET", "/org/invitations", undefined, "تعذّر تحميل الدعوات"),
+  members: () => __orgRequest("GET", "/org/members", undefined, tt("تعذّر تحميل قائمة الموظفين")),
+  updateMember: (id, patch) => __orgRequest("PATCH", "/org/members/" + encodeURIComponent(id), patch, tt("تعذّر حفظ التغييرات")),
+  usage: () => __orgRequest("GET", "/org/usage", undefined, tt("تعذّر تحميل حدود الخطة")),
+  invitations: () => __orgRequest("GET", "/org/invitations", undefined, tt("تعذّر تحميل الدعوات")),
   // { email, role, branch_ids } → data = { invitation, email_sent }
-  invite: (input) => __orgRequest("POST", "/org/invitations", input, "تعذّر إرسال الدعوة"),
-  resendInvitation: (id) => __orgRequest("POST", "/org/invitations/" + encodeURIComponent(id) + "/resend", {}, "تعذّر إعادة إرسال الدعوة"),
-  revokeInvitation: (id) => __orgRequest("DELETE", "/org/invitations/" + encodeURIComponent(id), undefined, "تعذّر إلغاء الدعوة"),
+  invite: (input) => __orgRequest("POST", "/org/invitations", input, tt("تعذّر إرسال الدعوة")),
+  resendInvitation: (id) => __orgRequest("POST", "/org/invitations/" + encodeURIComponent(id) + "/resend", {}, tt("تعذّر إعادة إرسال الدعوة")),
+  revokeInvitation: (id) => __orgRequest("DELETE", "/org/invitations/" + encodeURIComponent(id), undefined, tt("تعذّر إلغاء الدعوة")),
 };
 
 function onAuthChange(cb) {
@@ -1105,10 +1122,10 @@ function onAuthChange(cb) {
 // Call stop() to abort mid-recognition (e.g. component unmount).
 // ══════════════════════════════════════════════════════════════
 function startDictation(opts) {
-  const { onText, lang = "ar-EG", onEnd } = opts || {};
+  const { onText, lang = IS_RTL ? "ar-EG" : "en-US", onEnd } = opts || {};
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
-    if (window.showToast) window.showToast("المتصفح لا يدعم الإملاء الصوتي", "error");
+    if (window.showToast) window.showToast(tt("المتصفح لا يدعم الإملاء الصوتي"), "error");
     return () => {};
   }
   const r = new SR();
@@ -1121,13 +1138,13 @@ function startDictation(opts) {
     catch (err) { console.warn("dictation onText failed", err); }
   };
   r.onerror = (e) => {
-    if (!aborted && window.showToast) window.showToast("خطأ في الإملاء الصوتي", "error");
+    if (!aborted && window.showToast) window.showToast(tt("خطأ في الإملاء الصوتي"), "error");
     console.warn("dictation error", e && e.error);
   };
   r.onend = () => { onEnd && onEnd(); };
   try { r.start(); }
   catch (e) { console.warn("dictation start failed", e); return () => {}; }
-  if (window.showToast) window.showToast("الإملاء الصوتي نشط…", "success");
+  if (window.showToast) window.showToast(tt("الإملاء الصوتي نشط…"), "success");
   return () => { aborted = true; try { r.abort(); } catch {} };
 }
 
@@ -1139,27 +1156,27 @@ function startDictation(opts) {
 // pre-sanitized HTML — callers MUST escape any user-controlled substrings.
 function printHTML(title, bodyHtml) {
   const w = window.open("", "_blank", "width=900,height=1000");
-  if (!w) { if (window.showToast) window.showToast("متصفح النافذة المنبثقة محجوب", "error"); return; }
+  if (!w) { if (window.showToast) window.showToast(tt("متصفح النافذة المنبثقة محجوب"), "error"); return; }
   // Brand name comes from the DB singleton — never a hardcoded fallback.
   // Empty string keeps the PDF header sane if the clinic hasn't set a
   // name yet, without leaking the placeholder into the export.
   const brand = escHtml((window.CLINIC && window.CLINIC.name) || "");
   const safeTitle = escHtml(title);
-  w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"/>
+  w.document.write(`<!doctype html><html lang="${LANG}" dir="${IS_RTL ? "rtl" : "ltr"}"><head><meta charset="utf-8"/>
     <title>${safeTitle}</title>
     <style>
       body{font-family:'IBM Plex Sans Arabic', system-ui, sans-serif; color:#0F1E2B; padding:32px; background:#fff}
       h1{font-size:20px;margin:0 0 4px}
       .sub{color:#647686;font-size:12px;margin-bottom:24px}
       table{width:100%;border-collapse:collapse;font-size:12.5px}
-      th,td{border-bottom:1px solid #EEF2F6;padding:8px 10px;text-align:right}
+      th,td{border-bottom:1px solid #EEF2F6;padding:8px 10px;text-align:start}
       th{background:#F7F9FB;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.04em;color:#647686}
       @media print { .no-print{display:none} body{padding:12px} }
     </style></head><body>
     <h1>${brand} — ${safeTitle}</h1>
-    <div class="sub">${escHtml(new Date().toLocaleString("ar-EG-u-nu-latn"))}</div>
+    <div class="sub">${escHtml(fmtDate(new Date(), "dateTime"))}</div>
     ${bodyHtml || ""}
-    <div class="no-print" style="margin-top:24px"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+    <div class="no-print" style="margin-top:24px"><button onclick="window.print()">${escHtml(tt("طباعة / حفظ PDF"))}</button></div>
     </body></html>`);
   w.document.close();
   // Wait for load rather than fixed 250ms; falls back to timeout for older browsers.
@@ -1325,7 +1342,7 @@ async function upsertRow(name, row) {
       // The booking screens show their own generic error toast; this one
       // replaces it right after with the reason.
       setTimeout(() => { if (window.showToast) window.showToast(INACTIVE_BRANCH_BOOKING, "error"); }, 0);
-      throw new Error(INACTIVE_BRANCH_BOOKING);
+      throw __uiError(INACTIVE_BRANCH_BOOKING);
     }
   }
   const next = idx === -1
@@ -1389,11 +1406,11 @@ async function removeRow(name, id) {
       throw new Error(
         __branchInactiveText(error)
         || [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ")
-        || "تعذّر الحذف"
+        || tt("تعذّر الحذف")
       );
     }
   } else {
-    throw new Error("لا يوجد اتصال بقاعدة البيانات");
+    throw __uiError(tt("لا يوجد اتصال بقاعدة البيانات"));
   }
 
   // Server delete succeeded — now mirror it into local state + LS cache.
@@ -1573,7 +1590,7 @@ async function loadClinicData() {
 // branch_id and get the same UI aliases as window.DATA (names from it).
 // Resolves to { appts, sessions, ... } or throws an Error (Arabic).
 async function listAllBranchesTables(names) {
-  if (!sb) throw new Error("هذه الميزة تحتاج الاتصال بالخادم");
+  if (!sb) throw __uiError(tt("هذه الميزة تحتاج الاتصال بالخادم"));
   const wanted = (names || []).filter(n => DATA_TABLES[n] && DATA_TABLES[n].branchScoped);
   const results = await Promise.all(wanted.map(n => selectAllRows(DATA_TABLES[n], { allBranches: true })));
   const D = window.DATA || {};
@@ -1585,7 +1602,7 @@ async function listAllBranchesTables(names) {
     const { data, error } = results[i] || {};
     if (error && error.code !== "module_disabled") {
       console.warn("listAllBranches " + n + " failed", error.message || error);
-      throw new Error(__friendlyAuthError(error.code, "") || "تعذّر تحميل بيانات الفروع");
+      throw __uiError(__friendlyAuthError(error.code, "") || tt("تعذّر تحميل بيانات الفروع"));
     }
     out[n] = Array.isArray(data) ? data : [];
   });
@@ -1741,17 +1758,17 @@ async function recordQuickPayment(input) {
   const method = input && input.method;
 
   // ── Client-side validation (defensive) ───────────────────────
-  if (!patientId) return { ok: false, error: "لم يتم اختيار المريض" };
-  if (allocs.length === 0) return { ok: false, error: "اختر عنصرًا واحدًا على الأقل للدفع" };
-  if (!method) return { ok: false, error: "اختر طريقة الدفع" };
+  if (!patientId) return { ok: false, error: tt("لم يتم اختيار المريض") };
+  if (allocs.length === 0) return { ok: false, error: tt("اختر عنصرًا واحدًا على الأقل للدفع") };
+  if (!method) return { ok: false, error: tt("اختر طريقة الدفع") };
   const total = allocs.reduce((s, a) => s + (Number(a.amount) || 0), 0);
-  if (total <= 0) return { ok: false, error: "المبلغ يجب أن يكون أكبر من صفر" };
+  if (total <= 0) return { ok: false, error: tt("المبلغ يجب أن يكون أكبر من صفر") };
   for (const a of allocs) {
     const amt = Number(a.amount);
-    if (!(amt > 0)) return { ok: false, error: "المبلغ لكل عنصر يجب أن يكون موجبًا" };
+    if (!(amt > 0)) return { ok: false, error: tt("المبلغ لكل عنصر يجب أن يكون موجبًا") };
     if (!["appointment","invoice","subscription"].includes(a.type))
-      return { ok: false, error: "نوع عنصر غير معروف" };
-    if (!a.id) return { ok: false, error: "معرّف العنصر مفقود" };
+      return { ok: false, error: tt("نوع عنصر غير معروف") };
+    if (!a.id) return { ok: false, error: tt("معرّف العنصر مفقود") };
   }
 
   const me = window.ME || {};
@@ -1776,7 +1793,7 @@ async function recordQuickPayment(input) {
     });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
-      return { ok: false, error: __branchInactiveText(error) || error.message || "تعذّر تسجيل الدفع" };
+      return { ok: false, error: __branchInactiveText(error) || error.message || tt("تعذّر تسجيل الدفع") };
     }
     // Refresh mirrors so tiles/tables update without a page reload.
     await hydrateDomainTables().catch(()=>{});
@@ -1802,21 +1819,21 @@ async function recordQuickPayment(input) {
       const amt = Number(a.amount);
       if (a.type === "appointment") {
         const row = (window.DATA.appts || []).find(r => (r.booking_id || r.id) === a.id);
-        if (!row) throw new Error(`الموعد ${a.id} غير موجود`);
+        if (!row) throw __uiError(tt("الموعد {id} غير موجود", { id: a.id }));
         const price = Number(row.price) || 0;
         const paidNow = (Number(row.paid) || 0) + amt;
-        if (amt > (price - (Number(row.paid) || 0)) + 0.001) throw new Error("المبلغ يتجاوز المتبقي على الموعد");
+        if (amt > (price - (Number(row.paid) || 0)) + 0.001) throw __uiError(tt("المبلغ يتجاوز المتبقي على الموعد"));
         await upsertRow("appts", { ...row,
           paid: paidNow,
           payment_status: paidNow >= price ? "paid" : (paidNow > 0 ? "partial" : "pending"),
         });
       } else if (a.type === "invoice") {
         const row = (window.DATA.payments || []).find(r => (r.invoice_id || r.id) === a.id);
-        if (!row) throw new Error(`الفاتورة ${a.id} غير موجودة`);
+        if (!row) throw __uiError(tt("الفاتورة {id} غير موجودة", { id: a.id }));
         const amount = Number(row.amount) || 0;
         const remaining = amount - (Number(row.paid) || 0);
-        if (remaining <= 0) throw new Error("الفاتورة مدفوعة بالكامل");
-        if (amt > remaining + 0.001) throw new Error("المبلغ يتجاوز المتبقي على الفاتورة");
+        if (remaining <= 0) throw __uiError(tt("الفاتورة مدفوعة بالكامل"));
+        if (amt > remaining + 0.001) throw __uiError(tt("المبلغ يتجاوز المتبقي على الفاتورة"));
         const paidNow = (Number(row.paid) || 0) + amt;
         await upsertRow("payments", { ...row,
           paid: paidNow,
@@ -1825,11 +1842,11 @@ async function recordQuickPayment(input) {
         });
       } else if (a.type === "subscription") {
         const row = (window.DATA.subscriptions || []).find(r => (r.subscription_id || r.id) === a.id);
-        if (!row) throw new Error(`الاشتراك ${a.id} غير موجود`);
+        if (!row) throw __uiError(tt("الاشتراك {id} غير موجود", { id: a.id }));
         const price = Number(row.price) || 0;
         const remaining = price - (Number(row.paid) || 0);
-        if (remaining <= 0) throw new Error("الاشتراك مدفوع بالكامل");
-        if (amt > remaining + 0.001) throw new Error("المبلغ يتجاوز المتبقي على الاشتراك");
+        if (remaining <= 0) throw __uiError(tt("الاشتراك مدفوع بالكامل"));
+        if (amt > remaining + 0.001) throw __uiError(tt("المبلغ يتجاوز المتبقي على الاشتراك"));
         const paidNow = (Number(row.paid) || 0) + amt;
         await upsertRow("subscriptions", { ...row,
           paid: paidNow,
@@ -1963,9 +1980,9 @@ function __txPayload(input) {
 
 async function createTxMethod(input) {
   const payload = __txPayload(input);
-  if (!payload.name) return { ok: false, error: "الاسم مطلوب" };
+  if (!payload.name) return { ok: false, error: tt("الاسم مطلوب") };
   if (findTxMethodByName(payload.name)) {
-    return { ok: false, error: "اسم طريقة العلاج موجود مسبقًا" };
+    return { ok: false, error: tt("اسم طريقة العلاج موجود مسبقًا") };
   }
   const method_id = __txMethodId();
 
@@ -1974,7 +1991,7 @@ async function createTxMethod(input) {
       p_method_id: method_id,
       p_payload:   payload,
     });
-    if (error) return { ok: false, error: error.message || "تعذّر إنشاء طريقة العلاج" };
+    if (error) return { ok: false, error: error.message || tt("تعذّر إنشاء طريقة العلاج") };
     await listTxMethods(true);
     return { ok: true, method_id: (data && data.method_id) || method_id, name: payload.name };
   }
@@ -1999,11 +2016,11 @@ async function createTxMethod(input) {
 }
 
 async function updateTxMethod(method_id, patch) {
-  if (!method_id) return { ok: false, error: "معرّف مفقود" };
+  if (!method_id) return { ok: false, error: tt("معرّف مفقود") };
   const payload = __txPayload(patch);
-  if (!payload.name) return { ok: false, error: "الاسم مطلوب" };
+  if (!payload.name) return { ok: false, error: tt("الاسم مطلوب") };
   if (findTxMethodByName(payload.name, method_id)) {
-    return { ok: false, error: "اسم طريقة العلاج موجود مسبقًا" };
+    return { ok: false, error: tt("اسم طريقة العلاج موجود مسبقًا") };
   }
 
   if (sb) {
@@ -2011,14 +2028,14 @@ async function updateTxMethod(method_id, patch) {
       p_method_id: method_id,
       p_payload:   payload,
     });
-    if (error) return { ok: false, error: error.message || "تعذّر تحديث طريقة العلاج" };
+    if (error) return { ok: false, error: error.message || tt("تعذّر تحديث طريقة العلاج") };
     await listTxMethods(true);
     return { ok: true, method_id: (data && data.method_id) || method_id };
   }
 
   const list = window.DATA?.treatmentMethods || [];
   const row  = list.find(m => (m.method_id || m.id) === method_id);
-  if (!row) return { ok: false, error: "طريقة العلاج غير موجودة" };
+  if (!row) return { ok: false, error: tt("طريقة العلاج غير موجودة") };
   await upsertRow("treatmentMethods", {
     ...row,
     name:             payload.name,
@@ -2036,21 +2053,21 @@ async function updateTxMethod(method_id, patch) {
 }
 
 async function removeTxMethod(method_id) {
-  if (!method_id) return { ok: false, error: "معرّف مفقود" };
+  if (!method_id) return { ok: false, error: tt("معرّف مفقود") };
   if (sb) {
     const { error } = await sb.rpc("delete_treatment_method", { p_method_id: method_id });
-    if (error) return { ok: false, error: error.message || "تعذّر الحذف" };
+    if (error) return { ok: false, error: error.message || tt("تعذّر الحذف") };
     await listTxMethods(true);
     return { ok: true, method_id };
   }
   // LS mode: block if any template references this method_id or name.
   const list = window.DATA?.treatmentMethods || [];
   const row  = list.find(m => (m.method_id || m.id) === method_id);
-  if (!row) return { ok: false, error: "غير موجود" };
+  if (!row) return { ok: false, error: tt("غير موجود") };
   const templates = readLS(LS_TEMPLATES, []);
   const nm = String(row.name || "").toLowerCase();
   const used = templates.some(t => (t.methods || []).some(m => (m.method_id === method_id) || (String(m.name || m || "").toLowerCase() === nm)));
-  if (used) return { ok: false, error: "لا يمكن حذف طريقة مستخدمة في القوالب — استخدم الأرشفة بدلاً منها" };
+  if (used) return { ok: false, error: tt("لا يمكن حذف طريقة مستخدمة في القوالب — استخدم الأرشفة بدلاً منها") };
   const next = list.filter(m => (m.method_id || m.id) !== method_id);
   window.DATA.treatmentMethods = next;
   writeLS('kinetic.treatment_methods.v1', next);
@@ -2059,21 +2076,21 @@ async function removeTxMethod(method_id) {
 }
 
 async function setTxMethodStatus(method_id, status) {
-  if (!method_id) return { ok: false, error: "معرّف مفقود" };
+  if (!method_id) return { ok: false, error: tt("معرّف مفقود") };
   if (status !== "active" && status !== "archived") {
-    return { ok: false, error: "حالة غير صحيحة" };
+    return { ok: false, error: tt("حالة غير صحيحة") };
   }
   if (sb) {
     const { error } = await sb.rpc("set_treatment_method_status", {
       p_method_id: method_id, p_status: status,
     });
-    if (error) return { ok: false, error: error.message || "تعذّر التحديث" };
+    if (error) return { ok: false, error: error.message || tt("تعذّر التحديث") };
     await listTxMethods(true);
     return { ok: true, method_id, status };
   }
   const list = window.DATA?.treatmentMethods || [];
   const row  = list.find(m => (m.method_id || m.id) === method_id);
-  if (!row) return { ok: false, error: "غير موجود" };
+  if (!row) return { ok: false, error: tt("غير موجود") };
   await upsertRow("treatmentMethods", { ...row, status, updated_at: new Date().toISOString() });
   return { ok: true, method_id, status };
 }
@@ -2244,23 +2261,23 @@ function __nextReceiptId() {
   return newRecordId("rct_");
 }
 function __receiptValid(file) {
-  if (!file) return "لم يتم اختيار ملف";
-  if (file.size > RECEIPT_MAX_BYTES) return "حجم الملف يتجاوز 8MB";
+  if (!file) return tt("لم يتم اختيار ملف");
+  if (file.size > RECEIPT_MAX_BYTES) return tt("حجم الملف يتجاوز 8MB");
   const okType = RECEIPT_ALLOWED_TYPES.includes(file.type);
   const okExt  = RECEIPT_ALLOWED_EXT.test(file.name || "");
-  if (!okType && !okExt) return "نوع الملف غير مدعوم — JPG/PNG/PDF فقط";
+  if (!okType && !okExt) return tt("نوع الملف غير مدعوم — JPG/PNG/PDF فقط");
   return null;
 }
 
 // Upload one receipt file → Supabase Storage. Returns
 // { storage_path, file_url } on success, or throws with a clear message.
 async function __uploadReceiptFile(patientId, receiptId, file) {
-  if (!sb) throw new Error("لم يتم تكوين قاعدة البيانات");
+  if (!sb) throw __uiError(tt("لم يتم تكوين قاعدة البيانات"));
   const safe = sanitizeFileName(file.name);
   const path = `receipts/${patientId}/${receiptId}-${safe}`;
   const { error: upErr } = await sb.storage.from(PATIENT_FILES_BUCKET)
     .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
-  if (upErr) throw new Error(upErr.message || "تعذّر رفع الإيصال");
+  if (upErr) throw new Error(upErr.message || tt("تعذّر رفع الإيصال"));
   const { data: pub } = sb.storage.from(PATIENT_FILES_BUCKET).getPublicUrl(path);
   return { storage_path: path, file_url: (pub && pub.publicUrl) || "" };
 }
@@ -2295,7 +2312,7 @@ async function __insertReceiptRow(row) {
       console.warn("insert payment_receipts failed", error.message || error);
       // Roll back the LS mirror if the DB rejected.
       writeLS(LS_RECEIPTS, readLS(LS_RECEIPTS, []).filter(r => r.receipt_id !== row.receipt_id));
-      return { ok: false, error: error.message || "تعذّر حفظ الإيصال" };
+      return { ok: false, error: error.message || tt("تعذّر حفظ الإيصال") };
     }
   }
   return { ok: true };
@@ -2312,13 +2329,13 @@ async function receiveInvoicePayment(input) {
 
   // ── Client-side validation ──
   if (!invoice || !(invoice.invoice_id || invoice.id))
-    return { ok: false, error: "الفاتورة غير موجودة" };
-  if (!method) return { ok: false, error: "اختر طريقة الدفع" };
+    return { ok: false, error: tt("الفاتورة غير موجودة") };
+  if (!method) return { ok: false, error: tt("اختر طريقة الدفع") };
   const total     = Number(invoice.amount || 0);
   const paidSoFar = Number(invoice.paid   || 0);
   const remaining = Math.max(0, total - paidSoFar);
-  if (!(amount > 0)) return { ok: false, error: "المبلغ يجب أن يكون أكبر من صفر" };
-  if (amount > remaining + 0.0001) return { ok: false, error: "المبلغ يتجاوز الرصيد المتبقي" };
+  if (!(amount > 0)) return { ok: false, error: tt("المبلغ يجب أن يكون أكبر من صفر") };
+  if (amount > remaining + 0.0001) return { ok: false, error: tt("المبلغ يتجاوز الرصيد المتبقي") };
   if (file) {
     const err = __receiptValid(file);
     if (err) return { ok: false, error: err };
@@ -2337,10 +2354,10 @@ async function receiveInvoicePayment(input) {
       uploaded = await __uploadReceiptFile(patientId, receiptId, file);
     } catch (e) {
       console.warn("receipt upload failed", e);
-      return { ok: false, error: "تعذّر رفع الإيصال" };
+      return { ok: false, error: tt("تعذّر رفع الإيصال") };
     }
     if (!uploaded || (!uploaded.file_url && !uploaded.storage_path)) {
-      return { ok: false, error: "تعذّر رفع الإيصال" };
+      return { ok: false, error: tt("تعذّر رفع الإيصال") };
     }
   }
 
@@ -2361,7 +2378,7 @@ async function receiveInvoicePayment(input) {
     // Payment failed → clean up any uploaded file so we don't leave
     // orphaned receipts in storage.
     if (uploaded && uploaded.storage_path) await __removeReceiptFile(uploaded.storage_path);
-    return { ok: false, error: (payRes && payRes.error) || "تعذّر تسجيل الدفع" };
+    return { ok: false, error: (payRes && payRes.error) || tt("تعذّر تسجيل الدفع") };
   }
 
   // ── 3. Persist receipt metadata linked to the new payment_id.
@@ -2388,7 +2405,7 @@ async function receiveInvoicePayment(input) {
       // clean up the file so we don't leak. Warn caller.
       if (uploaded.storage_path) await __removeReceiptFile(uploaded.storage_path);
       window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: {} }));
-      return { ok: true, warning: "تم تسجيل الدفع لكن تعذّر حفظ ملف الإيصال",
+      return { ok: true, warning: tt("تم تسجيل الدفع لكن تعذّر حفظ ملف الإيصال"),
         payment_id: payRes.payment_id, receipt_no: payRes.receipt_no,
         remaining: Math.max(0, remaining - amount) };
     }
@@ -2462,15 +2479,15 @@ async function listInvoiceReceipts(invoiceId, paymentId) {
 }
 
 async function deletePaymentReceipt(receiptId) {
-  if (!receiptId) return { ok: false, error: "معرّف الإيصال مفقود" };
+  if (!receiptId) return { ok: false, error: tt("معرّف الإيصال مفقود") };
   const me = window.ME || {};
   if (me.role && me.role !== "مدير" && me.role !== "admin")
-    return { ok: false, error: "الحذف مقتصر على المدير" };
+    return { ok: false, error: tt("الحذف مقتصر على المدير") };
   if (sb) {
     const { data, error } = await sb.rpc("delete_payment_receipt", { p_receipt_id: receiptId });
     if (error) {
       console.warn("delete_payment_receipt rpc failed", error.message || error);
-      return { ok: false, error: error.message || "تعذّر الحذف" };
+      return { ok: false, error: error.message || tt("تعذّر الحذف") };
     }
     // Update LS mirror to match.
     const idx = readLS(LS_RECEIPTS, []);
@@ -2534,13 +2551,13 @@ function sanitizeFileName(name) {
   return clean || "file";
 }
 function validatePatientFile(file) {
-  if (!file || typeof file.size !== "number") return "ملف غير صالح";
-  if (file.size <= 0) return "الملف فارغ";
-  if (file.size > MAX_FILE_BYTES) return `حجم الملف يتجاوز ${Math.round(MAX_FILE_BYTES / (1024*1024))} ميغابايت`;
+  if (!file || typeof file.size !== "number") return tt("ملف غير صالح");
+  if (file.size <= 0) return tt("الملف فارغ");
+  if (file.size > MAX_FILE_BYTES) return tt("حجم الملف يتجاوز {n} ميغابايت", { n: Math.round(MAX_FILE_BYTES / (1024*1024)) });
   const mime = String(file.type || "").toLowerCase();
   const okMime = mime && (ALLOWED_MIME_EXACT.has(mime) || ALLOWED_MIME_PREFIXES.some(p => mime.startsWith(p)));
   const okExt  = ALLOWED_EXT_RE.test(file.name || "");
-  if (!okMime && !okExt) return "نوع الملف غير مسموح";
+  if (!okMime && !okExt) return tt("نوع الملف غير مسموح");
   return null;
 }
 function currentUploader() {
@@ -2557,8 +2574,8 @@ function currentUploader() {
 // only; the binary lives in Storage. Rolls the Storage upload back if
 // the DB insert fails. Returns { ok, row?, error? }.
 async function uploadPatientFile(patientId, file, onProgress) {
-  if (!sb) return { ok: false, error: "لم يتم تكوين قاعدة البيانات" };
-  if (!patientId) return { ok: false, error: "معرّف المريض غير محدد" };
+  if (!sb) return { ok: false, error: tt("لم يتم تكوين قاعدة البيانات") };
+  if (!patientId) return { ok: false, error: tt("معرّف المريض غير محدد") };
   const bad = validatePatientFile(file);
   if (bad) { try { window.showToast && window.showToast(bad, "error"); } catch {} return { ok: false, error: bad }; }
 
@@ -2572,7 +2589,7 @@ async function uploadPatientFile(patientId, file, onProgress) {
   if (upErr) {
     // Known API codes (file_too_large, plan_limit_storage, invalid_path, …)
     // in Arabic; anything else as before.
-    const msg = (upErr.code && __AUTH_ERRORS[upErr.code]) || upErr.message || "تعذّر رفع الملف إلى التخزين";
+    const msg = (upErr.code && __AUTH_ERRORS[upErr.code]) || upErr.message || tt("تعذّر رفع الملف إلى التخزين");
     console.warn("uploadPatientFile storage failed", msg);
     return { ok: false, error: msg };
   }
@@ -2599,7 +2616,7 @@ async function uploadPatientFile(patientId, file, onProgress) {
     // Compensating rollback — delete the storage object we just uploaded.
     try { await sb.storage.from(PATIENT_FILES_BUCKET).remove([path]); }
     catch (e) { console.warn("uploadPatientFile rollback failed", e); }
-    const msg = insErr.message || "تعذّر حفظ بيانات الملف";
+    const msg = insErr.message || tt("تعذّر حفظ بيانات الملف");
     console.warn("uploadPatientFile insert failed", msg);
     return { ok: false, error: msg };
   }
@@ -2627,20 +2644,20 @@ async function listPatientFiles(patientId) {
 // Delete a file: DB row first, then Storage object. If the object delete
 // fails we surface a warning but keep the DB delete (UI stays consistent).
 async function removePatientFile(fileId) {
-  if (!sb) return { ok: false, error: "لم يتم تكوين قاعدة البيانات" };
-  if (!fileId) return { ok: false, error: "معرّف الملف غير محدد" };
+  if (!sb) return { ok: false, error: tt("لم يتم تكوين قاعدة البيانات") };
+  if (!fileId) return { ok: false, error: tt("معرّف الملف غير محدد") };
 
   const { data: existing, error: readErr } = await sb.from("patient_files")
     .select("storage_path,file_url,patient_id").eq("file_id", fileId).maybeSingle();
   if (readErr) {
     console.warn("removePatientFile lookup failed", readErr.message || readErr);
-    return { ok: false, error: readErr.message || "تعذّر قراءة بيانات الملف" };
+    return { ok: false, error: readErr.message || tt("تعذّر قراءة بيانات الملف") };
   }
 
   const { error: delErr } = await sb.from("patient_files").delete().eq("file_id", fileId);
   if (delErr) {
     console.warn("removePatientFile db delete failed", delErr.message || delErr);
-    return { ok: false, error: delErr.message || "تعذّر حذف السجل" };
+    return { ok: false, error: delErr.message || tt("تعذّر حذف السجل") };
   }
 
   const path = existing && existing.storage_path;
@@ -2685,7 +2702,7 @@ function __currentEditorName() {
 function __normalizeTemplate(input) {
   const errors = [];
   const name = String(input?.name || '').trim();
-  if (!name) errors.push('اسم القالب مطلوب');
+  if (!name) errors.push(tt("اسم القالب مطلوب"));
   const arr = (v) => Array.isArray(v) ? v : [];
   const num = (v) => (v == null || v === '') ? null : Number(v);
   return {
@@ -2789,11 +2806,11 @@ async function createTreatmentTemplate(input) {
       const { data, error } = await sb.rpc('create_treatment_template', {
         p_template_id: template_id, p_payload: payload,
       });
-      if (error) return { ok: false, error: error.message || 'تعذّر إنشاء القالب' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر إنشاء القالب") };
       const outId = (data && data.template_id) || template_id;
       __tplDispatch('create', outId);
       return { ok: true, template_id: outId };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر إنشاء القالب' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر إنشاء القالب") }; }
   }
 
   const now = new Date().toISOString();
@@ -2810,7 +2827,7 @@ async function createTreatmentTemplate(input) {
 }
 
 async function updateTreatmentTemplate(templateId, input, changeSummary) {
-  if (!templateId) return { ok: false, error: 'معرّف مفقود' };
+  if (!templateId) return { ok: false, error: tt("معرّف مفقود") };
   const { errors, payload } = __normalizeTemplate(input);
   if (errors.length) return { ok: false, error: errors[0] };
   payload.updated_by_name = __currentEditorName();
@@ -2820,15 +2837,15 @@ async function updateTreatmentTemplate(templateId, input, changeSummary) {
       const { data, error } = await sb.rpc('update_treatment_template', {
         p_template_id: templateId, p_payload: payload, p_change_summary: changeSummary || null,
       });
-      if (error) return { ok: false, error: error.message || 'تعذّر التحديث' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر التحديث") };
       __tplDispatch('update', templateId);
       return { ok: true, template_id: (data && data.template_id) || templateId };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر التحديث' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر التحديث") }; }
   }
 
   const all = readLS(LS_TEMPLATES, []);
   const idx = all.findIndex(t => t.template_id === templateId);
-  if (idx < 0) return { ok: false, error: 'القالب غير موجود' };
+  if (idx < 0) return { ok: false, error: tt("القالب غير موجود") };
   const now = new Date().toISOString();
   const nextVersion = (all[idx].version || 1) + 1;
   const updated = { ...all[idx], ...payload, version: nextVersion, updated_at: now, updated_by_name: payload.updated_by_name };
@@ -2839,26 +2856,26 @@ async function updateTreatmentTemplate(templateId, input, changeSummary) {
 }
 
 async function duplicateTreatmentTemplate(templateId, newName) {
-  if (!templateId) return { ok: false, error: 'معرّف مفقود' };
+  if (!templateId) return { ok: false, error: tt("معرّف مفقود") };
   if (sb) {
     try {
       const { data, error } = await sb.rpc('duplicate_treatment_template', {
         p_template_id: templateId, p_new_name: (newName || '').trim() || null,
       });
-      if (error) return { ok: false, error: error.message || 'تعذّر النسخ' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر النسخ") };
       const newId = data && data.template_id;
       __tplDispatch('duplicate', newId);
       return { ok: true, template_id: newId };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر النسخ' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر النسخ") }; }
   }
   const all = readLS(LS_TEMPLATES, []);
   const src = all.find(t => t.template_id === templateId);
-  if (!src) return { ok: false, error: 'القالب غير موجود' };
+  if (!src) return { ok: false, error: tt("القالب غير موجود") };
   const now = new Date().toISOString();
   const new_id = __tplId();
   const copy = {
     ...src, template_id: new_id,
-    name: (newName || '').trim() || `${src.name} — نسخة`,
+    name: (newName || '').trim() || tt("{name} — نسخة", { name: src.name }),
     status: 'active', version: 1, usage_count: 0, last_used_at: null,
     created_by_name: __currentEditorName(), updated_by_name: __currentEditorName(),
     created_at: now, updated_at: now,
@@ -2869,21 +2886,21 @@ async function duplicateTreatmentTemplate(templateId, newName) {
 }
 
 async function setTreatmentTemplateStatus(templateId, status) {
-  if (!templateId) return { ok: false, error: 'معرّف مفقود' };
-  if (!['active', 'archived'].includes(status)) return { ok: false, error: 'حالة غير صحيحة' };
+  if (!templateId) return { ok: false, error: tt("معرّف مفقود") };
+  if (!['active', 'archived'].includes(status)) return { ok: false, error: tt("حالة غير صحيحة") };
   if (sb) {
     try {
       const { data, error } = await sb.rpc('set_treatment_template_status', {
         p_template_id: templateId, p_status: status,
       });
-      if (error) return { ok: false, error: error.message || 'تعذّر التحديث' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر التحديث") };
       __tplDispatch('status', templateId);
       return { ok: true, template_id: (data && data.template_id) || templateId, status };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر التحديث' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر التحديث") }; }
   }
   const all = readLS(LS_TEMPLATES, []);
   const idx = all.findIndex(t => t.template_id === templateId);
-  if (idx < 0) return { ok: false, error: 'القالب غير موجود' };
+  if (idx < 0) return { ok: false, error: tt("القالب غير موجود") };
   all[idx] = { ...all[idx], status, updated_at: new Date().toISOString() };
   writeLS(LS_TEMPLATES, all);
   __tplDispatch('status', templateId);
@@ -2891,21 +2908,21 @@ async function setTreatmentTemplateStatus(templateId, status) {
 }
 
 async function deleteTreatmentTemplate(templateId) {
-  if (!templateId) return { ok: false, error: 'معرّف مفقود' };
+  if (!templateId) return { ok: false, error: tt("معرّف مفقود") };
   if (sb) {
     try {
       const { data, error } = await sb.rpc('delete_treatment_template', { p_template_id: templateId });
-      if (error) return { ok: false, error: error.message || 'تعذّر الحذف' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر الحذف") };
       __tplDispatch('delete', templateId);
       return { ok: true, template_id: templateId };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر الحذف' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر الحذف") }; }
   }
   const all = readLS(LS_TEMPLATES, []);
   const src = all.find(t => t.template_id === templateId);
-  if (!src) return { ok: false, error: 'القالب غير موجود' };
+  if (!src) return { ok: false, error: tt("القالب غير موجود") };
   const uses = readLS(LS_TEMPLATE_USAGE, []).filter(u => u.template_id === templateId);
   if (uses.length > 0 || (src.usage_count || 0) > 0) {
-    return { ok: false, error: 'لا يمكن حذف قالب مستخدم — استخدم الأرشفة بدلاً منه' };
+    return { ok: false, error: tt("لا يمكن حذف قالب مستخدم — استخدم الأرشفة بدلاً منه") };
   }
   writeLS(LS_TEMPLATES, all.filter(t => t.template_id !== templateId));
   __tplDispatch('delete', templateId);
@@ -2913,7 +2930,7 @@ async function deleteTreatmentTemplate(templateId) {
 }
 
 async function applyTreatmentTemplate(templateId, patientId, planId) {
-  if (!templateId) return { ok: false, error: 'معرّف القالب مفقود' };
+  if (!templateId) return { ok: false, error: tt("معرّف القالب مفقود") };
   if (sb) {
     try {
       const { data, error } = await sb.rpc('apply_template_to_patient', {
@@ -2921,10 +2938,10 @@ async function applyTreatmentTemplate(templateId, patientId, planId) {
         p_patient_id:  patientId || null,
         p_plan_id:     planId || null,
       });
-      if (error) return { ok: false, error: error.message || 'تعذّر التطبيق' };
+      if (error) return { ok: false, error: error.message || tt("تعذّر التطبيق") };
       __tplDispatch('apply', templateId);
       return { ok: true, use_id: data && data.use_id };
-    } catch (e) { return { ok: false, error: e.message || 'تعذّر التطبيق' }; }
+    } catch (e) { return { ok: false, error: e.message || tt("تعذّر التطبيق") }; }
   }
   const now = new Date().toISOString();
   const use_id = newRecordId('TU-');
@@ -2974,7 +2991,7 @@ function __trtDispatch(action, treatment_id) {
   window.dispatchEvent(new CustomEvent('kinetic:treatments-updated', { detail: { action, treatment_id } }));
   window.dispatchEvent(new CustomEvent('kinetic:data-updated', { detail: { table: 'treatments' } }));
 }
-const __TRT_NO_DB = 'قاعدة البيانات غير متصلة — لا يمكن حفظ سجلات العلاج';
+const __TRT_NO_DB = tt('قاعدة البيانات غير متصلة — لا يمكن حفظ سجلات العلاج');
 
 async function createTreatment(payload) {
   if (!sb) return { ok: false, error: __TRT_NO_DB };
@@ -2983,25 +3000,25 @@ async function createTreatment(payload) {
     const { data, error } = await sb.rpc('create_treatment', {
       p_treatment_id: treatment_id, p_payload: payload || {},
     });
-    if (error) return { ok: false, error: error.message || 'تعذّر حفظ العلاج' };
+    if (error) return { ok: false, error: error.message || tt("تعذّر حفظ العلاج") };
     __trtDispatch('create', treatment_id);
     // The RPC bumped the template's usage counter — refresh template UIs.
     if (payload && payload.template_id) __tplDispatch('apply', payload.template_id);
     return { ok: true, treatment_id, row: data || null };
-  } catch (e) { return { ok: false, error: e.message || 'تعذّر حفظ العلاج' }; }
+  } catch (e) { return { ok: false, error: e.message || tt("تعذّر حفظ العلاج") }; }
 }
 
 async function updateTreatment(treatmentId, payload) {
-  if (!treatmentId) return { ok: false, error: 'معرّف العلاج مفقود' };
+  if (!treatmentId) return { ok: false, error: tt("معرّف العلاج مفقود") };
   if (!sb) return { ok: false, error: __TRT_NO_DB };
   try {
     const { data, error } = await sb.rpc('update_treatment', {
       p_treatment_id: treatmentId, p_payload: payload || {},
     });
-    if (error) return { ok: false, error: error.message || 'تعذّر التحديث' };
+    if (error) return { ok: false, error: error.message || tt("تعذّر التحديث") };
     __trtDispatch('update', treatmentId);
     return { ok: true, treatment_id: treatmentId, row: data || null };
-  } catch (e) { return { ok: false, error: e.message || 'تعذّر التحديث' }; }
+  } catch (e) { return { ok: false, error: e.message || tt("تعذّر التحديث") }; }
 }
 
 async function listTreatments(opts = {}) {
@@ -3034,12 +3051,12 @@ async function getTreatment(treatmentId) {
 // payload ({ deleted, sessions_unlinked }). Throws on any server error so
 // the UI can show a real failure toast instead of a false success.
 async function deleteTreatment(treatmentId) {
-  if (!treatmentId) throw new Error('معرّف السجل مفقود');
-  if (!sb) throw new Error('لا يوجد اتصال بقاعدة البيانات');
+  if (!treatmentId) throw __uiError(tt("معرّف السجل مفقود"));
+  if (!sb) throw __uiError(tt("لا يوجد اتصال بقاعدة البيانات"));
   const { data, error } = await sb.rpc('delete_treatment', { p_treatment_id: treatmentId });
   if (error) {
     console.warn('delete_treatment failed', error);
-    throw new Error([error.code, error.message, error.details, error.hint].filter(Boolean).join(' · ') || 'تعذّر حذف السجل');
+    throw new Error([error.code, error.message, error.details, error.hint].filter(Boolean).join(' · ') || tt("تعذّر حذف السجل"));
   }
   // Notify every listener (plans list, patient plan view, stats) to reload
   // from the database — never trust local state as the source of truth.
@@ -3095,13 +3112,13 @@ async function listTemplateCategories(includeArchived = false) {
 
 async function upsertTemplateCategory(category_id, payload) {
   const name = String((payload && payload.name) || '').trim();
-  if (!name) return { ok: false, error: 'اسم الفئة مطلوب' };
+  if (!name) return { ok: false, error: tt("اسم الفئة مطلوب") };
   if (sb) {
     const { data, error } = await sb.rpc('upsert_template_category', {
       p_category_id: category_id || null,
       p_payload: payload,
     });
-    if (error) return { ok: false, error: error.message || 'تعذّر الحفظ' };
+    if (error) return { ok: false, error: error.message || tt("تعذّر الحفظ") };
     __tplCatDispatch();
     return { ok: true, category_id: data && data.category_id, name };
   }
@@ -3110,7 +3127,7 @@ async function upsertTemplateCategory(category_id, payload) {
   const dupIdx = rows.findIndex(r =>
     String(r.name || '').trim().toLowerCase() === name.toLowerCase()
     && r.category_id !== category_id);
-  if (dupIdx >= 0) return { ok: false, error: 'اسم الفئة موجود مسبقًا' };
+  if (dupIdx >= 0) return { ok: false, error: tt("اسم الفئة موجود مسبقًا") };
   const id = category_id || newRecordId('TPC-LS-');
   const existing = rows.find(r => r.category_id === id);
   const now = new Date().toISOString();
@@ -3139,13 +3156,13 @@ async function upsertTemplateCategory(category_id, payload) {
 }
 
 async function setTemplateCategoryStatus(category_id, status) {
-  if (!category_id) return { ok: false, error: 'معرّف مفقود' };
-  if (status !== 'active' && status !== 'archived') return { ok: false, error: 'حالة غير صحيحة' };
+  if (!category_id) return { ok: false, error: tt("معرّف مفقود") };
+  if (status !== 'active' && status !== 'archived') return { ok: false, error: tt("حالة غير صحيحة") };
   if (sb) {
     const { error } = await sb.rpc('set_template_category_status', {
       p_category_id: category_id, p_status: status,
     });
-    if (error) return { ok: false, error: error.message || 'تعذّر التنفيذ' };
+    if (error) return { ok: false, error: error.message || tt("تعذّر التنفيذ") };
     __tplCatDispatch();
     return { ok: true, category_id, status };
   }
@@ -3160,22 +3177,22 @@ async function setTemplateCategoryStatus(category_id, status) {
 // Hard-delete a category. Blocked server-side (and in the LS mirror) when
 // any template still references its name, so no template is orphaned.
 async function deleteTemplateCategory(category_id) {
-  if (!category_id) return { ok: false, error: 'معرّف مفقود' };
+  if (!category_id) return { ok: false, error: tt("معرّف مفقود") };
   if (sb) {
     const { data, error } = await sb.rpc('delete_template_category', {
       p_category_id: category_id,
     });
-    if (error) return { ok: false, error: error.message || 'تعذّر الحذف' };
+    if (error) return { ok: false, error: error.message || tt("تعذّر الحذف") };
     __tplCatDispatch();
     return { ok: true, category_id: data && data.category_id };
   }
   // LS fallback: refuse when a mirrored template uses this category's name.
   const rows = readLS(LS_TPL_CATEGORIES, []);
   const cat = rows.find(r => r.category_id === category_id);
-  if (!cat) return { ok: false, error: 'الفئة غير موجودة' };
+  if (!cat) return { ok: false, error: tt("الفئة غير موجودة") };
   const tpls = readLS(LS_TEMPLATES, []);
   const used = tpls.filter(t => t.category === cat.name).length;
-  if (used > 0) return { ok: false, error: `لا يمكن حذف الفئة — يستخدمها ${used} قالب. أعد تصنيف القوالب أو أرشِف الفئة بدلًا من حذفها.` };
+  if (used > 0) return { ok: false, error: tt("لا يمكن حذف الفئة — يستخدمها {n} قالب. أعد تصنيف القوالب أو أرشِف الفئة بدلًا من حذفها.", { n: used }) };
   writeLS(LS_TPL_CATEGORIES, rows.filter(r => r.category_id !== category_id));
   __tplCatDispatch();
   return { ok: true, category_id };

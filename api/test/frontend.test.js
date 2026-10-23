@@ -1,8 +1,9 @@
 'use strict';
 // Frontend compatibility against the REAL API and schema (plan tasks 2.6 +
 // 2.8): src/apiclient.jsx and src/supabase.jsx are loaded into a node:vm
-// "browser" exactly as the bundle concatenates them (both are plain JS),
-// with a real fetch to the API on an ephemeral port and a cookie jar for
+// "browser" exactly as the bundle concatenates them, after src/i18n.jsx
+// (tt(), the page language; compiled with esbuild as scripts/build.mjs
+// does, since it holds JSX), with a real fetch to the API on an ephemeral port and a cookie jar for
 // cs_session. Every Supabase call chain of src/supabase.jsx,
 // src/screens1.jsx (audit_events insert) and src/import.jsx (getAuthStaff →
 // KineticData.upsert/list → uploadPatientFile) is driven through the
@@ -20,7 +21,10 @@ const { webcrypto } = require('crypto');
 const { setup, USER, ORG, BRANCH, PASSWORD } = require('./helpers');
 
 const SRC = path.resolve(__dirname, '..', '..', 'src');
-const CODE = ['apiclient.jsx', 'supabase.jsx'].map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n;\n');
+const CODE = require('esbuild').transformSync(
+  ['i18n.jsx', 'apiclient.jsx', 'supabase.jsx'].map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n;\n'),
+  { loader: 'jsx', target: 'es2017', sourcefile: 'i18n.jsx+apiclient.jsx+supabase.jsx' },
+).code;
 const REPORT = process.env.FRONTEND_COMPAT_REPORT === '1';
 const report = [];
 
@@ -127,7 +131,7 @@ function browser(h, { who, search = '?org=demo-physio' } = {}) {
     packages: [], payments: [], campaigns: [], sessions: [], paymentHistory: [], subscriptions: [], treatmentMethods: [],
   };
   vm.createContext(win);
-  vm.runInContext(CODE, win, { filename: 'apiclient.jsx+supabase.jsx' });
+  vm.runInContext(CODE, win, { filename: 'i18n.jsx+apiclient.jsx+supabase.jsx' });
 
   /** Waits until no request is in flight (and stays so for a few ticks). */
   async function idle(timeoutMs = 15000) {

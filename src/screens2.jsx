@@ -29,7 +29,7 @@ function loadScriptOnce(src) {
   return scriptLoads[src];
 }
 
-// ── Excel export (styled, RTL, Arabic-safe) ───────────────────
+// ── Excel export (styled; right-to-left in Arabic, left-to-right in English) ──
 // Builds a professional workbook from the ALREADY-FILTERED report rows:
 // clinic name, report title, generated date, active filters, bold header
 // band, bordered table, column widths, number/currency formats, and a
@@ -41,23 +41,23 @@ function loadScriptOnce(src) {
 //
 // columns: [{ key, label, type?: 'text'|'number'|'currency'|'date', total?, width? }]
 const XLSX_SRC = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
-async function exportReportExcel({ filename, sheetName = "التقرير", title, filters = [], columns = [], rows = [] }) {
+async function exportReportExcel({ filename, sheetName = tt("التقرير"), title, filters = [], columns = [], rows = [] }) {
   if (!window.XLSX) await loadScriptOnce(XLSX_SRC).catch(() => {});
   const XLSX = window.XLSX;
   if (!XLSX || !XLSX.utils) {
-    window.showToast && window.showToast("مكتبة Excel غير محمّلة — تحقق من الاتصال", "error");
+    window.showToast && window.showToast(tt("مكتبة Excel غير محمّلة — تحقق من الاتصال"), "error");
     return false;
   }
-  const clinic = (window.CLINIC && window.CLINIC.name) || "العيادة";
-  const genDate = new Date().toLocaleString("ar-EG-u-nu-latn");
+  const clinic = (window.CLINIC && window.CLINIC.name) || tt("العيادة");
+  const genDate = fmtDate(new Date(), { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
   const nCols = Math.max(columns.length, 1);
 
   const aoa = [];
   aoa.push([clinic]);
   aoa.push([title || sheetName]);
-  aoa.push([`تاريخ الإنشاء: ${genDate}`]);
+  aoa.push([tt("تاريخ الإنشاء: {date}", { date: genDate })]);
   const filterRow = filters.length ? aoa.length : -1;
-  if (filters.length) aoa.push(["عوامل التصفية:  " + filters.map(f => `${f.label}: ${f.value}`).join("   |   ")]);
+  if (filters.length) aoa.push([tt("عوامل التصفية:  {list}", { list: filters.map(f => `${f.label}: ${f.value}`).join("   |   ") })]);
   aoa.push([]);                                   // spacer
   const headerRowIdx = aoa.length;
   aoa.push(columns.map(c => c.label));
@@ -73,7 +73,7 @@ async function exportReportExcel({ filename, sheetName = "التقرير", title
   if (hasTotals && rows.length) {
     totalsRowIdx = aoa.length;
     aoa.push(columns.map((c, i) => {
-      if (i === 0) return "الإجمالي";
+      if (i === 0) return tt("الإجمالي");
       if (c.total) return rows.reduce((s, r) => s + (Number(r[c.key]) || 0), 0);
       return "";
     }));
@@ -87,7 +87,7 @@ async function exportReportExcel({ filename, sheetName = "التقرير", title
   ];
   if (filterRow >= 0) ws["!merges"].push({ s: { r: filterRow, c: 0 }, e: { r: filterRow, c: nCols - 1 } });
   ws["!cols"] = columns.map(c => ({ wch: Math.max(12, (c.label || "").length + 2, c.width || 0) }));
-  ws["!views"] = [{ RTL: true }];
+  ws["!views"] = [{ RTL: IS_RTL }];
 
   const bd = { style: "thin", color: { rgb: "FFD0D7DE" } };
   const borders = { top: bd, bottom: bd, left: bd, right: bd };
@@ -103,9 +103,12 @@ async function exportReportExcel({ filename, sheetName = "التقرير", title
       else if (R >= dataStart) {
         const col = columns[C] || {};
         const numeric = col.type === "number" || col.type === "currency";
-        cell.s = { border: borders, alignment: { horizontal: numeric ? "left" : "right", vertical: "center" } };
+        // Numbers at the end of the cell, text at its start (physical sides in Excel).
+        const endSide = IS_RTL ? "left" : "right", startSide = IS_RTL ? "right" : "left";
+        cell.s = { border: borders, alignment: { horizontal: numeric ? endSide : startSide, vertical: "center" } };
         if (R === totalsRowIdx) { cell.s.font = { bold: true }; cell.s.fill = { fgColor: { rgb: "FFEEF2F6" } }; }
-        if (typeof cell.v === "number") cell.z = col.type === "currency" ? '#,##0 "EGP"' : "#,##0";
+        // Money like fmtMoney: «1,250 ج.م» / «EGP 1,250».
+        if (typeof cell.v === "number") cell.z = col.type === "currency" ? (IS_RTL ? '#,##0 "ج.م"' : '"EGP" #,##0') : "#,##0";
       }
     }
   }
@@ -186,7 +189,7 @@ function Treatments({ go }) {
         sessions: total ? `${done}/${total}` : String(done),
         status: t.status === "completed" || (progress >= 100 && total) ? "مكتمل"
               : t.status === "draft" ? "مسودة" : "نشط",
-        updated: updatedAt ? new Date(updatedAt).toLocaleDateString("ar-EG-u-nu-latn") : "—",
+        updated: updatedAt ? fmtDate(updatedAt, { year: "numeric", month: "numeric", day: "numeric" }) : "—",
         p: patientRow || { patient_id: t.patient_id, name: t.patient_name || t.patient_id },
         t,
       };
@@ -217,20 +220,20 @@ function Treatments({ go }) {
   // list and its stats. Linked sessions are unlinked server-side, not lost.
   async function onDeletePlan(plan) {
     if (!window.TreatmentsAPI || !window.TreatmentsAPI.delete) return;
-    const msg = `حذف خطة العلاج «${plan.diag}» للمريض ${plan.patient}؟\n`
-      + "لن تُحذف الجلسات المرتبطة — سيُلغى ربطها فقط. لا يمكن التراجع عن هذا الإجراء.";
+    const msg = tt("حذف خطة العلاج «{diag}» للمريض {patient}؟", { diag: plan.diag, patient: plan.patient }) + "\n"
+      + tt("لن تُحذف الجلسات المرتبطة — سيُلغى ربطها فقط. لا يمكن التراجع عن هذا الإجراء.");
     if (!window.confirm(msg)) return;
     try {
       const res = await window.TreatmentsAPI.delete(plan.id);
       const n = res && res.sessions_unlinked ? res.sessions_unlinked : 0;
       window.showToast && window.showToast(
-        n > 0 ? `تم حذف الخطة وإلغاء ربط ${n} جلسة` : "تم حذف الخطة", "success");
+        n > 0 ? tt("تم حذف الخطة وإلغاء ربط {n} جلسة", { n }) : tt("تم حذف الخطة"), "success");
       if (view === "detail") setView("list");
       setSelected(null);
       reload();
     } catch (e) {
       console.warn("delete treatment failed", e);
-      window.showToast && window.showToast(e.message || "تعذّر حذف الخطة", "error");
+      window.showToast && window.showToast(e.message || tt("تعذّر حذف الخطة"), "error");
     }
   }
 
@@ -241,28 +244,28 @@ function Treatments({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>خطط العلاج</span></div>
-          <h1 className="h1">خطط العلاج</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{planStats.active} نشط · {planStats.drafts} مسودات · متوسط التقدم {avgProgress}%</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("خطط العلاج")}</span></div>
+          <h1 className="h1">{tt("خطط العلاج")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("{active} نشط · {drafts} مسودات · متوسط التقدم {avg}%", { active: planStats.active, drafts: planStats.drafts, avg: avgProgress })}</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-blue" onClick={()=>setView("physio-session")}><I.Activity size={14}/> تشخيص</button>
+          <button className="btn btn-blue" onClick={()=>setView("physio-session")}><I.Activity size={14}/> {tt("تشخيص")}</button>
         </div>
       </div>
 
       <div className="grid-3" style={{marginBottom:18}}>
-        <StatCard label="خطط نشطة" value={planStats.active} accent="#7BBDE8" icon={<I.Clipboard size={15}/>}/>
-        <StatCard label="خطط مكتملة" value={String(planStats.done)} accent="#3FA984" icon={<I.Check size={15}/>}/>
-        <StatCard label="متوسط التقدّم" value={`${avgProgress}%`} accent="#7E6BD3" icon={<I.Activity size={15}/>}/>
+        <StatCard label={tt("خطط نشطة")} value={planStats.active} accent="#7BBDE8" icon={<I.Clipboard size={15}/>}/>
+        <StatCard label={tt("خطط مكتملة")} value={String(planStats.done)} accent="#3FA984" icon={<I.Check size={15}/>}/>
+        <StatCard label={tt("متوسط التقدّم")} value={`${avgProgress}%`} accent="#7E6BD3" icon={<I.Activity size={15}/>}/>
       </div>
 
       <div className="card" style={{overflow:"hidden"}}>
         <div className="tbl-scroll">
-        <table className="tbl">
-          <thead><tr><th>الخطة</th><th>المريض</th><th>التشخيص</th><th>الأخصائي</th><th>التقدّم</th><th>الجلسات</th><th>الحالة</th><th>آخر تحديث</th>{canDelete && <th><span className="sr-only">إجراءات</span></th>}</tr></thead>
+        <CardTable>
+          <thead><tr><th>{tt("الخطة")}</th><th>{tt("المريض")}</th><th>{tt("التشخيص")}</th><th>{tt("الأخصائي")}</th><th>{tt("التقدّم")}</th><th>{tt("الجلسات")}</th><th>{tt("الحالة")}</th><th>{tt("آخر تحديث")}</th>{canDelete && <th><span className="sr-only">{tt("إجراءات")}</span></th>}</tr></thead>
           <tbody>
             {plans.length===0 && !loadingRecords && (
-              <tr><td colSpan={canDelete?9:8}><EmptyState icon={<I.Clipboard size={22}/>} title="لا خطط علاج بعد" body="ستظهر خطط العلاج هنا بعد إنشائها."/></td></tr>
+              <tr><td colSpan={canDelete?9:8}><EmptyState icon={<I.Clipboard size={22}/>} title={tt("لا خطط علاج بعد")} body={tt("ستظهر خطط العلاج هنا بعد إنشائها.")}/></td></tr>
             )}
             {plans.map(p=>(
               <tr key={p.id} data-clickable="true" tabIndex={0} onClick={()=>{setSelected(p);setView("detail")}} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){e.preventDefault();setSelected(p);setView("detail");} }}>
@@ -281,13 +284,13 @@ function Treatments({ go }) {
                 <td className="mono">{p.sessions}</td>
                 <td>
                   <span className={"badge " + (p.status==="نشط"?"b-blue":p.status==="مكتمل"?"b-green":"b-grey")}>
-                    <span className="dot"></span>{p.status}
+                    <span className="dot"></span>{tt(p.status)}
                   </span>
                 </td>
                 <td className="muted">{p.updated}</td>
                 {canDelete && (
-                  <td style={{textAlign:"left"}} onClick={e=>e.stopPropagation()}>
-                    <button className="btn btn-ghost btn-icon" title="حذف الخطة"
+                  <td style={{textAlign:"end"}} onClick={e=>e.stopPropagation()}>
+                    <button className="btn btn-ghost btn-icon" title={tt("حذف الخطة")} aria-label={tt("حذف الخطة")}
                       onClick={(e)=>{e.stopPropagation();onDeletePlan(p);}}>
                       <I.Trash size={13}/>
                     </button>
@@ -296,7 +299,7 @@ function Treatments({ go }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </CardTable>
         </div>
       </div>
     </Page>
@@ -309,17 +312,17 @@ function TreatmentPlanDetail({ plan, onBack, canDelete, onDelete }) {
   // CREATE form and produced duplicate plans.
   return (
     <Page>
-      <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}><span>خطط العلاج</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{plan.id}</span></div>
+      <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}><span>{tt("خطط العلاج")}</span><I.Chevron size={11}/><span style={{color:"var(--ink-700)"}}>{plan.id}</span></div>
       <div className="page-head" style={{alignItems:"flex-start"}}>
         <div>
           <h1 className="h1">{plan.diag}</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>المريض: {plan.patient} · الأخصائي: {plan.therapist}{plan.p && plan.p.registered ? ` · سُجّل ${plan.p.registered}` : ""}</div>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("المريض: {patient} · الأخصائي: {therapist}", { patient: plan.patient, therapist: plan.therapist })}{plan.p && plan.p.registered ? " · " + tt("سُجّل {date}", { date: plan.p.registered }) : ""}</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-secondary" onClick={()=>window.print()}><I.Print size={13}/> طباعة</button>
+          <button className="btn btn-secondary" onClick={()=>window.print()}><I.Print size={13}/> {tt("طباعة")}</button>
           {canDelete && onDelete && (
             <button className="btn btn-secondary" style={{color:"#A8443A"}} onClick={onDelete}>
-              <I.Trash size={13}/> حذف الخطة
+              <I.Trash size={13}/> {tt("حذف الخطة")}
             </button>
           )}
         </div>
@@ -384,7 +387,7 @@ const PhysioCard = ({ title, children }) => (
   }}>
     <div style={{
       fontSize: 15, fontWeight: 700, color: "var(--ink-900)",
-      textAlign: "right", marginBottom: 14,
+      textAlign: "start", marginBottom: 14,
       borderBottom: "1px solid var(--ink-200)", paddingBottom: 8,
     }}>{title}</div>
     {children}
@@ -393,7 +396,7 @@ const PhysioCard = ({ title, children }) => (
 
 const PhysioLabelRow = ({ label, required, control }) => (
   <div style={{display:"flex", alignItems:"center", gap:12, padding:"6px 0"}}>
-    <div style={{flex:1, textAlign:"right", fontSize:13, fontWeight:500, color:"var(--ink-900)"}}>
+    <div style={{flex:1, textAlign:"start", fontSize:13, fontWeight:500, color:"var(--ink-900)"}}>
       {label}{required && <span style={{color:"#A8443A", marginInlineStart:4}}>*</span>}
     </div>
     <div style={{display:"flex", gap:6, alignItems:"center"}}>{control}</div>
@@ -416,7 +419,7 @@ const PhysioChk = ({ checked, onChange, children }) => (
   <label style={{display:"flex", alignItems:"center", gap:10, cursor:"pointer", flex:1}}>
     <input type="checkbox" checked={!!checked} onChange={e=>onChange(e.target.checked)}
       style={{width:16, height:16, accentColor:"var(--blue-500)", cursor:"pointer", flexShrink:0}}/>
-    <span style={{flex:1, textAlign:"right", fontSize:13, fontWeight:500, color:"var(--ink-900)"}}>
+    <span style={{flex:1, textAlign:"start", fontSize:13, fontWeight:500, color:"var(--ink-900)"}}>
       {children}
     </span>
   </label>
@@ -427,8 +430,8 @@ const PhysioTA = (props) => (
     style={{
       width:"100%", minHeight: props.rows ? undefined : 70,
       padding: 10, borderRadius: 10, border: "1px solid var(--ink-200)",
-      background: "#fff", resize: "vertical", textAlign: "right",
-      direction: "rtl", fontFamily: "inherit", fontSize: 13,
+      background: "#fff", resize: "vertical", textAlign: "start",
+      fontFamily: "inherit", fontSize: 13,
       outline: "none",
       ...(props.style || {}),
     }}/>
@@ -476,13 +479,13 @@ function PhysioSessionForm({ onBack }) {
   }
 
   function save() {
-    if (!therapistId) { window.showToast && window.showToast("اختر الأخصائي المسؤول", "error"); return; }
-    if (!patientId)   { window.showToast && window.showToast("اختر المريض", "error"); return; }
+    if (!therapistId) { window.showToast && window.showToast(tt("اختر الأخصائي المسؤول"), "error"); return; }
+    if (!patientId)   { window.showToast && window.showToast(tt("اختر المريض"), "error"); return; }
     try {
       localStorage.setItem(physioStoreKey(patientId), JSON.stringify(form));
-      window.showToast && window.showToast("تم حفظ نموذج الجلسة", "success");
+      window.showToast && window.showToast(tt("تم حفظ نموذج الجلسة"), "success");
     } catch (_) {
-      window.showToast && window.showToast("تعذّر الحفظ محليًا", "error");
+      window.showToast && window.showToast(tt("تعذّر الحفظ محليًا"), "error");
     }
   }
 
@@ -504,32 +507,32 @@ function PhysioSessionForm({ onBack }) {
   return (
     <Page>
       <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}>
-        <span>خطط العلاج</span><I.Chevron size={11}/>
-        <span style={{color:"var(--ink-700)"}}>تشخيص</span>
+        <span>{tt("خطط العلاج")}</span><I.Chevron size={11}/>
+        <span style={{color:"var(--ink-700)"}}>{tt("تشخيص")}</span>
       </div>
       <div className="page-head">
-        <h1 className="h1">تشخيص</h1>
+        <h1 className="h1">{tt("تشخيص")}</h1>
         <div className="page-actions">
-          <button className="btn btn-ghost" onClick={onBack}>رجوع</button>
-          <button className="btn btn-blue" onClick={save}><I.Check size={13}/> حفظ الجلسة</button>
+          <button className="btn btn-ghost" onClick={onBack}>{tt("رجوع")}</button>
+          <button className="btn btn-blue" onClick={save}><I.Check size={13}/> {tt("حفظ الجلسة")}</button>
         </div>
       </div>
 
       <div style={{maxWidth: 980, margin: "0 auto"}}>
 
         {/* 1. Patient & Therapist */}
-        <PhysioCard title="المريض والأخصائي">
+        <PhysioCard title={tt("المريض والأخصائي")}>
           <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)", gap:14}}>
             <div>
-              <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>
-                الأخصائي المسؤول <span style={{color:"#A8443A"}}>*</span>
+              <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>
+                {tt("الأخصائي المسؤول")} <span style={{color:"#A8443A"}}>*</span>
               </div>
               <TherapistCombobox value={therapistId} onChange={setTherapistId}
                 therapists={therapists} placeholder="Select therapist…"/>
             </div>
             <div>
-              <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>
-                المريض <span style={{color:"#A8443A"}}>*</span>
+              <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>
+                {tt("المريض")} <span style={{color:"#A8443A"}}>*</span>
               </div>
               <PatientCombobox value={patientId} onChange={setPatientId}
                 patients={patients} placeholder="Search patient by name or ID…"/>
@@ -538,7 +541,7 @@ function PhysioSessionForm({ onBack }) {
         </PhysioCard>
 
         {/* 2. Diagnosis */}
-        <PhysioCard title="التشخيص">
+        <PhysioCard title={tt("التشخيص")}>
           <window.DiagnosisAutocomplete multiline value={form.diagnosis}
             onChange={e=>update({diagnosis:e.target.value})}
             placeholder="Clinical diagnosis" style={{minHeight:110, fontSize:13}}/>
@@ -554,7 +557,7 @@ function PhysioSessionForm({ onBack }) {
               onChange={v => update({shortWave:v})}>Short wave</PhysioChk>
           } control={null}/>
           <div style={{marginTop:10}}>
-            <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>Traction notes</div>
+            <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>Traction notes</div>
             <PhysioTA value={form.tractionNotes} onChange={e=>update({tractionNotes:e.target.value})}/>
           </div>
         </PhysioCard>
@@ -570,7 +573,7 @@ function PhysioSessionForm({ onBack }) {
             ))}
           </div>
           <div style={{marginTop:12}}>
-            <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>Modalities notes</div>
+            <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>Modalities notes</div>
             <PhysioTA value={form.modalitiesNotes} onChange={e=>update({modalitiesNotes:e.target.value})}/>
           </div>
         </PhysioCard>
@@ -585,39 +588,39 @@ function PhysioSessionForm({ onBack }) {
                 onChange={e=>update({nGlideNotes:e.target.value})}
                 disabled={!form.nGlide}
                 placeholder="N. Glide notes"
-                style={{width:260, textAlign:"right", opacity: form.nGlide ? 1 : 0.5}}/>
+                style={{width:260, textAlign:"start", opacity: form.nGlide ? 1 : 0.5}}/>
             }/>
           <div style={{height:8}}/>
-          <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>Ms Release</div>
+          <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>Ms Release</div>
           <input className="input" value={form.msRelease}
             onChange={e=>update({msRelease:e.target.value})}
-            style={{textAlign:"right"}}/>
+            style={{textAlign:"start"}}/>
           <div style={{height:10}}/>
-          <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>Positioning</div>
+          <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>Positioning</div>
           <input className="input" value={form.positioning}
             onChange={e=>update({positioning:e.target.value})}
-            style={{textAlign:"right"}}/>
+            style={{textAlign:"start"}}/>
           <div style={{height:10}}/>
-          <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>
+          <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>
             Ex's, Stretching, Mobilization, Manipulation
           </div>
           <PhysioTA value={form.exercises} onChange={e=>update({exercises:e.target.value})}/>
           <div style={{height:10}}/>
-          <div className="label" style={{color:"var(--ink-900)", textAlign:"right"}}>Manual Techniques notes</div>
+          <div className="label" style={{color:"var(--ink-900)", textAlign:"start"}}>Manual Techniques notes</div>
           <PhysioTA value={form.manualNotes} onChange={e=>update({manualNotes:e.target.value})}/>
         </PhysioCard>
 
         {/* 6. Treatment Plans — Interactive Body Diagram */}
         <PhysioCard title="Treatment Plans">
-          <div style={{fontSize:12.5, color:"var(--ink-500)", textAlign:"right", marginBottom:10}}>
-            اضغط على أي موضع لإضافة علامة. اضغط على علامة موجودة لإزالتها.
+          <div style={{fontSize:12.5, color:"var(--ink-500)", textAlign:"start", marginBottom:10}}>
+            {tt("اضغط على أي موضع لإضافة علامة. اضغط على علامة موجودة لإزالتها.")}
           </div>
           <BodyDiagram
             markers={form.markers}
             onChange={markers => update({ markers })}
           />
-          <div style={{fontSize:12, color:"var(--ink-500)", textAlign:"right", marginTop:10}}>
-            المواضع المحددة: {form.markers.length}
+          <div style={{fontSize:12, color:"var(--ink-500)", textAlign:"start", marginTop:10}}>
+            {tt("المواضع المحددة: {n}", { n: form.markers.length })}
           </div>
         </PhysioCard>
 
@@ -630,7 +633,8 @@ function PhysioSessionForm({ onBack }) {
 // BodyDiagram — single-image overlay with percentage-based markers.
 // The image contains 4 figures in a horizontal row; the x% band
 // determines `view`. Click/tap adds a marker; clicking near an
-// existing one (within HIT_RADIUS %) removes it.
+// existing one (within HIT_RADIUS %) removes it. Positions are physical
+// (left/top of the picture) on purpose: the picture is never mirrored.
 // ═══════════════════════════════════════════════════════════════════
 function BodyDiagram({ markers, onChange }) {
   const wrapRef = React.useRef(null);
@@ -782,8 +786,8 @@ function TxMethodModal({ onClose, onSaved }) {
   async function doSave(addAnother) {
     setError("");
     const trimmed = name.trim();
-    if (!trimmed) { setError("الاسم مطلوب"); return; }
-    if (!/\S/.test(trimmed)) { setError("الاسم لا يمكن أن يحتوي على مسافات فقط"); return; }
+    if (!trimmed) { setError(tt("الاسم مطلوب")); return; }
+    if (!/\S/.test(trimmed)) { setError(tt("الاسم لا يمكن أن يحتوي على مسافات فقط")); return; }
     setSaving(true);
     const payload = {
       name: trimmed, category, description, notes,
@@ -796,8 +800,8 @@ function TxMethodModal({ onClose, onSaved }) {
     if (editingId) res = await window.TxMethods.update(editingId, payload);
     else           res = await window.TxMethods.create(payload);
     setSaving(false);
-    if (!res.ok) { setError(res.error || "تعذّر الحفظ"); return; }
-    if (window.showToast) window.showToast(editingId ? "تم تحديث طريقة العلاج" : "تمت إضافة طريقة العلاج", "success");
+    if (!res.ok) { setError(res.error || tt("تعذّر الحفظ")); return; }
+    if (window.showToast) window.showToast(editingId ? tt("تم تحديث طريقة العلاج") : tt("تمت إضافة طريقة العلاج"), "success");
     if (onSaved && !editingId) onSaved({ method_id: res.method_id, name: trimmed });
     if (addAnother) {
       resetForm();
@@ -813,10 +817,10 @@ function TxMethodModal({ onClose, onSaved }) {
     const fn = next === "archived" ? window.TxMethods.archive : window.TxMethods.restore;
     const res = await fn(id);
     if (!res.ok) {
-      if (window.showToast) window.showToast(res.error || "تعذّر التنفيذ", "error");
+      if (window.showToast) window.showToast(res.error || tt("تعذّر التنفيذ"), "error");
       return;
     }
-    if (window.showToast) window.showToast(next === "archived" ? "تم أرشفة الطريقة" : "تمت الاستعادة", "success");
+    if (window.showToast) window.showToast(next === "archived" ? tt("تم أرشفة الطريقة") : tt("تمت الاستعادة"), "success");
   }
 
   // Two-click confirm: first click sets deletingId; second click actually
@@ -826,33 +830,33 @@ function TxMethodModal({ onClose, onSaved }) {
     const id = m.method_id || m.id;
     if (deletingId !== id) { setDeletingId(id); return; }
     if (!window.TxMethods || !window.TxMethods.remove) {
-      if (window.showToast) window.showToast("خدمة الحذف غير متاحة", "error");
+      if (window.showToast) window.showToast(tt("خدمة الحذف غير متاحة"), "error");
       return;
     }
     const res = await window.TxMethods.remove(id);
     setDeletingId(null);
     if (!res.ok) {
-      if (window.showToast) window.showToast(res.error || "تعذّر الحذف", "error");
+      if (window.showToast) window.showToast(res.error || tt("تعذّر الحذف"), "error");
       return;
     }
     if (editingId === id) resetForm();
-    if (window.showToast) window.showToast("تم حذف طريقة العلاج", "success");
+    if (window.showToast) window.showToast(tt("تم حذف طريقة العلاج"), "success");
   }
 
   return (
     <Modal
       open onClose={onClose}
-      title={editingId ? "تعديل طريقة العلاج" : "إضافة طريقة علاج جديدة"}
+      title={editingId ? tt("تعديل طريقة العلاج") : tt("إضافة طريقة علاج جديدة")}
       width={720}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>إلغاء</button>
+        <button className="btn btn-ghost" onClick={onClose} disabled={saving}>{tt("إلغاء")}</button>
         {!editingId && (
           <button className="btn btn-secondary" onClick={()=>doSave(true)} disabled={saving}>
-            {saving ? "جارٍ الحفظ…" : "حفظ وإضافة أخرى"}
+            {saving ? tt("جارٍ الحفظ…") : tt("حفظ وإضافة أخرى")}
           </button>
         )}
         <button className="btn btn-blue" onClick={()=>doSave(false)} disabled={saving}>
-          <I.Check size={13}/> {saving ? "جارٍ الحفظ…" : "حفظ"}
+          <I.Check size={13}/> {saving ? tt("جارٍ الحفظ…") : tt("حفظ")}
         </button>
       </>}
     >
@@ -860,13 +864,14 @@ function TxMethodModal({ onClose, onSaved }) {
         {/* Search existing */}
         <div>
           <div style={{position:"relative"}}>
-            <I.Search size={14} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+            <I.Search size={14} style={{position:"absolute",insetInlineEnd:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
             <input
               className="input"
-              placeholder="ابحث في طرق العلاج الموجودة قبل إنشاء طريقة جديدة…"
+              placeholder={tt("ابحث في طرق العلاج الموجودة قبل إنشاء طريقة جديدة…")}
+              aria-label={tt("ابحث في طرق العلاج الموجودة قبل إنشاء طريقة جديدة…")}
               value={query}
               onChange={e=>setQuery(e.target.value)}
-              style={{paddingLeft:32}}
+              style={{paddingInlineEnd:32}}
             />
           </div>
           {results.length > 0 && (
@@ -890,16 +895,16 @@ function TxMethodModal({ onClose, onSaved }) {
                       </span>
                     )}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:500}}>{m.name}{archived && <span className="badge b-grey" style={{marginRight:8,fontSize:10.5}}>مؤرشف</span>}</div>
+                      <div style={{fontSize:13,fontWeight:500}}>{m.name}{archived && <span className="badge b-grey" style={{marginInlineStart:8,fontSize:10.5}}>{tt("مؤرشف")}</span>}</div>
                       <div className="muted" style={{fontSize:11.5}}>
-                        {m.category || "بدون فئة"}
-                        {m.duration_minutes ? ` · ${m.duration_minutes} دقيقة` : ""}
-                        {m.display_order != null ? ` · ترتيب ${m.display_order}` : ""}
+                        {m.category || tt("بدون فئة")}
+                        {m.duration_minutes ? " · " + tt("{n} دقيقة", { n: m.duration_minutes }) : ""}
+                        {m.display_order != null ? " · " + tt("ترتيب {n}", { n: m.display_order }) : ""}
                       </div>
                     </div>
-                    <button className="btn btn-ghost" style={{fontSize:11.5,padding:"4px 8px"}} onClick={()=>loadIntoForm(m)}>تعديل</button>
+                    <button className="btn btn-ghost" style={{fontSize:11.5,padding:"4px 8px"}} onClick={()=>loadIntoForm(m)}>{tt("تعديل")}</button>
                     <button className="btn btn-ghost" style={{fontSize:11.5,padding:"4px 8px",color:archived ? "var(--green)" : "var(--amber-700, #b45309)"}} onClick={()=>doArchiveToggle(m)}>
-                      {archived ? "استعادة" : "أرشفة"}
+                      {archived ? tt("استعادة") : tt("أرشفة")}
                     </button>
                     <button
                       className="btn btn-ghost"
@@ -907,7 +912,7 @@ function TxMethodModal({ onClose, onSaved }) {
                       onClick={()=>doDelete(m)}
                       onBlur={()=>{ if (deletingId === id) setDeletingId(null); }}
                     >
-                      {isConfirmingDelete ? "تأكيد الحذف؟" : "حذف"}
+                      {isConfirmingDelete ? tt("تأكيد الحذف؟") : tt("حذف")}
                     </button>
                   </div>
                 );
@@ -917,11 +922,11 @@ function TxMethodModal({ onClose, onSaved }) {
           <div style={{marginTop:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--ink-600)"}}>
               <input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/>
-              عرض المؤرشفة
+              {tt("عرض المؤرشفة")}
             </label>
             {editingId && (
               <button className="btn btn-ghost" style={{fontSize:12}} onClick={resetForm}>
-                <I.Plus size={12}/> إضافة طريقة جديدة بدل التعديل
+                <I.Plus size={12}/> {tt("إضافة طريقة جديدة بدل التعديل")}
               </button>
             )}
           </div>
@@ -929,41 +934,42 @@ function TxMethodModal({ onClose, onSaved }) {
 
         {/* Form */}
         <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:12}}>
-          <Field label="اسم طريقة العلاج" required span={2}>
-            <input ref={nameRef} className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="مثال: علاج إبر جافة"/>
+          <Field label={tt("اسم طريقة العلاج")} required span={2}>
+            <input ref={nameRef} className="input" value={name} onChange={e=>setName(e.target.value)} placeholder={tt("مثال: علاج إبر جافة")}/>
             {dupHint && (
               <div style={{marginTop:6,fontSize:12,color:"var(--amber-700, #b45309)"}}>
-                يوجد طريقة بنفس الاسم مسبقًا:
-                <button className="btn btn-ghost" style={{fontSize:12,padding:"2px 6px",marginRight:6}} onClick={()=>loadIntoForm(dupHint)}>
-                  فتح "{dupHint.name}"
+                {tt("يوجد طريقة بنفس الاسم مسبقًا:")}
+                <button className="btn btn-ghost" style={{fontSize:12,padding:"2px 6px",marginInlineStart:6}} onClick={()=>loadIntoForm(dupHint)}>
+                  {tt('فتح "{name}"', { name: dupHint.name })}
                 </button>
               </div>
             )}
           </Field>
-          <Field label="الفئة">
+          <Field label={tt("الفئة")}>
             <input
               className="input"
               value={category}
               onChange={e=>setCategory(e.target.value)}
               list="tx-method-categories"
-              placeholder="اختر أو اكتب فئة جديدة"
+              placeholder={tt("اختر أو اكتب فئة جديدة")}
             />
+            {/* Suggestions only: the category is free text, saved as typed. */}
             <datalist id="tx-method-categories">
-              {["علاج يدوي","تمارين علاجية","أجهزة علاجية","علاج مائي","تأهيل رياضي","علاج عصبي","علاج أطفال","أخرى", ...categories]
+              {[...["علاج يدوي","تمارين علاجية","أجهزة علاجية","علاج مائي","تأهيل رياضي","علاج عصبي","علاج أطفال","أخرى"].map(c => tt(c)), ...categories]
                 .filter((v,i,arr)=>arr.indexOf(v)===i)
                 .map(c => <option key={c} value={c}/>) }
             </datalist>
           </Field>
-          <Field label="مدة الجلسة (دقيقة)">
-            <input className="input" type="number" min="0" value={duration} onChange={e=>setDuration(e.target.value)} placeholder="مثال: 30"/>
+          <Field label={tt("مدة الجلسة (دقيقة)")}>
+            <input className="input" type="number" min="0" value={duration} onChange={e=>setDuration(e.target.value)} placeholder={tt("مثال: 30")}/>
           </Field>
-          <Field label="ترتيب العرض">
-            <input className="input" type="number" value={displayOrder} onChange={e=>setDisplayOrder(e.target.value)} placeholder="اترك فارغًا للترتيب الأبجدي"/>
+          <Field label={tt("ترتيب العرض")}>
+            <input className="input" type="number" value={displayOrder} onChange={e=>setDisplayOrder(e.target.value)} placeholder={tt("اترك فارغًا للترتيب الأبجدي")}/>
           </Field>
-          <Field label="الأيقونة" span={2}>
+          <Field label={tt("الأيقونة")} span={2}>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
               <button type="button" onClick={()=>setIcon("")} className="btn btn-secondary" style={{fontSize:11.5,padding:"5px 9px",background:!icon?"var(--blue-50)":"#fff",borderColor:!icon?"var(--blue-500)":"var(--ink-200)"}}>
-                بدون
+                {tt("بدون")}
               </button>
               {TX_METHOD_ICONS.map(nm => {
                 const IconCmp = I[nm]; if (!IconCmp) return null;
@@ -978,10 +984,10 @@ function TxMethodModal({ onClose, onSaved }) {
               })}
             </div>
           </Field>
-          <Field label="اللون" span={2}>
+          <Field label={tt("اللون")} span={2}>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
               <button type="button" onClick={()=>setColor("")} className="btn btn-secondary" style={{fontSize:11.5,padding:"5px 9px",background:!color?"var(--blue-50)":"#fff",borderColor:!color?"var(--blue-500)":"var(--ink-200)"}}>
-                بدون
+                {tt("بدون")}
               </button>
               {TX_METHOD_COLORS.map(c => {
                 const on = color === c;
@@ -998,11 +1004,11 @@ function TxMethodModal({ onClose, onSaved }) {
                 style={{width:34,height:32,padding:0,border:"1px solid var(--ink-200)",borderRadius:8,background:"transparent",cursor:"pointer"}}/>
             </div>
           </Field>
-          <Field label="الوصف" span={2}>
-            <textarea className="input" style={{height:70,padding:10}} value={description} onChange={e=>setDescription(e.target.value)} placeholder="وصف موجز يظهر للفريق"/>
+          <Field label={tt("الوصف")} span={2}>
+            <textarea className="input" style={{height:70,padding:10}} value={description} onChange={e=>setDescription(e.target.value)} placeholder={tt("وصف موجز يظهر للفريق")}/>
           </Field>
-          <Field label="ملاحظات" span={2}>
-            <textarea className="input" style={{height:60,padding:10}} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="ملاحظات إضافية (اختياري)"/>
+          <Field label={tt("ملاحظات")} span={2}>
+            <textarea className="input" style={{height:60,padding:10}} value={notes} onChange={e=>setNotes(e.target.value)} placeholder={tt("ملاحظات إضافية (اختياري)")}/>
           </Field>
         </div>
 
@@ -1026,14 +1032,14 @@ function Sessions({ go }) {
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>جلسات العلاج</span></div>
-          <h1 className="h1">جلسات العلاج</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>شغّل عدة جلسات في وقت واحد، سجّل الألم والملاحظات، ووقّع.</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("جلسات العلاج")}</span></div>
+          <h1 className="h1">{tt("جلسات العلاج")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("شغّل عدة جلسات في وقت واحد، سجّل الألم والملاحظات، ووقّع.")}</div>
         </div>
-        <div className="seg">
-          <button className={tab==="current"?"on":""} onClick={()=>setTab("current")}>الجلسات الجارية</button>
-          <button className={tab==="السجل"?"on":""} onClick={()=>setTab("السجل")}>سجل الجلسات</button>
-        </div>
+        <Segmented label={tt("عرض الجلسات")} value={tab} onChange={setTab} options={[
+          { value: "current", label: tt("الجلسات الجارية") },
+          { value: "السجل", label: tt("سجل الجلسات") },
+        ]}/>
       </div>
 
       {tab==="current" && <CC/>}
@@ -1052,11 +1058,11 @@ function SessionHistoryList() {
     <div>
       <div className="card" style={{padding:14,marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:"1 1 320px",maxWidth:380}}>
-          <I.Search size={14} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-          <input className="input" placeholder="ابحث بالمريض أو الملاحظة…" style={{paddingLeft:32}}/>
+          <I.Search size={14} style={{position:"absolute",insetInlineEnd:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+          <input className="input" placeholder={tt("ابحث بالمريض أو الملاحظة…")} aria-label={tt("ابحث بالمريض أو الملاحظة…")} style={{paddingInlineEnd:32}}/>
         </div>
-        <select className="input" style={{width:"auto",minWidth:150,flex:"0 1 180px"}}><option>كل الأخصائيين</option>{DATA.therapists.map(t=><option key={t.id||t.name}>{t.name}</option>)}</select>
-        <select className="input" style={{width:"auto",minWidth:150,flex:"0 1 180px"}}><option>آخر 30 يوم</option><option>هذا الأسبوع</option></select>
+        <select className="input" aria-label={tt("الأخصائي")} style={{width:"auto",minWidth:150,flex:"0 1 180px"}}><option>{tt("كل الأخصائيين")}</option>{DATA.therapists.map(t=><option key={t.id||t.name}>{t.name}</option>)}</select>
+        <select className="input" aria-label={tt("الفترة")} style={{width:"auto",minWidth:150,flex:"0 1 180px"}}><option>{tt("آخر 30 يوم")}</option><option>{tt("هذا الأسبوع")}</option></select>
       </div>
 
       <SessionTimeline/>
@@ -1080,13 +1086,13 @@ function SessionTimeline({ mini, p }) {
   // every stat derived from DATA.sessions.
   async function onDeleteSession(s) {
     const n = s.session ?? s.session_number ?? "";
-    if (!window.confirm(`حذف الجلسة ${n ? "#"+n : ""} للمريض ${(p && p.name) || s.patient || ""}؟ لا يمكن التراجع.`)) return;
+    if (!window.confirm(tt("حذف الجلسة {n} للمريض {patient}؟ لا يمكن التراجع.", { n: n ? "#"+n : "", patient: (p && p.name) || s.patient || "" }))) return;
     try {
       await window.KineticData.remove("sessions", s.session_id ?? s.id);
-      window.showToast && window.showToast("تم حذف الجلسة", "success");
+      window.showToast && window.showToast(tt("تم حذف الجلسة"), "success");
     } catch (e) {
       console.warn("delete session failed", e);
-      window.showToast && window.showToast(e.message || "تعذّر حذف الجلسة", "error");
+      window.showToast && window.showToast(e.message || tt("تعذّر حذف الجلسة"), "error");
     }
   }
 
@@ -1098,7 +1104,7 @@ function SessionTimeline({ mini, p }) {
     ? completed.filter(s => s.patient_id === pid || s.patient === p.name)
     : completed;
   if (rows.length === 0) {
-    return <EmptyState icon={<I.Activity size={22}/>} title="لا جلسات مسجلة بعد" body="ستظهر الجلسات هنا بعد تسجيلها من شاشة الجلسات."/>;
+    return <EmptyState icon={<I.Activity size={22}/>} title={tt("لا جلسات مسجلة بعد")} body={tt("ستظهر الجلسات هنا بعد تسجيلها من شاشة الجلسات.")}/>;
   }
   return (
     <div className="card" style={{padding:0,overflow:"hidden"}}>
@@ -1113,8 +1119,8 @@ function SessionTimeline({ mini, p }) {
           </div>
           <div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <span style={{fontSize:13,fontWeight:600}}>{(p && p.name) || s.patient || "—"} · جلسة #{s.session ?? s.session_number ?? "—"}</span>
-              {(s.therapist || "") && <span className="muted" style={{fontSize:11.5}}>بواسطة {s.therapist}</span>}
+              <span style={{fontSize:13,fontWeight:600}}>{(p && p.name) || s.patient || "—"} · {tt("جلسة #{n}", { n: s.session ?? s.session_number ?? "—" })}</span>
+              {(s.therapist || "") && <span className="muted" style={{fontSize:11.5}}>{tt("بواسطة {name}", { name: s.therapist })}</span>}
             </div>
             <div style={{fontSize:13,color:"var(--ink-700)",lineHeight:1.5}}>{s.notes || s.session_notes || ""}</div>
             {s.done && s.done.length>0 && (
@@ -1124,27 +1130,27 @@ function SessionTimeline({ mini, p }) {
             )}
           </div>
           <div style={{textAlign:"center"}}>
-            <div className="muted" style={{fontSize:11}}>الألم</div>
+            <div className="muted" style={{fontSize:11}}>{tt("الألم")}</div>
             <div className="mono" style={{fontSize:18,fontWeight:600, color: s.pain<=3?"var(--green)":s.pain<=6?"var(--amber)":"var(--red)"}}>{s.pain}/10</div>
             <div style={{fontSize:11,color:"var(--ink-500)"}}>{s.mood}</div>
           </div>
-          <div style={{textAlign:"right",display:"flex",gap:6,justifyContent:"flex-end",alignItems:"center"}}>
-            <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>setNotesModal(s)}>عرض الملاحظات <I.ArrowRight size={11}/></button>
+          <div style={{textAlign:"start",display:"flex",gap:6,justifyContent:"flex-end",alignItems:"center"}}>
+            <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>setNotesModal(s)}>{tt("عرض الملاحظات")} <I.ArrowRight size={11}/></button>
             {canDelete && (
-              <button className="btn btn-ghost btn-icon" title="حذف الجلسة" onClick={()=>onDeleteSession(s)}><I.Trash size={13}/></button>
+              <button className="btn btn-ghost btn-icon" title={tt("حذف الجلسة")} aria-label={tt("حذف الجلسة")} onClick={()=>onDeleteSession(s)}><I.Trash size={13}/></button>
             )}
           </div>
         </div>
       ))}
       {notesModal && (
-        <Modal title={`ملاحظات الجلسة #${notesModal.session}`} onClose={()=>setNotesModal(null)}>
+        <Modal title={tt("ملاحظات الجلسة #{n}", { n: notesModal.session })} onClose={()=>setNotesModal(null)}>
           <div style={{fontSize:13,color:"var(--ink-700)",lineHeight:1.7,marginBottom:12}}>{notesModal.notes}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {(notesModal.done||[]).map(d=><span key={d} className="badge b-green"><I.Check size={10}/>{d}</span>)}
           </div>
           <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--ink-100)",display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--ink-500)"}}>
-            <span>التاريخ: {notesModal.date}</span>
-            <span>مستوى الألم: {notesModal.pain}/10 · {notesModal.mood}</span>
+            <span>{tt("التاريخ: {date}", { date: notesModal.date })}</span>
+            <span>{tt("مستوى الألم: {pain}/10 · {mood}", { pain: notesModal.pain, mood: notesModal.mood })}</span>
           </div>
         </Modal>
       )}
@@ -1214,6 +1220,13 @@ function invoiceDateRange(preset, custom, rangeStart, rangeEnd) {
   }
 }
 
+// Payment methods are stored as the Arabic label (invoices: «نقدي»…) or as an
+// id (quick payments, QP_METHODS: "cash"…); both are shown by their label.
+const PAY_METHOD_AR = { cash: "نقدي", visa: "فيزا", card: "بطاقة", instapay: "إنستاباي", vodafone_cash: "فودافون كاش", bank_transfer: "تحويل بنكي" };
+function payMethodAr(m) { return PAY_METHOD_AR[m] || m; }
+function payMethodLabel(m) { return m == null || m === "" ? "" : tt(payMethodAr(m)); }
+const PAY_METHOD_VALUES = ["نقدي", "فيزا", "إنستاباي", "فودافون كاش", "تحويل بنكي"];
+
 function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart, setRangeStart, rangeEnd, setRangeEnd }) {
   const items = [
     { k:"today",     l:"اليوم" },
@@ -1230,19 +1243,13 @@ function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8,flex:"1 1 100%"}}>
-      <div className="seg" role="group" aria-label="فترة الفواتير" style={{flexWrap:"wrap",gap:4}}>
-        {items.map(it => (
-          <button key={it.k} type="button" aria-pressed={preset===it.k ? "true" : "false"}
-            className={preset===it.k?"on":""}
-            onClick={()=>setPreset(it.k)}
-            style={{padding:"6px 10px",fontSize:12}}>{it.l}</button>
-        ))}
-      </div>
+      <Segmented label={tt("فترة الفواتير")} value={preset} onChange={setPreset} style={{flexWrap:"wrap",gap:4}}
+        options={items.map(it => ({ value: it.k, label: tt(it.l) }))}/>
       {preset==="custom" && (
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <I.Calendar size={13} style={{color:"var(--ink-400)"}}/>
-          <span className="muted" style={{fontSize:12}}>اليوم</span>
-          <input className="input" type="date" aria-label="تاريخ الفواتير" value={custom||""}
+          <span className="muted" style={{fontSize:12}}>{tt("اليوم")}</span>
+          <input className="input" type="date" aria-label={tt("تاريخ الفواتير")} value={custom||""}
             onChange={e=>setCustom(e.target.value)}
             style={{width:180}}/>
         </div>
@@ -1250,12 +1257,12 @@ function InvoiceDateFilterBar({ preset, setPreset, custom, setCustom, rangeStart
       {preset==="range" && (
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <I.Calendar size={13} style={{color:"var(--ink-400)"}}/>
-          <span className="muted" style={{fontSize:12}}>من</span>
-          <input className="input" type="date" aria-label="من تاريخ" value={rangeStart||""}
+          <span className="muted" style={{fontSize:12}}>{tt("من")}</span>
+          <input className="input" type="date" aria-label={tt("من تاريخ")} value={rangeStart||""}
             onChange={e=>setRangeStart(e.target.value)}
             style={{width:170}}/>
-          <span className="muted" style={{fontSize:12}}>إلى</span>
-          <input className="input" type="date" aria-label="إلى تاريخ" value={rangeEnd||""}
+          <span className="muted" style={{fontSize:12}}>{tt("إلى")}</span>
+          <input className="input" type="date" aria-label={tt("إلى تاريخ")} value={rangeEnd||""}
             onChange={e=>setRangeEnd(e.target.value)}
             style={{width:170}}/>
         </div>
@@ -1323,65 +1330,62 @@ function Payments({ go }) {
   }, [from, to, debouncedSearch, statusFilter, page]);
 
   // Client-side layer for method (kept off the server — small, local filter).
-  const filtered = payload.rows.filter(p => methodFilter==="الكل" || p.method===methodFilter);
+  const filtered = payload.rows.filter(p => methodFilter==="الكل" || payMethodAr(p.method)===methodFilter);
   const stats = payload.stats;
   const totalPages = Math.max(1, Math.ceil((payload.count||0) / PAGE_SIZE));
 
   const exportCsv = () => {
-    const rows=["الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة",
-      ...filtered.map(p=>`${p.id||p.invoice_id},${p.patient||""},${p.date||""},${p.amount||0},${p.paid||0},${p.method||""},${p.status||""}`)];
+    const rows=[tt("الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة"),
+      ...filtered.map(p=>`${p.id||p.invoice_id},${p.patient||""},${p.date||""},${p.amount||0},${p.paid||0},${p.method ? payMethodLabel(p.method) : ""},${p.status ? tt(p.status) : ""}`)];
     downloadCsv(rows, "payments.csv");
-    if(window.showToast)window.showToast("تم تصدير الفواتير","success");
+    if(window.showToast)window.showToast(tt("تم تصدير الفواتير"),"success");
   };
 
   return (
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>المدفوعات والفواتير</span></div>
-          <h1 className="h1">المدفوعات والفواتير</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>نقدي، بطاقة، إنستاباي، فودافون كاش، تحويل بنكي</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("المدفوعات والفواتير")}</span></div>
+          <h1 className="h1">{tt("المدفوعات والفواتير")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("نقدي، بطاقة، إنستاباي، فودافون كاش، تحويل بنكي")}</div>
         </div>
         <div className="page-actions">
-          <button className="btn btn-secondary" onClick={exportCsv}><I.Download size={14}/> تصدير</button>
-          <button className="btn btn-blue" onClick={()=>setSelected({mode:"new"})}><I.Plus size={14}/> فاتورة جديدة</button>
+          <button className="btn btn-secondary" onClick={exportCsv}><I.Download size={14}/> {tt("تصدير")}</button>
+          <button className="btn btn-blue" onClick={()=>setSelected({mode:"new"})}><I.Plus size={14}/> {tt("فاتورة جديدة")}</button>
         </div>
       </div>
 
       <div className="grid-stats" style={{marginBottom:18}}>
-        <StatCard label="إجمالي الإيرادات" value={fmtEGP(Number(stats.revenue||0))} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
-        <StatCard label="المعلّق"          value={fmtEGP(Number(stats.outstanding||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
-        <StatCard label="المتأخر"          value={fmtEGP(Number(stats.overdue_amount||0))} accent="#D8665A" icon={<I.X size={15}/>}/>
-        <StatCard label="متوسط الفاتورة"   value={fmtEGP(Number(stats.avg_amount||0))} accent="#7BBDE8" icon={<I.FileText size={15}/>}/>
+        <StatCard label={tt("إجمالي الإيرادات")} value={fmtMoneyShort(Number(stats.revenue||0))} accent="#3FA984" icon={<I.Dollar size={15}/>}/>
+        <StatCard label={tt("المعلّق")}          value={fmtMoneyShort(Number(stats.outstanding||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label={tt("المتأخر")}          value={fmtMoneyShort(Number(stats.overdue_amount||0))} accent="#D8665A" icon={<I.X size={15}/>}/>
+        <StatCard label={tt("متوسط الفاتورة")}   value={fmtMoneyShort(Number(stats.avg_amount||0))} accent="#7BBDE8" icon={<I.FileText size={15}/>}/>
       </div>
       <div className="grid-stats" style={{marginBottom:18}}>
-        <StatCard label="إجمالي الفواتير"    value={fmtEGP(Number(stats.total_invoices||0))} accent="#7E6BD3" icon={<I.FileText size={15}/>}/>
-        <StatCard label="المدفوع"            value={fmtEGP(Number(stats.paid_amount||0))} accent="#3FA984" icon={<I.Check size={15}/>}/>
-        <StatCard label="عدد الفواتير"       value={`${Number(stats.count||0)}`} accent="#3A7FB5" icon={<I.Layers size={15}/>}/>
-        <StatCard label="إجمالي المستحقات"   value={fmtEGP(Number(stats.due_total||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
+        <StatCard label={tt("إجمالي الفواتير")}    value={fmtMoneyShort(Number(stats.total_invoices||0))} accent="#7E6BD3" icon={<I.FileText size={15}/>}/>
+        <StatCard label={tt("المدفوع")}            value={fmtMoneyShort(Number(stats.paid_amount||0))} accent="#3FA984" icon={<I.Check size={15}/>}/>
+        <StatCard label={tt("عدد الفواتير")}       value={`${Number(stats.count||0)}`} accent="#3A7FB5" icon={<I.Layers size={15}/>}/>
+        <StatCard label={tt("إجمالي المستحقات")}   value={fmtMoneyShort(Number(stats.due_total||0))} accent="#D49044" icon={<I.Clock size={15}/>}/>
       </div>
 
-      <div className="seg" style={{marginBottom:14}}>
-        <button className={tab==="payments"?"on":""} onClick={()=>setTab("payments")}>الفواتير</button>
-        <button className={tab==="methods"?"on":""}  onClick={()=>setTab("methods")}>طرق الدفع</button>
-        <button className={tab==="receipts"?"on":""} onClick={()=>setTab("receipts")}>الإيصالات</button>
-      </div>
+      <Segmented label={tt("أقسام المدفوعات")} value={tab} onChange={setTab} style={{marginBottom:14}} options={[
+        { value: "payments", label: tt("الفواتير") },
+        { value: "methods", label: tt("طرق الدفع") },
+        { value: "receipts", label: tt("الإيصالات") },
+      ]}/>
 
       {tab==="payments" && (
         <>
           <div className="card" style={{padding:14,marginBottom:14,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <div style={{position:"relative",flex:"1 1 280px",maxWidth:340}}>
-              <I.Search size={14} style={{position:"absolute",left:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
-              <input className="input" placeholder="ابحث في الفواتير…" style={{paddingLeft:32}}
+              <I.Search size={14} style={{position:"absolute",insetInlineEnd:11,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
+              <input className="input" placeholder={tt("ابحث في الفواتير…")} aria-label={tt("ابحث في الفواتير…")} style={{paddingInlineEnd:32}}
                 value={search} onChange={e=>setSearch(e.target.value)}/>
             </div>
-            <div className="seg">
-              {["الكل","مدفوع","جزئي","معلّق","متأخر"].map(s=>(
-                <button key={s} className={statusFilter===s?"on":""} onClick={()=>setStatusFilter(s)}>{s}</button>
-              ))}
-            </div>
-            <select className="input" aria-label="طريقة الدفع" style={{width:160}} value={methodFilter} onChange={e=>setMethodFilter(e.target.value)}>
-              <option>الكل</option><option>نقدي</option><option>فيزا</option><option>إنستاباي</option><option>فودافون كاش</option><option>تحويل بنكي</option>
+            <Segmented label={tt("حالة الفاتورة")} value={statusFilter} onChange={setStatusFilter}
+              options={["الكل","مدفوع","جزئي","معلّق","متأخر"].map(s => ({ value: s, label: tt(s) }))}/>
+            <select className="input" aria-label={tt("طريقة الدفع")} style={{width:160}} value={methodFilter} onChange={e=>setMethodFilter(e.target.value)}>
+              {["الكل", ...PAY_METHOD_VALUES].map(m => <option key={m} value={m}>{tt(m)}</option>)}
             </select>
             <InvoiceDateFilterBar
               preset={preset} setPreset={setPreset}
@@ -1392,13 +1396,13 @@ function Payments({ go }) {
 
           <div className="card" style={{overflow:"hidden"}}>
             <div className="tbl-scroll">
-            <table className="tbl">
+            <CardTable>
               <thead><tr>
-                <th>فاتورة</th><th>المريض</th><th>التاريخ</th><th>المبلغ</th><th>مدفوع</th><th>الطريقة</th><th>الحالة</th><th><span className="sr-only">إجراءات</span></th>
+                <th>{tt("فاتورة")}</th><th>{tt("المريض")}</th><th>{tt("التاريخ")}</th><th>{tt("المبلغ")}</th><th>{tt("مدفوع")}</th><th>{tt("الطريقة")}</th><th>{tt("الحالة")}</th><th><span className="sr-only">{tt("إجراءات")}</span></th>
               </tr></thead>
               <tbody>
                 {filtered.length===0 && (
-                  <tr><td colSpan={8}><EmptyState icon={<I.FileText size={22}/>} title="لا فواتير للفترة المحددة" body={loading ? "جارٍ التحميل…" : "لا توجد فواتير مطابقة لعوامل التصفية الحالية."}/></td></tr>
+                  <tr><td colSpan={8}><EmptyState icon={<I.FileText size={22}/>} title={tt("لا فواتير للفترة المحددة")} body={loading ? tt("جارٍ التحميل…") : tt("لا توجد فواتير مطابقة لعوامل التصفية الحالية.")}/></td></tr>
                 )}
                 {filtered.map(p=>{
                   const remaining = p.amount - p.paid;
@@ -1413,46 +1417,46 @@ function Payments({ go }) {
                         </div>
                       </td>
                       <td>{p.date}</td>
-                      <td className="mono" style={{fontWeight:600}}>EGP {p.amount.toLocaleString("en-US")}</td>
+                      <td className="mono" style={{fontWeight:600}}>{fmtMoney(p.amount)}</td>
                       <td>
                         <div>
-                          <div className="mono" style={{fontSize:13}}>EGP {p.paid.toLocaleString("en-US")}</div>
+                          <div className="mono" style={{fontSize:13}}>{fmtMoney(p.paid)}</div>
                           <div style={{height:3,background:"var(--ink-100)",borderRadius:999,overflow:"hidden",marginTop:3}}>
                             <div style={{height:"100%",width:`${pct*100}%`,background:pct===1?"var(--green)":"var(--amber)"}}/>
                           </div>
-                          {remaining>0 && <div className="muted" style={{fontSize:10.5,marginTop:2}}>متبقٍ <span className="mono">EGP {remaining.toLocaleString("en-US")}</span></div>}
+                          {remaining>0 && <div className="muted" style={{fontSize:10.5,marginTop:2}}>{tt("متبقٍ")} <span className="mono">{fmtMoney(remaining)}</span></div>}
                         </div>
                       </td>
                       <td>
                         <span className="pill" style={{fontSize:11}}>
-                          {p.method==="نقدي" && <I.Dollar size={11}/>}
-                          {p.method==="فيزا" && <I.CreditCard size={11}/>}
-                          {(p.method==="إنستاباي" || p.method==="فودافون كاش") && <I.Phone size={11}/>}
-                          {p.method==="تحويل بنكي" && <I.Layers size={11}/>}
-                          {p.method}
+                          {payMethodAr(p.method)==="نقدي" && <I.Dollar size={11}/>}
+                          {(payMethodAr(p.method)==="فيزا" || payMethodAr(p.method)==="بطاقة") && <I.CreditCard size={11}/>}
+                          {(payMethodAr(p.method)==="إنستاباي" || payMethodAr(p.method)==="فودافون كاش") && <I.Phone size={11}/>}
+                          {payMethodAr(p.method)==="تحويل بنكي" && <I.Layers size={11}/>}
+                          {payMethodLabel(p.method)}
                         </span>
                       </td>
                       <td><PayBadge s={p.status}/></td>
                       <td onClick={e=>e.stopPropagation()}>
-                        <button className="btn btn-ghost btn-icon" title="عرض" onClick={()=>setSelected(p)}><I.Eye size={13}/></button>
-                        <button className="btn btn-ghost btn-icon" title="تحميل" onClick={()=>{
-                          const rows=["الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة",`${p.id},${p.patient},${p.date},${p.amount},${p.paid},${p.method},${p.status}`];
+                        <button className="btn btn-ghost btn-icon" title={tt("عرض")} aria-label={tt("عرض")} onClick={()=>setSelected(p)}><I.Eye size={13}/></button>
+                        <button className="btn btn-ghost btn-icon" title={tt("تحميل")} aria-label={tt("تحميل")} onClick={()=>{
+                          const rows=[tt("الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة"),`${p.id},${p.patient},${p.date},${p.amount},${p.paid},${payMethodLabel(p.method)},${tt(p.status)}`];
                           downloadCsv(rows, `invoice-${p.id}.csv`);
                         }}><I.Download size={13}/></button>
                         <RowMenu size={13} items={[
-                          { label:"عرض التفاصيل", icon:<I.Eye size={13}/>, onClick:()=>setSelected(p) },
-                          { label:"طباعة", icon:<I.Print size={13}/>, onClick:()=>window.print() },
-                          { label:"تصدير CSV", icon:<I.Download size={13}/>, onClick:()=>{
-                            const rows=["الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة",`${p.id},${p.patient},${p.date},${p.amount},${p.paid},${p.method},${p.status}`];
+                          { label:tt("عرض التفاصيل"), icon:<I.Eye size={13}/>, onClick:()=>setSelected(p) },
+                          { label:tt("طباعة"), icon:<I.Print size={13}/>, onClick:()=>window.print() },
+                          { label:tt("تصدير CSV"), icon:<I.Download size={13}/>, onClick:()=>{
+                            const rows=[tt("الفاتورة,المريض,التاريخ,المبلغ,مدفوع,الطريقة,الحالة"),`${p.id},${p.patient},${p.date},${p.amount},${p.paid},${payMethodLabel(p.method)},${tt(p.status)}`];
                             downloadCsv(rows, `invoice-${p.id}.csv`);
-                            if(window.showToast)window.showToast("تم تصدير الفاتورة","success");
+                            if(window.showToast)window.showToast(tt("تم تصدير الفاتورة"),"success");
                           }},
-                          { label:"حذف", icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
-                            if (!window.confirm(`حذف الفاتورة ${p.id}؟`)) return;
+                          { label:tt("حذف"), icon:<I.X size={13}/>, danger:true, onClick:async ()=>{
+                            if (!window.confirm(tt("حذف الفاتورة {id}؟", { id: p.id }))) return;
                             try {
                               if (window.KineticData) await window.KineticData.remove("payments", p.invoice_id || p.id);
-                              if (window.showToast) window.showToast("تم حذف الفاتورة","success");
-                            } catch (e) { console.warn("delete invoice failed", e); if (window.showToast) window.showToast("تعذّر الحذف","error"); }
+                              if (window.showToast) window.showToast(tt("تم حذف الفاتورة"),"success");
+                            } catch (e) { console.warn("delete invoice failed", e); if (window.showToast) window.showToast(tt("تعذّر الحذف"),"error"); }
                           }},
                         ]}/>
                       </td>
@@ -1460,17 +1464,17 @@ function Payments({ go }) {
                   );
                 })}
               </tbody>
-            </table>
+            </CardTable>
             </div>
             {payload.count > PAGE_SIZE && (
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderTop:"1px solid var(--ink-100)",gap:8}}>
                 <div className="muted" style={{fontSize:12}}>
-                  {(page*PAGE_SIZE)+1}–{Math.min((page+1)*PAGE_SIZE, payload.count)} من {payload.count}
+                  {tt("{from}–{to} من {count}", { from: (page*PAGE_SIZE)+1, to: Math.min((page+1)*PAGE_SIZE, payload.count), count: payload.count })}
                 </div>
                 <div style={{display:"flex",gap:6}}>
-                  <button className="btn btn-secondary" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))} style={{padding:"5px 10px",fontSize:12}}>السابق</button>
+                  <button className="btn btn-secondary" disabled={page===0} onClick={()=>setPage(p=>Math.max(0,p-1))} style={{padding:"5px 10px",fontSize:12}}>{tt("السابق")}</button>
                   <div className="muted mono" style={{fontSize:12,padding:"5px 10px"}}>{page+1} / {totalPages}</div>
-                  <button className="btn btn-secondary" disabled={page>=totalPages-1} onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} style={{padding:"5px 10px",fontSize:12}}>التالي</button>
+                  <button className="btn btn-secondary" disabled={page>=totalPages-1} onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} style={{padding:"5px 10px",fontSize:12}}>{tt("التالي")}</button>
                 </div>
               </div>
             )}
@@ -1493,33 +1497,34 @@ function PaymentMethodsView() {
   const colors = ["#7BBDE8","#3A7FB5","#7E6BD3","#D49044","#3FA984","#BDD8E9"];
   const byMethod = {};
   DATA.payments.forEach(p => {
-    const m = p.method || p.payment_method || "—";
+    const m = payMethodAr(p.method || p.payment_method || "—");
     byMethod[m] = (byMethod[m] || 0) + (p.paid || 0);
   });
   const totalPaid = Object.values(byMethod).reduce((s,v)=>s+v, 0);
-  const data = Object.entries(byMethod).sort((a,b)=>b[1]-a[1]).map(([label, rev], i) => ({
-    label,
+  const data = Object.entries(byMethod).sort((a,b)=>b[1]-a[1]).map(([m, rev], i) => ({
+    key: m,
+    label: tt(m),
     v: totalPaid ? Math.round(rev/totalPaid*100) : 0,
     color: colors[i % colors.length],
-    revenue: rev.toLocaleString("en-US"),
+    revenue: rev,
   }));
   if (data.length === 0) {
-    return <EmptyState icon={<I.CreditCard size={22}/>} title="لا مدفوعات بعد" body="سيظهر توزيع طرق الدفع هنا بعد تسجيل الفواتير."/>;
+    return <EmptyState icon={<I.CreditCard size={22}/>} title={tt("لا مدفوعات بعد")} body={tt("سيظهر توزيع طرق الدفع هنا بعد تسجيل الفواتير.")}/>;
   }
   return (
     <div className="rgrid c-lg" style={{"--gtc":"1fr 1fr"}}>
       <div className="card card-pad">
-        <div className="h2" style={{marginBottom:18}}>الطريقة mix · this month</div>
-        <DonutChart data={data} size={200} centerLabel="ج.م محصلة" centerValue={totalPaid>=1000?`${(totalPaid/1000).toFixed(0)}K`:String(totalPaid)}/>
+        <div className="h2" style={{marginBottom:18}}>{tt("الطريقة mix · this month")}</div>
+        <DonutChart data={data} size={200} centerLabel={tt("ج.م محصلة")} centerValue={totalPaid>=1000?`${(totalPaid/1000).toFixed(0)}K`:String(totalPaid)}/>
       </div>
       <div className="card card-pad">
-        <div className="h2" style={{marginBottom:14}}>Revenue بواسطة method</div>
+        <div className="h2" style={{marginBottom:14}}>{tt("Revenue بواسطة method")}</div>
         {data.map(d=>(
-          <div key={d.label} style={{padding:"11px 0",borderBottom:"1px dashed var(--ink-100)",display:"flex",alignItems:"center",gap:10}}>
+          <div key={d.key} style={{padding:"11px 0",borderBottom:"1px dashed var(--ink-100)",display:"flex",alignItems:"center",gap:10}}>
             <span style={{width:8,height:8,borderRadius:3,background:d.color}}></span>
             <span style={{flex:1,fontSize:13}}>{d.label}</span>
-            <span className="mono" style={{fontSize:13,fontWeight:600}}>EGP {d.revenue}</span>
-            <span className="muted mono" style={{fontSize:11,minWidth:36,textAlign:"right"}}>{d.v}%</span>
+            <span className="mono" style={{fontSize:13,fontWeight:600}}>{fmtMoney(d.revenue)}</span>
+            <span className="muted mono" style={{fontSize:11,minWidth:36,textAlign:"start"}}>{d.v}%</span>
           </div>
         ))}
       </div>
@@ -1529,27 +1534,28 @@ function PaymentMethodsView() {
 
 function ReceiptsView() {
   return (
-    <EmptyState icon={<I.FileText size={22}/>} title="لا توجد إيصالات بعد" body="Receipts will appear here when مريض pay invoices. You can also upload paper receipts manually." action={<button className="btn btn-blue"><I.Upload size={13}/> رفع إيصال</button>}/>
+    <EmptyState icon={<I.FileText size={22}/>} title={tt("لا توجد إيصالات بعد")} body={tt("Receipts will appear here when مريض pay invoices. You can also upload paper receipts manually.")} action={<button className="btn btn-blue"><I.Upload size={13}/> {tt("رفع إيصال")}</button>}/>
   );
 }
 
 function InvoiceModal({ invoice, onClose }) {
   const clinic = window.CLINIC || {};
-  const clinicName = clinic.name || "العيادة";
-  const lineDesc = invoice.desc || "خدمات علاجية";
+  const clinicName = clinic.name || tt("العيادة");
+  const lineDesc = invoice.desc || tt("خدمات علاجية");
   const waPhone = String(clinic.phone || "").replace(/\D/g, "");
   return (
-    <Modal open onClose={onClose} title={`فاتورة ${invoice.id}`} width={680}
+    <Modal open onClose={onClose} title={tt("فاتورة {id}", { id: invoice.id })} width={680}
       footer={<>
-        <button className="btn btn-secondary" onClick={()=>window.print()}><I.Print size={13}/> طباعة</button>
+        <button className="btn btn-secondary" onClick={()=>window.print()}><I.Print size={13}/> {tt("طباعة")}</button>
         <button className="btn btn-secondary" onClick={()=>{
-          const rows=["البند,الكمية,السعر",`${lineDesc},1,${invoice.amount}`];
+          const rows=[tt("البند,الكمية,السعر"),`${lineDesc},1,${invoice.amount}`];
           downloadCsv(rows, `invoice-${invoice.id}.csv`);
-          if(window.showToast)window.showToast("تم تحميل الفاتورة","success");
-        }}><I.Download size={13}/> تحميل PDF</button>
+          if(window.showToast)window.showToast(tt("تم تحميل الفاتورة"),"success");
+        }}><I.Download size={13}/> {tt("تحميل PDF")}</button>
         <button className="btn btn-blue" disabled={!waPhone} onClick={()=>{
-          window.open(`https://wa.me/${waPhone}?text=فاتورة+${invoice.id}+بمبلغ+${invoice.amount}+جنيه+مصري`,"_blank");
-        }}><I.Send size={13}/> Send via واتساب</button>
+          const text = tt("فاتورة {id} بمبلغ {amount} جنيه مصري", { id: invoice.id, amount: invoice.amount }).replace(/ /g, "+");
+          window.open(`https://wa.me/${waPhone}?text=${text}`,"_blank");
+        }}><I.Send size={13}/> {tt("Send via واتساب")}</button>
       </>}>
       <div style={{padding:"clamp(14px, 3vw, 24px)",background:"var(--ink-50)",border:"1px solid var(--ink-200)",borderRadius:12}}>
         {/* header */}
@@ -1561,14 +1567,14 @@ function InvoiceModal({ invoice, onClose }) {
             </div>
             <div className="muted" style={{fontSize:12,lineHeight:1.5}}>
               {clinic.address && <>{clinic.address}<br/></>}
-              {clinic.tax_id && <>الرقم الضريبي {clinic.tax_id}<br/></>}
+              {clinic.tax_id && <>{tt("الرقم الضريبي {id}", { id: clinic.tax_id })}<br/></>}
               {clinic.email || ""}
             </div>
           </div>
-          <div style={{textAlign:"right"}}>
-            <div className="serif" style={{fontSize:30,lineHeight:1}}>فاتورة</div>
+          <div style={{textAlign:"start"}}>
+            <div className="serif" style={{fontSize:30,lineHeight:1}}>{tt("فاتورة")}</div>
             <div className="mono" style={{marginTop:4,fontSize:13}}>{invoice.id}</div>
-            <div className="muted" style={{fontSize:12,marginTop:6}}>صدرت في {invoice.date}</div>
+            <div className="muted" style={{fontSize:12,marginTop:6}}>{tt("صدرت في {date}", { date: invoice.date })}</div>
             <PayBadge s={invoice.status}/>
           </div>
         </div>
@@ -1576,15 +1582,15 @@ function InvoiceModal({ invoice, onClose }) {
         {/* bill to */}
         <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",marginBottom:24}}>
           <div>
-            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>فاتورة لـ</div>
+            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{tt("فاتورة لـ")}</div>
             <div style={{fontWeight:600}}>{invoice.patient}</div>
             {(() => {
               const row = DATA.patients.find(p => p.name === invoice.patient || (p.patient_id||p.id) === invoice.patient_id) || {};
-              return <div className="muted" style={{fontSize:12,lineHeight:1.5,marginTop:2}}>ملف {row.patient_id || row.id || "—"}<br/>{row.address || ""}{row.address ? <br/> : null}{row.phone || ""}</div>;
+              return <div className="muted" style={{fontSize:12,lineHeight:1.5,marginTop:2}}>{tt("ملف {id}", { id: row.patient_id || row.id || "—" })}<br/>{row.address || ""}{row.address ? <br/> : null}{row.phone || ""}</div>;
             })()}
           </div>
           <div>
-            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>فريق الرعاية</div>
+            <div className="muted" style={{fontSize:11,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{tt("فريق الرعاية")}</div>
             {(() => {
               const row = DATA.patients.find(p => p.name === invoice.patient || (p.patient_id||p.id) === invoice.patient_id) || {};
               return <>
@@ -1598,20 +1604,20 @@ function InvoiceModal({ invoice, onClose }) {
         {/* line items */}
         <div className="tbl-scroll" style={{background:"#fff",borderRadius:10,border:"1px solid var(--ink-200)",marginBottom:16}}>
           <table className="tbl" style={{fontSize:12.5,minWidth:420}}>
-            <thead><tr><th>البند</th><th style={{textAlign:"right"}}>الكمية</th><th style={{textAlign:"right"}}>السعر</th><th style={{textAlign:"right"}}>الإجمالي</th></tr></thead>
+            <thead><tr><th>{tt("البند")}</th><th style={{textAlign:"start"}}>{tt("الكمية")}</th><th style={{textAlign:"start"}}>{tt("السعر")}</th><th style={{textAlign:"start"}}>{tt("الإجمالي")}</th></tr></thead>
             <tbody>
-              <tr><td>{invoice.desc || "خدمات علاجية"}</td><td style={{textAlign:"right"}}>1</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString("en-US")}</td><td style={{textAlign:"right"}} className="mono">{(invoice.amount||0).toLocaleString("en-US")}</td></tr>
+              <tr><td>{lineDesc}</td><td style={{textAlign:"start"}}>1</td><td style={{textAlign:"start"}} className="mono">{fmtNumber(invoice.amount||0)}</td><td style={{textAlign:"start"}} className="mono">{fmtNumber(invoice.amount||0)}</td></tr>
             </tbody>
           </table>
         </div>
 
         <div style={{display:"flex",justifyContent:"flex-end"}}>
           <div style={{minWidth:240}}>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {(invoice.amount||0).toLocaleString("en-US")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">ض.ق.م (14%)</span><span className="mono">EGP 0.00</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid var(--ink-200)",marginTop:6}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:16}}>EGP {invoice.amount.toLocaleString("en-US")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">مدفوعة عبر {invoice.method}</span><span className="mono">EGP {invoice.paid.toLocaleString("en-US")}</span></div>
-            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5,color: invoice.amount-invoice.paid>0?"var(--amber)":"var(--green)"}}><span>الرصيد المستحق</span><span className="mono" style={{fontWeight:600}}>EGP {(invoice.amount-invoice.paid).toLocaleString("en-US")}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">{tt("المجموع الفرعي")}</span><span className="mono">{fmtMoney(invoice.amount||0)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">{tt("ض.ق.م (14%)")}</span><span className="mono">{fmtMoney(0, { minimumFractionDigits: 2 })}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid var(--ink-200)",marginTop:6}}><span style={{fontWeight:600}}>{tt("الإجمالي")}</span><span className="mono" style={{fontWeight:600,fontSize:16}}>{fmtMoney(invoice.amount)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5}}><span className="muted">{tt("مدفوعة عبر {method}", { method: payMethodLabel(invoice.method) })}</span><span className="mono">{fmtMoney(invoice.paid)}</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12.5,color: invoice.amount-invoice.paid>0?"var(--amber)":"var(--green)"}}><span>{tt("الرصيد المستحق")}</span><span className="mono" style={{fontWeight:600}}>{fmtMoney(invoice.amount-invoice.paid)}</span></div>
           </div>
         </div>
       </div>
@@ -1634,8 +1640,8 @@ function NewInvoiceModal({ onClose }) {
   const subtotal = items.reduce((s,i)=>s+i.qty*i.price,0);
 
   async function create() {
-    if (!patientId) { if (window.showToast) window.showToast("اختر مريضًا", "error"); return; }
-    if (subtotal <= 0) { if (window.showToast) window.showToast("أضف بندًا واحدًا على الأقل", "error"); return; }
+    if (!patientId) { if (window.showToast) window.showToast(tt("اختر مريضًا"), "error"); return; }
+    if (subtotal <= 0) { if (window.showToast) window.showToast(tt("أضف بندًا واحدًا على الأقل"), "error"); return; }
     try {
       const invoiceId = newRecordId("INV-");
       const row = {
@@ -1651,60 +1657,60 @@ function NewInvoiceModal({ onClose }) {
         due,
       };
       if (window.KineticData) await window.KineticData.upsert("payments", row);
-      if (window.showToast) window.showToast("تم إنشاء الفاتورة", "success");
+      if (window.showToast) window.showToast(tt("تم إنشاء الفاتورة"), "success");
       onClose();
     } catch (e) {
       console.warn("create invoice failed", e);
-      if (window.showToast) window.showToast("تعذّر إنشاء الفاتورة", "error");
+      if (window.showToast) window.showToast(tt("تعذّر إنشاء الفاتورة"), "error");
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="فاتورة جديدة" width={720}
+    <Modal open onClose={onClose} title={tt("فاتورة جديدة")} width={720}
       footer={<>
-        <button className="btn btn-secondary" onClick={onClose}>إلغاء</button>
-        <button className="btn btn-secondary" onClick={()=>{ if (window.showToast) window.showToast("تم حفظ المسودة","success"); onClose(); }}>حفظ المسودة</button>
-        <button className="btn btn-blue" onClick={create}><I.Check size={13}/> إنشاء الفاتورة</button>
+        <button className="btn btn-secondary" onClick={onClose}>{tt("إلغاء")}</button>
+        <button className="btn btn-secondary" onClick={()=>{ if (window.showToast) window.showToast(tt("تم حفظ المسودة"),"success"); onClose(); }}>{tt("حفظ المسودة")}</button>
+        <button className="btn btn-blue" onClick={create}><I.Check size={13}/> {tt("إنشاء الفاتورة")}</button>
       </>}>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:14,marginBottom:14}}>
-        <Field label="مريض" required>
+        <Field label={tt("مريض")} required>
           <PatientCombobox
             value={patientId}
             onChange={setPatientId}
             patients={patients}
-            placeholder={patients.length === 0 ? "لا يوجد مرضى" : "ابحث عن مريض بالاسم أو الرقم…"}
+            placeholder={patients.length === 0 ? tt("لا يوجد مرضى") : tt("ابحث عن مريض بالاسم أو الرقم…")}
             disabled={patients.length === 0}
           />
         </Field>
-        <Field label="التاريخ"><input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></Field>
-        <Field label="تاريخ الاستحقاق"><input className="input" type="date" value={due} onChange={e=>setDue(e.target.value)}/></Field>
-        <Field label="الدفع method">
+        <Field label={tt("التاريخ")}><input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)}/></Field>
+        <Field label={tt("تاريخ الاستحقاق")}><input className="input" type="date" value={due} onChange={e=>setDue(e.target.value)}/></Field>
+        <Field label={tt("الدفع method")}>
           <select className="input" value={method} onChange={e=>setMethod(e.target.value)}>
-            <option>نقدي</option><option>فيزا</option><option>إنستاباي</option><option>فودافون كاش</option><option>تحويل بنكي</option>
+            {PAY_METHOD_VALUES.map(m => <option key={m} value={m}>{tt(m)}</option>)}
           </select>
         </Field>
       </div>
 
-      <div className="label">بنود الفاتورة</div>
+      <div className="label">{tt("بنود الفاتورة")}</div>
       <div className="card" style={{padding:0,boxShadow:"none",marginBottom:10}}>
         {items.map((it,i)=>(
           <div key={i} className="rgrid inv-item-row" style={{padding:10,"--gtc":"1fr 80px 100px 100px 28px",gap:10,alignItems:"center",borderBottom:i<items.length-1?"1px solid var(--ink-100)":"none"}}>
             <input className="input" value={it.name} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
             <input className="input" type="number" value={it.qty} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,qty:+e.target.value}:x))}/>
             <input className="input mono" type="number" value={it.price} onChange={e=>setItems(items.map((x,j)=>j===i?{...x,price:+e.target.value}:x))}/>
-            <span className="mono" style={{textAlign:"right",fontWeight:600}}>EGP {(it.qty*it.price).toLocaleString("en-US")}</span>
+            <span className="mono" style={{textAlign:"start",fontWeight:600}}>{fmtMoney(it.qty*it.price)}</span>
             <button className="btn btn-ghost btn-icon" onClick={()=>setItems(items.filter((_,j)=>j!==i))}><I.X size={13}/></button>
           </div>
         ))}
       </div>
-      <button className="btn btn-secondary" onClick={()=>setItems([...items,{name:"",qty:1,price:0}])} style={{fontSize:12}}><I.Plus size={12}/> إضافة بند</button>
+      <button className="btn btn-secondary" onClick={()=>setItems([...items,{name:"",qty:1,price:0}])} style={{fontSize:12}}><I.Plus size={12}/> {tt("إضافة بند")}</button>
 
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:18}}>
         <div style={{minWidth:240,padding:14,background:"var(--ink-50)",borderRadius:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">المجموع الفرعي</span><span className="mono">EGP {subtotal.toLocaleString("en-US")}</span></div>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">ض.ق.م (14%)</span><span className="mono">EGP 0</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">{tt("المجموع الفرعي")}</span><span className="mono">{fmtMoney(subtotal)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}><span className="muted">{tt("ض.ق.م (14%)")}</span><span className="mono">{fmtMoney(0)}</span></div>
           <hr className="sep" style={{margin:"8px 0"}}/>
-          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600}}>الإجمالي</span><span className="mono" style={{fontWeight:600,fontSize:18}}>EGP {subtotal.toLocaleString("en-US")}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontWeight:600}}>{tt("الإجمالي")}</span><span className="mono" style={{fontWeight:600,fontSize:18}}>{fmtMoney(subtotal)}</span></div>
         </div>
       </div>
     </Modal>
@@ -1718,61 +1724,61 @@ function Packages({ go }) {
     const next = { ...p, active: !p.active };
     try { await window.KineticData.upsert("packages", next); }
     catch (e) { console.warn("toggle package failed", e); }
-    if (window.showToast) window.showToast(next.active ? `تم تفعيل ${p.name}` : `تم إيقاف ${p.name}`, "success");
+    if (window.showToast) window.showToast(next.active ? tt("تم تفعيل {name}", { name: p.name }) : tt("تم إيقاف {name}", { name: p.name }), "success");
   };
   return (
     <Page>
       <div className="page-head">
         <div>
-          <div className="crumb"><span>الرئيسية</span><I.Chevron size={11}/><span>الباقات</span></div>
-          <h1 className="h1">باقات العلاج</h1>
-          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{DATA.packages.filter(p=>p.active).length} نشط باقة</div>
+          <div className="crumb"><span>{tt("الرئيسية")}</span><I.Chevron size={11}/><span>{tt("الباقات")}</span></div>
+          <h1 className="h1">{tt("باقات العلاج")}</h1>
+          <div className="muted" style={{fontSize:13.5,marginTop:4}}>{tt("{n} نشط باقة", { n: DATA.packages.filter(p=>p.active).length })}</div>
         </div>
-        <button className="btn btn-blue" onClick={()=>setEditing({mode:"new"})}><I.Plus size={14}/> باقة جديدة</button>
+        <button className="btn btn-blue" onClick={()=>setEditing({mode:"new"})}><I.Plus size={14}/> {tt("باقة جديدة")}</button>
       </div>
 
       <div className="grid-3">
         {DATA.packages.map(p=>(
           <div key={p.id} className="card" style={{padding:0,overflow:"hidden",opacity:p.active?1:.6,position:"relative"}}>
             <div style={{height:90,background:`linear-gradient(135deg, ${p.color}, ${p.color}99)`,position:"relative",padding:18}}>
-              {p.popular && <span style={{position:"absolute",top:14,right:14,background:"#fff",color:p.color,padding:"3px 10px",borderRadius:999,fontSize:11,fontWeight:600,boxShadow:"var(--shadow-sm)"}}>الأكثر طلبًا</span>}
+              {p.popular && <span style={{position:"absolute",top:14,insetInlineStart:14,background:"#fff",color:p.color,padding:"3px 10px",borderRadius:999,fontSize:11,fontWeight:600,boxShadow:"var(--shadow-sm)"}}>{tt("الأكثر طلبًا")}</span>}
               <div className="mono" style={{color:"#fff",opacity:.8,fontSize:10.5,letterSpacing:".06em",textTransform:"uppercase"}}>{p.id}</div>
               <div style={{color:"#fff",fontWeight:600,fontSize:18,marginTop:4,letterSpacing:"-.005em"}}>{p.name}</div>
             </div>
             <div style={{padding:18}}>
               <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:12}}>
-                <span className="mono" style={{fontSize:30,fontWeight:600,letterSpacing:"-.01em"}}>EGP {p.price.toLocaleString("en-US")}</span>
-                <span className="muted" style={{fontSize:12}}>/ للباقة</span>
+                <span className="mono" style={{fontSize:30,fontWeight:600,letterSpacing:"-.01em"}}>{fmtMoney(p.price)}</span>
+                <span className="muted" style={{fontSize:12}}>{tt("/ للباقة")}</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> {p.sessions} جلسة{p.sessions>1?"s":""} متضمنة</div>
-                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> تقييم أولي مجاني</div>
-                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> صالحة لمدة 90 يوم</div>
-                {p.sessions>=10 && <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> التقدّم reports متضمنة</div>}
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> {tt("{n} جلسة{s} متضمنة", { n: p.sessions, s: p.sessions>1?"s":"" })}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> {tt("تقييم أولي مجاني")}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> {tt("صالحة لمدة 90 يوم")}</div>
+                {p.sessions>=10 && <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12.5}}><I.Check size={13} style={{color:p.color}}/> {tt("التقدّم reports متضمنة")}</div>}
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,marginBottom:14}}>
-                <span className="muted">مبيعة هذا الشهر</span>
+                <span className="muted">{tt("مبيعة هذا الشهر")}</span>
                 <span className="mono" style={{fontWeight:600}}>{p.sold}</span>
               </div>
               <div style={{display:"flex",gap:6}}>
-                <button className="btn btn-secondary" style={{flex:1,justifyContent:"center"}} onClick={()=>setEditing(p)}><I.Edit size={12}/> تعديل</button>
+                <button className="btn btn-secondary" style={{flex:1,justifyContent:"center"}} onClick={()=>setEditing(p)}><I.Edit size={12}/> {tt("تعديل")}</button>
                 <RowMenu size={14} items={[
-                  { label:"تعديل الباقة", icon:<I.Edit size={13}/>, onClick:()=>setEditing(p) },
-                  { label:p.active?"إيقاف الباقة":"تفعيل الباقة", icon:<I.Check size={13}/>, onClick:()=>toggleActive(p) },
-                  { label:"مضاعفة", icon:<I.Plus size={13}/>, onClick:async()=>{
-                    const clone = { ...p, id: newRecordId((p.id||"PK-")+"-Copy-"), name:p.name+" — نسخة", sold:0 };
+                  { label:tt("تعديل الباقة"), icon:<I.Edit size={13}/>, onClick:()=>setEditing(p) },
+                  { label:p.active?tt("إيقاف الباقة"):tt("تفعيل الباقة"), icon:<I.Check size={13}/>, onClick:()=>toggleActive(p) },
+                  { label:tt("مضاعفة"), icon:<I.Plus size={13}/>, onClick:async()=>{
+                    const clone = { ...p, id: newRecordId((p.id||"PK-")+"-Copy-"), name:tt("{name} — نسخة", { name: p.name }), sold:0 };
                     try { await window.KineticData.upsert("packages", clone); }
                     catch (e) { console.warn("clone package failed", e); }
-                    if (window.showToast) window.showToast(`تم نسخ ${p.name}`,"success");
+                    if (window.showToast) window.showToast(tt("تم نسخ {name}", { name: p.name }),"success");
                   }},
-                  { label:"حذف الباقة", icon:<I.X size={13}/>, danger:true, onClick:async()=>{
-                    if (!window.confirm(`حذف ${p.name}؟`)) return;
+                  { label:tt("حذف الباقة"), icon:<I.X size={13}/>, danger:true, onClick:async()=>{
+                    if (!window.confirm(tt("حذف {name}؟", { name: p.name }))) return;
                     try { await window.KineticData.remove("packages", p.id); }
                     catch (e) { console.warn("delete package failed", e); }
-                    if (window.showToast) window.showToast(`تم حذف ${p.name}`,"success");
+                    if (window.showToast) window.showToast(tt("تم حذف {name}", { name: p.name }),"success");
                   }},
                 ]}/>
-                <button onClick={()=>toggleActive(p)} className={`switch ${p.active?"on":""}`} style={{marginLeft:"auto",border:"none",padding:0,background:"transparent",cursor:"pointer"}} title={p.active?"إيقاف الباقة":"تفعيل الباقة"}>
+                <button onClick={()=>toggleActive(p)} className={`switch ${p.active?"on":""}`} style={{marginInlineStart:"auto",border:"none",padding:0,background:"transparent",cursor:"pointer"}} title={p.active?tt("إيقاف الباقة"):tt("تفعيل الباقة")} aria-label={p.active?tt("إيقاف الباقة"):tt("تفعيل الباقة")}>
                   <div className="knob"></div>
                 </button>
               </div>
@@ -1782,18 +1788,18 @@ function Packages({ go }) {
       </div>
 
       {editing && (
-        <Modal open onClose={()=>setEditing(null)} title={editing.mode==="new"?"باقة جديدة":`تعديل ${editing.name}`}
+        <Modal open onClose={()=>setEditing(null)} title={editing.mode==="new"?tt("باقة جديدة"):tt("تعديل {name}", { name: editing.name })}
           footer={<>
-            <button className="btn btn-secondary" onClick={()=>setEditing(null)}>إلغاء</button>
-            <button className="btn btn-blue" onClick={()=>setEditing(null)}><I.Check size={13}/> حفظ الباقة</button>
+            <button className="btn btn-secondary" onClick={()=>setEditing(null)}>{tt("إلغاء")}</button>
+            <button className="btn btn-blue" onClick={()=>setEditing(null)}><I.Check size={13}/> {tt("حفظ الباقة")}</button>
           </>}>
           <div className="rgrid c-sm" style={{"--gtc":"repeat(2,1fr)",gap:14}}>
-            <Field label="الاسم" required span={2}><input className="input" defaultValue={editing.name||""} placeholder="مثال: الباقة الأساسية 10"/></Field>
-            <Field label="الجلسات"><input className="input" type="number" defaultValue={editing.sessions||""}/></Field>
-            <Field label="السعر (ج.م)"><input className="input" type="number" defaultValue={editing.price||""}/></Field>
-            <Field label="اللون"><input className="input" type="color" defaultValue={editing.color||"#7BBDE8"}/></Field>
-            <Field label="الصلاحية (أيام)"><input className="input" type="number" defaultValue="90"/></Field>
-            <Field label="الوصف" span={2}><textarea className="input" style={{height:70,padding:10}} placeholder="ملاحظات داخلية"/></Field>
+            <Field label={tt("الاسم")} required span={2}><input className="input" defaultValue={editing.name||""} placeholder={tt("مثال: الباقة الأساسية 10")}/></Field>
+            <Field label={tt("الجلسات")}><input className="input" type="number" defaultValue={editing.sessions||""}/></Field>
+            <Field label={tt("السعر (ج.م)")}><input className="input" type="number" defaultValue={editing.price||""}/></Field>
+            <Field label={tt("اللون")}><input className="input" type="color" defaultValue={editing.color||"#7BBDE8"}/></Field>
+            <Field label={tt("الصلاحية (أيام)")}><input className="input" type="number" defaultValue="90"/></Field>
+            <Field label={tt("الوصف")} span={2}><textarea className="input" style={{height:70,padding:10}} placeholder={tt("ملاحظات داخلية")}/></Field>
           </div>
         </Modal>
       )}
@@ -1810,11 +1816,11 @@ function Packages({ go }) {
 // mode). No fixture values are ever displayed as real.
 
 const QP_METHODS = [
-  { id: "cash",           label: "نقدي",         icon: "Dollar" },
-  { id: "visa",           label: "فيزا",         icon: "CreditCard" },
-  { id: "instapay",       label: "إنستاباي",     icon: "Phone" },
-  { id: "vodafone_cash",  label: "فودافون كاش",  icon: "Phone" },
-  { id: "bank_transfer",  label: "تحويل بنكي",   icon: "Layers" },
+  { id: "cash",           label: tt("نقدي"),         icon: "Dollar" },
+  { id: "visa",           label: tt("فيزا"),         icon: "CreditCard" },
+  { id: "instapay",       label: tt("إنستاباي"),     icon: "Phone" },
+  { id: "vodafone_cash",  label: tt("فودافون كاش"),  icon: "Phone" },
+  { id: "bank_transfer",  label: tt("تحويل بنكي"),   icon: "Layers" },
 ];
 
 // PRD Section 6 — reference numbers appear on card/wallet/transfer payments.
@@ -1822,7 +1828,7 @@ const QP_REF_METHODS = new Set(["visa", "instapay", "vodafone_cash", "bank_trans
 
 function qpMethodLabel(id) {
   const m = QP_METHODS.find(x => x.id === id);
-  return m ? m.label : id;
+  return m ? m.label : payMethodLabel(id);
 }
 
 // Selection key so appointments/invoices/subscriptions with the same
@@ -1882,7 +1888,7 @@ function QuickPaymentModal({ onClose, onDone }) {
       setFin(f);
     } catch (e) {
       console.warn("load financials failed", e);
-      setError("تعذّر تحميل البيانات المالية");
+      setError(tt("تعذّر تحميل البيانات المالية"));
     } finally { setLoading(false); }
   }
 
@@ -1932,7 +1938,7 @@ function QuickPaymentModal({ onClose, onDone }) {
     if (QP_REF_METHODS.has(method) && !reference.trim() && !txId.trim()) {
       // Reference isn't strictly required by the schema, but the receptionist
       // is asking for card/wallet — flag missing reference as a soft prompt.
-      if (!window.confirm("لم يُدخل رقم مرجعي — هل تريد المتابعة؟")) return;
+      if (!window.confirm(tt("لم يُدخل رقم مرجعي — هل تريد المتابعة؟"))) return;
     }
     setSaving(true);
     setError("");
@@ -1948,7 +1954,7 @@ function QuickPaymentModal({ onClose, onDone }) {
         notes: notes.trim(),
         allocations,
       });
-      if (!res.ok) { setError(res.error || "تعذّر تسجيل الدفع"); setSaving(false); return; }
+      if (!res.ok) { setError(res.error || tt("تعذّر تسجيل الدفع")); setSaving(false); return; }
       // Snapshot everything needed for the receipt BEFORE state resets.
       setReceipt({
         payment_id: res.payment_id,
@@ -1967,10 +1973,10 @@ function QuickPaymentModal({ onClose, onDone }) {
         cashier: (window.ME && window.ME.name) || "—",
         date: new Date().toISOString(),
       });
-      if (window.showToast) window.showToast(`تم تسجيل الدفع (${res.receipt_no})`, "success");
+      if (window.showToast) window.showToast(tt("تم تسجيل الدفع ({no})", { no: res.receipt_no }), "success");
     } catch (e) {
       console.warn("quick payment failed", e);
-      setError(e.message || "تعذّر تسجيل الدفع");
+      setError(e.message || tt("تعذّر تسجيل الدفع"));
     } finally { setSaving(false); }
   }
 
@@ -1987,32 +1993,32 @@ function QuickPaymentModal({ onClose, onDone }) {
   // ── Confirmation overlay ──────────────────────────────────
   if (confirming) {
     return (
-      <Modal open onClose={() => setConfirming(false)} title="تأكيد الدفع" width={520}
+      <Modal open onClose={() => setConfirming(false)} title={tt("تأكيد الدفع")} width={520}
         footer={<>
-          <button className="btn btn-ghost" onClick={() => setConfirming(false)} disabled={saving}>رجوع</button>
+          <button className="btn btn-ghost" onClick={() => setConfirming(false)} disabled={saving}>{tt("رجوع")}</button>
           <button className="btn btn-blue" disabled={saving || !readyToConfirm} onClick={confirmPayment}>
             {saving ? <span className="spin" style={{width:14,height:14,border:"2px solid #fff",borderTopColor:"transparent",borderRadius:"50%"}}/>
-                    : <><I.Check size={13}/> تأكيد الدفع</>}
+                    : <><I.Check size={13}/> {tt("تأكيد الدفع")}</>}
           </button>
         </>}>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <QpSummaryRow label="المريض" value={patient.name} sub={patient.patient_id || patient.id}/>
+          <QpSummaryRow label={tt("المريض")} value={patient.name} sub={patient.patient_id || patient.id}/>
           <div className="card" style={{padding:12,background:"var(--ink-50)"}}>
-            <div className="muted" style={{fontSize:11,marginBottom:6,letterSpacing:".05em",textTransform:"uppercase"}}>العناصر المحددة</div>
+            <div className="muted" style={{fontSize:11,marginBottom:6,letterSpacing:".05em",textTransform:"uppercase"}}>{tt("العناصر المحددة")}</div>
             {selected.map(a => (
               <div key={qpSelKey(a.type, a.id)} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}}>
                 <span>{a.label}</span>
-                <span className="mono">EGP {Number(a.amount).toLocaleString("en-US")}</span>
+                <span className="mono">{fmtMoney(a.amount)}</span>
               </div>
             ))}
           </div>
-          <QpSummaryRow label="طريقة الدفع" value={qpMethodLabel(method)}/>
+          <QpSummaryRow label={tt("طريقة الدفع")} value={qpMethodLabel(method)}/>
           {(reference || txId) && (
-            <QpSummaryRow label="رقم مرجعي" value={reference || txId}/>
+            <QpSummaryRow label={tt("رقم مرجعي")} value={reference || txId}/>
           )}
           <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:10}}>
-            <span style={{fontWeight:600}}>الإجمالي</span>
-            <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {total.toLocaleString("en-US")}</span>
+            <span style={{fontWeight:600}}>{tt("الإجمالي")}</span>
+            <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>{fmtMoney(total)}</span>
           </div>
           {error && <div style={{fontSize:12,color:"#A8443A"}}>{error}</div>}
         </div>
@@ -2022,14 +2028,14 @@ function QuickPaymentModal({ onClose, onDone }) {
 
   // ── Main modal ────────────────────────────────────────────
   return (
-    <Modal open onClose={onClose} title="دفع سريع" width={760}
+    <Modal open onClose={onClose} title={tt("دفع سريع")} width={760}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إلغاء</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         {patient && (
-          <button className="btn btn-secondary" onClick={clearPatient}>مريض آخر</button>
+          <button className="btn btn-secondary" onClick={clearPatient}>{tt("مريض آخر")}</button>
         )}
         <button className="btn btn-blue" disabled={!readyToConfirm} onClick={() => setConfirming(true)}>
-          <I.ArrowLeft size={13}/> مراجعة الدفع (EGP {total.toLocaleString("en-US")})
+          {IS_RTL ? <I.ArrowLeft size={13}/> : <I.ArrowRight size={13}/>} {tt("مراجعة الدفع ({total})", { total: fmtMoney(total) })}
         </button>
       </>}>
       {!patient && (
@@ -2045,44 +2051,44 @@ function QuickPaymentModal({ onClose, onDone }) {
           {loading && (
             <div className="muted" style={{padding:"24px 0",textAlign:"center",fontSize:13}}>
               <span className="spin" style={{display:"inline-block",width:16,height:16,border:"2px solid var(--ink-200)",borderTopColor:"var(--blue-500)",borderRadius:"50%",marginInlineEnd:8,verticalAlign:"middle"}}/>
-              جارٍ تحميل الرصيد المالي…
+              {tt("جارٍ تحميل الرصيد المالي…")}
             </div>
           )}
           {!loading && !anyFinancialItems && (
-            <EmptyState icon={<I.Check size={22}/>} title="لا مستحقات على المريض"
-              body="لا مواعيد أو فواتير أو اشتراكات بها رصيد متبقٍ."/>
+            <EmptyState icon={<I.Check size={22}/>} title={tt("لا مستحقات على المريض")}
+              body={tt("لا مواعيد أو فواتير أو اشتراكات بها رصيد متبقٍ.")}/>
           )}
           {!loading && anyFinancialItems && (
             <>
               <QpItemsSection
-                title="مواعيد غير مدفوعة" icon={<I.Calendar size={14}/>}
+                title={tt("مواعيد غير مدفوعة")} icon={<I.Calendar size={14}/>}
                 items={fin.appointments.map(a => ({
                   key: a.booking_id || a.id,
-                  primary: `${a.type || "جلسة"} — ${a.date || "—"} ${a.time || ""}`.trim(),
-                  secondary: `${a.dr || a.doctor_name || ""} ${a.th ? "· " + a.th : ""}`.trim() || "موعد",
+                  primary: `${a.type || tt("جلسة")} — ${a.date || "—"} ${a.time || ""}`.trim(),
+                  secondary: `${a.dr || a.doctor_name || ""} ${a.th ? "· " + a.th : ""}`.trim() || tt("موعد"),
                   remaining: a.remaining, badge: "b-amber",
                 }))}
                 type="appointment" picks={picks} toggle={toggle} setAmount={setAmount}
               />
               <QpItemsSection
-                title="فواتير غير مدفوعة" icon={<I.FileText size={14}/>}
+                title={tt("فواتير غير مدفوعة")} icon={<I.FileText size={14}/>}
                 items={fin.invoices.map(v => ({
                   key: v.invoice_id || v.id,
-                  primary: `فاتورة ${v.invoice_id || v.id}`,
-                  secondary: `إجمالي EGP ${Number(v.amount||0).toLocaleString("en-US")} · مدفوع EGP ${Number(v.paid||0).toLocaleString("en-US")}`,
+                  primary: tt("فاتورة {id}", { id: v.invoice_id || v.id }),
+                  secondary: tt("إجمالي {total} · مدفوع {paid}", { total: fmtMoney(v.amount), paid: fmtMoney(v.paid) }),
                   remaining: v.remaining, badge: "b-blue",
                 }))}
                 type="invoice" picks={picks} toggle={toggle} setAmount={setAmount}
               />
               <QpItemsSection
-                title="اشتراكات وباقات" icon={<I.Package size={14}/>}
+                title={tt("اشتراكات وباقات")} icon={<I.Package size={14}/>}
                 items={fin.subscriptions.map(s => {
                   const remainingSessions = Math.max(0, (s.total_sessions||0) - (s.used_sessions||0));
                   return {
                     key: s.subscription_id || s.id,
-                    primary: s.package_name || "باقة",
-                    secondary: `${s.used_sessions||0}/${s.total_sessions||0} جلسات · متبقٍ ${remainingSessions}` +
-                               (s.expires_at ? ` · تنتهي ${s.expires_at}` : ""),
+                    primary: s.package_name || tt("باقة"),
+                    secondary: tt("{used}/{total} جلسات · متبقٍ {left}", { used: s.used_sessions||0, total: s.total_sessions||0, left: remainingSessions }) +
+                               (s.expires_at ? " · " + tt("تنتهي {date}", { date: s.expires_at }) : ""),
                     remaining: s.remaining, badge: "b-violet",
                     disabled: s.remaining <= 0,
                   };
@@ -2103,13 +2109,13 @@ function QuickPaymentModal({ onClose, onDone }) {
                 border:"1px solid var(--blue-100)",borderRadius:12
               }}>
                 <div>
-                  <div className="muted" style={{fontSize:11.5,letterSpacing:".05em",textTransform:"uppercase"}}>الإجمالي المستحق</div>
-                  <div className="mono" style={{fontSize:22,fontWeight:700,color:"var(--blue-900)"}}>EGP {total.toLocaleString("en-US")}</div>
+                  <div className="muted" style={{fontSize:11.5,letterSpacing:".05em",textTransform:"uppercase"}}>{tt("الإجمالي المستحق")}</div>
+                  <div className="mono" style={{fontSize:22,fontWeight:700,color:"var(--blue-900)"}}>{fmtMoney(total)}</div>
                 </div>
-                <div style={{textAlign:"right",fontSize:12,color:"var(--ink-500)"}}>
-                  {selected.length} عنصر محدد
-                  {hasOverpay && <div style={{color:"#A8443A",marginTop:4}}>مبلغ يتجاوز المتبقي</div>}
-                  {!hasOverpay && hasZero && <div style={{color:"#A8443A",marginTop:4}}>أدخل مبلغًا أكبر من صفر</div>}
+                <div style={{textAlign:"start",fontSize:12,color:"var(--ink-500)"}}>
+                  {tt("{n} عنصر محدد", { n: selected.length })}
+                  {hasOverpay && <div style={{color:"#A8443A",marginTop:4}}>{tt("مبلغ يتجاوز المتبقي")}</div>}
+                  {!hasOverpay && hasZero && <div style={{color:"#A8443A",marginTop:4}}>{tt("أدخل مبلغًا أكبر من صفر")}</div>}
                 </div>
               </div>
 
@@ -2127,13 +2133,13 @@ function QpPatientSearch({ query, setQuery, results, searching, onPick }) {
   return (
     <div>
       <div className="muted" style={{fontSize:12.5,marginBottom:10,padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:8}}>
-        ابحث عن المريض بالاسم، رقم الهاتف، أو رقم الملف — ثم اختره لعرض المستحقات.
+        {tt("ابحث عن المريض بالاسم، رقم الهاتف، أو رقم الملف — ثم اختره لعرض المستحقات.")}
       </div>
       <div style={{position:"relative",marginBottom:12}}>
         <I.Search size={15} style={{position:"absolute",insetInlineStart:12,top:"50%",transform:"translateY(-50%)",color:"var(--ink-400)"}}/>
         <input className="input"
           style={{paddingInlineStart:34, height:44, fontSize:14}}
-          placeholder="مثال: هناء، +20100…، P-10241"
+          placeholder={tt("مثال: هناء، +20100…، P-10241")} aria-label={tt("ابحث عن المريض")}
           value={query} onChange={e => setQuery(e.target.value)} autoFocus/>
         {searching && (
           <span className="spin" style={{position:"absolute",insetInlineEnd:12,top:"50%",transform:"translateY(-50%)",width:14,height:14,border:"2px solid var(--ink-200)",borderTopColor:"var(--blue-500)",borderRadius:"50%"}}/>
@@ -2141,7 +2147,7 @@ function QpPatientSearch({ query, setQuery, results, searching, onPick }) {
       </div>
       {query.trim() && !searching && results.length === 0 && (
         <div className="muted" style={{textAlign:"center",padding:"32px 12px",fontSize:13}}>
-          لا نتائج مطابقة.
+          {tt("لا نتائج مطابقة.")}
         </div>
       )}
       {results.length > 0 && (
@@ -2160,7 +2166,7 @@ function QpPatientSearch({ query, setQuery, results, searching, onPick }) {
                   {p.phone || "—"} · <span className="mono">{p.patient_id || p.id}</span>
                 </div>
               </div>
-              <I.ArrowLeft size={14} style={{color:"var(--ink-400)"}}/>
+              {IS_RTL ? <I.ArrowLeft size={14} style={{color:"var(--ink-400)"}}/> : <I.ArrowRight size={14} style={{color:"var(--ink-400)"}}/>}
             </button>
           ))}
         </div>
@@ -2183,7 +2189,7 @@ function QpPatientChip({ patient, onClear }) {
           {patient.phone || "—"} · <span className="mono">{patient.patient_id || patient.id}</span>
         </div>
       </div>
-      <button className="btn btn-ghost" style={{fontSize:12}} onClick={onClear}>تغيير</button>
+      <button className="btn btn-ghost" style={{fontSize:12}} onClick={onClear}>{tt("تغيير")}</button>
     </div>
   );
 }
@@ -2209,7 +2215,7 @@ function QpItemsSection({ title, icon, items, type, picks, toggle, setAmount }) 
               borderRadius:10, background: on ? "var(--blue-50)" : "#fff",
               opacity: it.disabled ? 0.55 : 1,
             }}>
-              <input type="checkbox" checked={on} disabled={it.disabled}
+              <input type="checkbox" checked={on} disabled={it.disabled} aria-label={it.primary}
                 onChange={() => toggle(type, it.key, it.remaining, it.primary)}
                 style={{width:16,height:16,cursor: it.disabled ? "not-allowed":"pointer"}}/>
               <div style={{flex:1,minWidth:0}}>
@@ -2218,19 +2224,19 @@ function QpItemsSection({ title, icon, items, type, picks, toggle, setAmount }) 
               </div>
               {on ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span className="muted" style={{fontSize:11}}>مبلغ الدفع</span>
-                  <input className="input mono"
+                  <span className="muted" style={{fontSize:11}}>{tt("مبلغ الدفع")}</span>
+                  <input className="input mono" aria-label={tt("مبلغ الدفع")}
                     style={{width:120,textAlign:"end"}}
                     type="number" min="0" step="1" max={it.remaining}
                     value={picks[key].amount === "" ? "" : picks[key].amount}
                     onChange={e => setAmount(key, e.target.value)}/>
                   <span className={"badge " + (it.badge || "b-grey")}>
-                    من {Number(it.remaining||0).toLocaleString("en-US")}
+                    {tt("من {n}", { n: fmtNumber(it.remaining||0) })}
                   </span>
                 </div>
               ) : (
                 <div className="mono" style={{fontSize:13,fontWeight:600,minWidth:110,textAlign:"end"}}>
-                  EGP {Number(it.remaining||0).toLocaleString("en-US")}
+                  {fmtMoney(it.remaining)}
                 </div>
               )}
             </div>
@@ -2245,13 +2251,13 @@ function QpItemsSection({ title, icon, items, type, picks, toggle, setAmount }) 
 function QpPaymentDetails({ method, setMethod, reference, setReference, txId, setTxId, notes, setNotes }) {
   return (
     <div className="card" style={{padding:12}}>
-      <div className="h3" style={{marginBottom:10}}>طريقة الدفع</div>
+      <div className="h3" style={{marginBottom:10}}>{tt("طريقة الدفع")}</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:12}}>
         {QP_METHODS.map(m => {
           const Ic = (window.I && window.I[m.icon]) || window.I.Dollar;
           const on = method === m.id;
           return (
-            <button key={m.id} type="button" onClick={() => setMethod(m.id)}
+            <button key={m.id} type="button" onClick={() => setMethod(m.id)} aria-pressed={on ? "true" : "false"}
               style={{
                 display:"flex",alignItems:"center",gap:8,padding:"10px 12px",
                 border:"1px solid " + (on ? "var(--blue-500)" : "var(--ink-200)"),
@@ -2266,21 +2272,21 @@ function QpPaymentDetails({ method, setMethod, reference, setReference, txId, se
       </div>
       {QP_REF_METHODS.has(method) && (
         <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:10,marginBottom:8}}>
-          <Field label="رقم مرجعي (اختياري)">
+          <Field label={tt("رقم مرجعي (اختياري)")}>
             <input className="input" value={reference} onChange={e => setReference(e.target.value)}
-              placeholder="آخر 4 أرقام / رقم العملية"/>
+              placeholder={tt("آخر 4 أرقام / رقم العملية")}/>
           </Field>
-          <Field label="رقم المعاملة (اختياري)">
+          <Field label={tt("رقم المعاملة (اختياري)")}>
             <input className="input" value={txId} onChange={e => setTxId(e.target.value)}
               placeholder="Transaction ID"/>
           </Field>
         </div>
       )}
-      <Field label="ملاحظات (اختياري)">
+      <Field label={tt("ملاحظات (اختياري)")}>
         <textarea className="input" rows={2}
           style={{padding:10, resize:"vertical"}}
           value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="أي تفاصيل تخص عملية الدفع…"/>
+          placeholder={tt("أي تفاصيل تخص عملية الدفع…")}/>
       </Field>
     </div>
   );
@@ -2301,17 +2307,19 @@ function QpSummaryRow({ label, value, sub }) {
 // ── Receipt (post-success) ───────────────────────────────────
 function QuickPaymentReceipt({ r, onClose }) {
   const clinic = window.CLINIC || {};
-  const clinicName = clinic.name || "العيادة";
-  const dateStr = new Date(r.date).toLocaleString("ar-EG-u-nu-latn");
+  const clinicName = clinic.name || tt("العيادة");
+  const dateStr = fmtDate(r.date, { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
 
   function printReceipt() {
     const esc = window.escHtml || (x => String(x||""));
     const rows = r.allocations.map(a => `
       <tr>
         <td>${esc(a.label || a.type + " " + a.id)}</td>
-        <td style="text-align:end" class="mono">EGP ${Number(a.amount||0).toLocaleString("en-US")}</td>
+        <td style="text-align:end" class="mono">${esc(fmtMoney(a.amount))}</td>
       </tr>`).join("");
-    const body = `
+    // printHTML writes a right-to-left page; in English the receipt itself
+    // is wrapped left-to-right with its table cells aligned to the start.
+    const body = `${IS_RTL ? "" : '<style>.receipt-ltr th,.receipt-ltr td{text-align:left}</style><div class="receipt-ltr" dir="ltr" lang="en">'}
       <div style="border:1px solid #EEF2F6;border-radius:10px;padding:18px 20px;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
           <div>
@@ -2319,7 +2327,7 @@ function QuickPaymentReceipt({ r, onClose }) {
             <div style="color:#647686;font-size:11.5px;margin-top:4px">${esc(clinic.address || "")}</div>
           </div>
           <div style="text-align:end">
-            <div style="font-size:22px" class="serif">إيصال دفع</div>
+            <div style="font-size:22px" class="serif">${esc(tt("إيصال دفع"))}</div>
             <div class="mono" style="margin-top:4px;font-size:12.5px">${esc(r.receipt_no || "")}</div>
             <div style="color:#647686;font-size:11.5px;margin-top:4px">${esc(dateStr)}</div>
           </div>
@@ -2327,32 +2335,32 @@ function QuickPaymentReceipt({ r, onClose }) {
       </div>
       <table>
         <tbody>
-          <tr><th>المريض</th><td>${esc(r.patient.name)} <span class="mono" style="color:#647686">${esc(r.patient.id)}</span></td></tr>
-          <tr><th>الهاتف</th><td>${esc(r.patient.phone || "—")}</td></tr>
-          <tr><th>طريقة الدفع</th><td>${esc(qpMethodLabel(r.method))}</td></tr>
-          ${r.reference ? `<tr><th>رقم مرجعي</th><td class="mono">${esc(r.reference)}</td></tr>`:""}
-          ${r.transaction_id ? `<tr><th>رقم المعاملة</th><td class="mono">${esc(r.transaction_id)}</td></tr>`:""}
-          <tr><th>الكاشير</th><td>${esc(r.cashier)}</td></tr>
+          <tr><th>${esc(tt("المريض"))}</th><td>${esc(r.patient.name)} <span class="mono" style="color:#647686">${esc(r.patient.id)}</span></td></tr>
+          <tr><th>${esc(tt("الهاتف"))}</th><td>${esc(r.patient.phone || "—")}</td></tr>
+          <tr><th>${esc(tt("طريقة الدفع"))}</th><td>${esc(qpMethodLabel(r.method))}</td></tr>
+          ${r.reference ? `<tr><th>${esc(tt("رقم مرجعي"))}</th><td class="mono">${esc(r.reference)}</td></tr>`:""}
+          ${r.transaction_id ? `<tr><th>${esc(tt("رقم المعاملة"))}</th><td class="mono">${esc(r.transaction_id)}</td></tr>`:""}
+          <tr><th>${esc(tt("الكاشير"))}</th><td>${esc(r.cashier)}</td></tr>
         </tbody>
       </table>
       <div style="height:14px"></div>
       <table>
-        <thead><tr><th>البند</th><th style="text-align:end">المبلغ</th></tr></thead>
+        <thead><tr><th>${esc(tt("البند"))}</th><th style="text-align:end">${esc(tt("المبلغ"))}</th></tr></thead>
         <tbody>${rows}
-          <tr><th style="border-top:2px solid #0F1E2B">الإجمالي المدفوع</th>
-              <td style="border-top:2px solid #0F1E2B;text-align:end;font-weight:600" class="mono">EGP ${Number(r.amount||0).toLocaleString("en-US")}</td></tr>
+          <tr><th style="border-top:2px solid #0F1E2B">${esc(tt("الإجمالي المدفوع"))}</th>
+              <td style="border-top:2px solid #0F1E2B;text-align:end;font-weight:600" class="mono">${esc(fmtMoney(r.amount))}</td></tr>
         </tbody>
       </table>
-      ${r.notes ? `<div style="margin-top:16px;font-size:12.5px;color:#647686"><strong>ملاحظات:</strong> ${esc(r.notes)}</div>` : ""}
-    `;
-    (window.printHTML || (()=>{}))(`إيصال ${r.receipt_no}`, body);
+      ${r.notes ? `<div style="margin-top:16px;font-size:12.5px;color:#647686"><strong>${esc(tt("ملاحظات:"))}</strong> ${esc(r.notes)}</div>` : ""}
+    ${IS_RTL ? "" : "</div>"}`;
+    (window.printHTML || (()=>{}))(tt("إيصال {no}", { no: r.receipt_no }), body);
   }
 
   function downloadCsv() {
     const rows = [
-      "البند,المبلغ",
+      tt("البند,المبلغ"),
       ...r.allocations.map(a => `"${(a.label||a.type+" "+a.id).replace(/"/g,'""')}",${Number(a.amount||0)}`),
-      `"الإجمالي المدفوع",${Number(r.amount||0)}`,
+      `"${tt("الإجمالي المدفوع")}",${Number(r.amount||0)}`,
     ];
     const blob = new Blob([rows.join("\n")], { type:"text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -2362,11 +2370,11 @@ function QuickPaymentReceipt({ r, onClose }) {
   }
 
   return (
-    <Modal open onClose={onClose} title={`إيصال ${r.receipt_no || ""}`} width={600}
+    <Modal open onClose={onClose} title={tt("إيصال {no}", { no: r.receipt_no || "" })} width={600}
       footer={<>
-        <button className="btn btn-ghost" onClick={onClose}>إغلاق</button>
-        <button className="btn btn-secondary" onClick={downloadCsv}><I.Download size={13}/> تحميل CSV</button>
-        <button className="btn btn-blue" onClick={printReceipt}><I.Print size={13}/> طباعة / PDF</button>
+        <button className="btn btn-ghost" onClick={onClose}>{tt("إغلاق")}</button>
+        <button className="btn btn-secondary" onClick={downloadCsv}><I.Download size={13}/> {tt("تحميل CSV")}</button>
+        <button className="btn btn-blue" onClick={printReceipt}><I.Print size={13}/> {tt("طباعة / PDF")}</button>
       </>}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <div style={{
@@ -2376,27 +2384,27 @@ function QuickPaymentReceipt({ r, onClose }) {
         }}>
           <I.Check size={16}/>
           <div>
-            <div style={{fontWeight:600,fontSize:13.5}}>تمت العملية بنجاح</div>
-            <div style={{fontSize:11.5}}>تم تحديث الرصيد والإيرادات وسجل المدفوعات.</div>
+            <div style={{fontWeight:600,fontSize:13.5}}>{tt("تمت العملية بنجاح")}</div>
+            <div style={{fontSize:11.5}}>{tt("تم تحديث الرصيد والإيرادات وسجل المدفوعات.")}</div>
           </div>
         </div>
-        <QpSummaryRow label="المريض" value={r.patient.name} sub={r.patient.id}/>
-        <QpSummaryRow label="طريقة الدفع" value={qpMethodLabel(r.method)}/>
-        {r.reference && <QpSummaryRow label="رقم مرجعي" value={r.reference}/>}
-        {r.transaction_id && <QpSummaryRow label="رقم المعاملة" value={r.transaction_id}/>}
-        <QpSummaryRow label="الكاشير" value={r.cashier}/>
+        <QpSummaryRow label={tt("المريض")} value={r.patient.name} sub={r.patient.id}/>
+        <QpSummaryRow label={tt("طريقة الدفع")} value={qpMethodLabel(r.method)}/>
+        {r.reference && <QpSummaryRow label={tt("رقم مرجعي")} value={r.reference}/>}
+        {r.transaction_id && <QpSummaryRow label={tt("رقم المعاملة")} value={r.transaction_id}/>}
+        <QpSummaryRow label={tt("الكاشير")} value={r.cashier}/>
         <div className="card" style={{padding:12,background:"var(--ink-50)"}}>
-          <div className="muted" style={{fontSize:11,marginBottom:6,letterSpacing:".05em",textTransform:"uppercase"}}>العناصر المدفوعة</div>
+          <div className="muted" style={{fontSize:11,marginBottom:6,letterSpacing:".05em",textTransform:"uppercase"}}>{tt("العناصر المدفوعة")}</div>
           {r.allocations.map((a, i) => (
             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12.5,padding:"4px 0"}}>
               <span>{a.label || `${a.type} ${a.id}`}</span>
-              <span className="mono">EGP {Number(a.amount||0).toLocaleString("en-US")}</span>
+              <span className="mono">{fmtMoney(a.amount)}</span>
             </div>
           ))}
         </div>
         <div style={{display:"flex",justifyContent:"space-between",padding:"10px 12px",background:"var(--blue-50)",border:"1px solid var(--blue-100)",borderRadius:10}}>
-          <span style={{fontWeight:600}}>المبلغ المدفوع</span>
-          <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>EGP {Number(r.amount||0).toLocaleString("en-US")}</span>
+          <span style={{fontWeight:600}}>{tt("المبلغ المدفوع")}</span>
+          <span className="mono" style={{fontWeight:700,fontSize:16,color:"var(--blue-900)"}}>{fmtMoney(r.amount)}</span>
         </div>
       </div>
     </Modal>

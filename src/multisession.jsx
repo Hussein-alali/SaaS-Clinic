@@ -83,7 +83,7 @@ function ConcurrentSessions(){
           id: r.session_id || r.id, p, plan,
           bookingId: r.booking_id || null,
           room: "",
-          type: (plan && (plan.name || plan.category)) || "جلسة علاج طبيعي",
+          type: (plan && (plan.name || plan.category)) || tt("جلسة علاج طبيعي"),
           start: r.started_at ? Date.parse(r.started_at) : (r.created_at ? Date.parse(r.created_at) : Date.now()),
           paused: false, frozen: 0,
           pain: r.pain_score ?? r.pain ?? null, mood: (typeof r.mood === "number" ? r.mood : 2), signed: false,
@@ -180,7 +180,7 @@ function ConcurrentSessions(){
       id, p, plan,
       bookingId: appt ? (appt.booking_id || appt.id) : null,
       room: (appt && appt.room) || "",
-      type: (plan && (plan.name || plan.category)) || (appt && appt.type) || "جلسة علاج طبيعي",
+      type: (plan && (plan.name || plan.category)) || (appt && appt.type) || tt("جلسة علاج طبيعي"),
       start: Date.parse(startedAt), paused:false, frozen:0,
       pain: null, mood: 2, signed:false,
       num: completedBefore + 1, total,
@@ -281,10 +281,10 @@ function ConcurrentSessions(){
           <span className="live-pulse" style={{position:"absolute",inset:0,borderRadius:"50%",background:"var(--green)"}}/>
         </span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13.5,fontWeight:600}}>{sessions.length} جلسات نشطة في نفس الوقت</div>
-          <div className="muted" style={{fontSize:12}}>{runningCount} مؤقّت يعمل الآن بالتوازي · كل جلسة تُحمَّل تلقائيًا من خطة علاج المريض.</div>
+          <div style={{fontSize:13.5,fontWeight:600}}>{tt("{n} جلسات نشطة في نفس الوقت", { n: sessions.length })}</div>
+          <div className="muted" style={{fontSize:12}}>{tt("{n} مؤقّت يعمل الآن بالتوازي · كل جلسة تُحمَّل تلقائيًا من خطة علاج المريض.", { n: runningCount })}</div>
         </div>
-        <button className="btn btn-blue" onClick={()=>setPicker(true)}><I.Plus size={14}/> بدء جلسة</button>
+        <button className="btn btn-blue" onClick={()=>setPicker(true)}><I.Plus size={14}/> {tt("بدء جلسة")}</button>
       </div>
 
       {/* Active-session rail */}
@@ -308,10 +308,10 @@ function ConcurrentSessions(){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.p?.name}</div>
                   <div className="muted" style={{fontSize:11,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                    جلسة {s.num}{s.total ? ` من ${s.total}` : ""}{s.room ? ` · ${s.room}` : ""}
+                    {s.total ? tt("جلسة {n} من {total}", { n: s.num, total: s.total }) : tt("جلسة {n}", { n: s.num })}{s.room ? ` · ${s.room}` : ""}
                   </div>
                 </div>
-                <button className="btn btn-ghost btn-icon" title="إنهاء" style={{padding:4,color:"var(--ink-400)"}}
+                <button className="btn btn-ghost btn-icon" title={tt("إنهاء")} aria-label={tt("إنهاء جلسة {name}", { name: (s.p && s.p.name) || "" })} style={{padding:4,color:"var(--ink-400)"}}
                   onClick={(e)=>{e.stopPropagation(); endSession(s.id);}}><I.X size={13}/></button>
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -321,7 +321,7 @@ function ConcurrentSessions(){
                     : <span style={{width:8,height:8,borderRadius:"50%",background:"var(--ink-300)"}}/>}
                   <span className="mono" style={{fontSize:20,fontWeight:600,letterSpacing:"-.01em",color:s.paused?"var(--ink-400)":"var(--blue-700)"}}>{fmtClock(el)}</span>
                 </div>
-                <span className="badge" style={{background:painColor+"22",color:painColor}}>{s.pain==null?"ألم —":`ألم ${s.pain}`}</span>
+                <span className="badge" style={{background:painColor+"22",color:painColor}}>{s.pain==null?tt("ألم —"):tt("ألم {n}", { n: s.pain })}</span>
               </div>
             </div>
           );
@@ -333,7 +333,7 @@ function ConcurrentSessions(){
             background:"var(--ink-50)",color:"var(--ink-500)",display:"flex",flexDirection:"column",
             alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",fontSize:12.5,fontWeight:500}}>
           <div style={{width:34,height:34,borderRadius:10,background:"#fff",border:"1px solid var(--ink-200)",display:"flex",alignItems:"center",justifyContent:"center"}}><I.Plus size={16}/></div>
-          بدء جلسة جديدة
+          {tt("بدء جلسة جديدة")}
         </button>
       </div>
       )}
@@ -342,18 +342,18 @@ function ConcurrentSessions(){
       {sel
         ? <SessionDetail s={sel} elapsed={elapsedOf(sel)} update={update} onEnd={()=>endSession(sel.id)} onTogglePause={()=>togglePause(sel.id)}/>
         : <div className="card card-pad" style={{textAlign:"center",padding:"60px 20px"}}>
-            <div className="h3" style={{marginBottom:6}}>لا جلسات نشطة</div>
-            <div className="muted" style={{fontSize:13,marginBottom:16}}>ابدأ جلسة من مواعيد اليوم — تُحمَّل بيانات الخطة العلاجية تلقائيًا.</div>
-            <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>setPicker(true)}><I.Plus size={14}/> بدء جلسة</button>
+            <div className="h3" style={{marginBottom:6}}>{tt("لا جلسات نشطة")}</div>
+            <div className="muted" style={{fontSize:13,marginBottom:16}}>{tt("ابدأ جلسة من مواعيد اليوم — تُحمَّل بيانات الخطة العلاجية تلقائيًا.")}</div>
+            <button className="btn btn-blue" style={{margin:"0 auto"}} onClick={()=>setPicker(true)}><I.Plus size={14}/> {tt("بدء جلسة")}</button>
           </div>}
 
       {/* Patient picker: today's appointments first, then the caseload */}
-      <Modal open={picker} onClose={()=>setPicker(false)} title="بدء جلسة">
+      <Modal open={picker} onClose={()=>setPicker(false)} title={tt("بدء جلسة")}>
         <div className="muted" style={{fontSize:12.5,marginBottom:14}}>
-          اختر المريض — تُحمَّل خطته العلاجية النشطة تلقائيًا (الأهداف، التمارين، طرق العلاج، رقم الجلسة).
+          {tt("اختر المريض — تُحمَّل خطته العلاجية النشطة تلقائيًا (الأهداف، التمارين، طرق العلاج، رقم الجلسة).")}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:380,overflowY:"auto"}}>
-          {apptChoices.length > 0 && <div className="label" style={{marginBottom:0}}>مواعيد اليوم</div>}
+          {apptChoices.length > 0 && <div className="label" style={{marginBottom:0}}>{tt("مواعيد اليوم")}</div>}
           {apptChoices.map(({a, p})=>(
             <div key={a.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12}}>
               <div className="av md">{initials2(p.name)}</div>
@@ -364,25 +364,25 @@ function ConcurrentSessions(){
                 </div>
               </div>
               <button className="btn btn-blue" style={{fontSize:12,padding:"7px 12px"}} disabled={starting===(p.patient_id||p.id)} onClick={()=>startSession(p, a)}>
-                {starting===(p.patient_id||p.id) ? "تحميل…" : <><I.Plus size={12}/> بدء</>}
+                {starting===(p.patient_id||p.id) ? tt("تحميل…") : <><I.Plus size={12}/> {tt("بدء")}</>}
               </button>
             </div>
           ))}
-          {walkIns.length > 0 && <div className="label" style={{marginBottom:0,marginTop:apptChoices.length?8:0}}>كل المرضى</div>}
+          {walkIns.length > 0 && <div className="label" style={{marginBottom:0,marginTop:apptChoices.length?8:0}}>{tt("كل المرضى")}</div>}
           {walkIns.map(p=>(
             <div key={p.patient_id || p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",border:"1px solid var(--ink-200)",borderRadius:12}}>
               <div className="av md">{initials2(p.name)}</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:500}}>{p.name}</div>
-                <div className="muted" style={{fontSize:11.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.diag && p.diag !== "—" ? p.diag : "بدون موعد اليوم"}</div>
+                <div className="muted" style={{fontSize:11.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.diag && p.diag !== "—" ? p.diag : tt("بدون موعد اليوم")}</div>
               </div>
               <button className="btn btn-secondary" style={{fontSize:12,padding:"7px 12px"}} disabled={starting===(p.patient_id||p.id)} onClick={()=>startSession(p, null)}>
-                {starting===(p.patient_id||p.id) ? "تحميل…" : <><I.Plus size={12}/> بدء</>}
+                {starting===(p.patient_id||p.id) ? tt("تحميل…") : <><I.Plus size={12}/> {tt("بدء")}</>}
               </button>
             </div>
           ))}
           {apptChoices.length===0 && walkIns.length===0 && (
-            <div className="muted" style={{fontSize:13}}>كل مرضاك في جلسات نشطة بالفعل.</div>
+            <div className="muted" style={{fontSize:13}}>{tt("كل مرضاك في جلسات نشطة بالفعل.")}</div>
           )}
         </div>
       </Modal>
@@ -398,11 +398,11 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
   const p = s.p || {};
   const plan = s.plan || null;
   const moods = [
-    {l:"أسوأ بكثير",c:"#D8665A"},
-    {l:"أسوأ",c:"#D49044"},
-    {l:"كما هو",c:"#8898A8"},
-    {l:"أفضل",c:"#7BBDE8"},
-    {l:"أفضل بكثير",c:"#3FA984"},
+    {l:tt("أسوأ بكثير"),c:"#D8665A"},
+    {l:tt("أسوأ"),c:"#D49044"},
+    {l:tt("كما هو"),c:"#8898A8"},
+    {l:tt("أفضل"),c:"#7BBDE8"},
+    {l:tt("أفضل بكثير"),c:"#3FA984"},
   ];
   const goals = Array.isArray(s.goals) ? s.goals : [];
   const exercises = Array.isArray(s.exercises) ? s.exercises : [];
@@ -445,7 +445,7 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
               <div className="h2">{p.name}</div>
-              <span className="badge b-violet"><span className="dot"></span>الجلسة #{s.num}{s.total ? ` من ${s.total}` : ""} {s.paused?"متوقفة مؤقتًا":"قيد التنفيذ"}</span>
+              <span className="badge b-violet"><span className="dot"></span>{s.total ? tt("الجلسة #{n} من {total}", { n: s.num, total: s.total }) : tt("الجلسة #{n}", { n: s.num })} {s.paused?tt("متوقفة مؤقتًا"):tt("قيد التنفيذ")}</span>
             </div>
             <div style={{display:"flex",gap:14,marginTop:6,fontSize:12.5,color:"var(--ink-500)",flexWrap:"wrap"}}>
               <span>{(plan && plan.diagnosis) || p.diag || "—"}</span>
@@ -454,10 +454,10 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
               <span>·</span><span>{s.type}</span>
             </div>
           </div>
-          <div style={{textAlign:"right"}}>
+          <div style={{textAlign:"start"}}>
             <div className="mono" style={{fontSize:26,fontWeight:600,color:s.paused?"var(--ink-400)":"var(--blue-700)",letterSpacing:"-.01em"}}>{fmtClock(elapsed)}</div>
             <button className="btn btn-ghost" style={{fontSize:11,marginTop:4,padding:"3px 8px"}} onClick={onTogglePause}>
-              {s.paused ? "استئناف" : "إيقاف مؤقت"}
+              {s.paused ? tt("استئناف") : tt("إيقاف مؤقت")}
             </button>
           </div>
         </div>
@@ -466,44 +466,44 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
         {plan ? (
           <div className="card card-pad">
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,gap:8,flexWrap:"wrap"}}>
-              <div className="h3">خطة العلاج: {plan.name || plan.template_name || plan.treatment_id}</div>
-              <span className="badge b-blue"><span className="dot"></span>{remaining != null ? `متبقٍ ${remaining} جلسة` : "بدون عدد محدد"}</span>
+              <div className="h3">{tt("خطة العلاج: {name}", { name: plan.name || plan.template_name || plan.treatment_id })}</div>
+              <span className="badge b-blue"><span className="dot"></span>{remaining != null ? tt("متبقٍ {n} جلسة", { n: remaining }) : tt("بدون عدد محدد")}</span>
             </div>
             <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:"6px 18px",fontSize:12.5}}>
-              <div><span className="muted">الأخصائي: </span>{plan.therapist_name || plan.therapist_id || "—"}</div>
-              <div><span className="muted">التكرار: </span>{plan.weekly_frequency ? `${plan.weekly_frequency}/أسبوع` : "—"}</div>
+              <div><span className="muted">{tt("الأخصائي:")} </span>{plan.therapist_name || plan.therapist_id || "—"}</div>
+              <div><span className="muted">{tt("التكرار:")} </span>{plan.weekly_frequency ? tt("{n}/أسبوع", { n: plan.weekly_frequency }) : "—"}</div>
               {methods.length > 0 && (
                 <div style={{gridColumn:"1 / -1",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                  <span className="muted">طرق العلاج:</span>
+                  <span className="muted">{tt("طرق العلاج:")}</span>
                   {methods.map(m=><span key={m} className="pill tag-blue">{m}</span>)}
                 </div>
               )}
               {plan.home_instructions && (
-                <div style={{gridColumn:"1 / -1"}}><span className="muted">البرنامج المنزلي: </span>{plan.home_instructions}</div>
+                <div style={{gridColumn:"1 / -1"}}><span className="muted">{tt("البرنامج المنزلي:")} </span>{plan.home_instructions}</div>
               )}
               {plan.warnings && (
-                <div style={{gridColumn:"1 / -1",color:"#A8443A"}}><span className="muted">تحذيرات: </span>{plan.warnings}</div>
+                <div style={{gridColumn:"1 / -1",color:"#A8443A"}}><span className="muted">{tt("تحذيرات:")} </span>{plan.warnings}</div>
               )}
             </div>
           </div>
         ) : (
           <div className="card card-pad" style={{background:"var(--ink-50)"}}>
             <div style={{fontSize:12.5,color:"var(--ink-500)",lineHeight:1.6}}>
-              لا توجد خطة علاج نشطة لهذا المريض — أنشئ خطة من شاشة «خطط العلاج» لتُحمَّل الأهداف والتمارين تلقائيًا في الجلسات القادمة.
+              {tt("لا توجد خطة علاج نشطة لهذا المريض — أنشئ خطة من شاشة «خطط العلاج» لتُحمَّل الأهداف والتمارين تلقائيًا في الجلسات القادمة.")}
             </div>
           </div>
         )}
 
         {/* pain & mood */}
         <div className="card card-pad">
-          <div className="h3" style={{marginBottom:14}}>تسجيل الألم والمزاج</div>
-          <div className="label">مستوى الألم (٠ – ١٠)</div>
-          <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
+          <div className="h3" style={{marginBottom:14}}>{tt("تسجيل الألم والمزاج")}</div>
+          <div className="label" id={"pain-label-" + s.id}>{tt("مستوى الألم (٠ – ١٠)")}</div>
+          <div role="group" aria-labelledby={"pain-label-" + s.id} style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
             {Array.from({length:11},(_,i)=>i).map(n=>{
               const color = n<=3?"#3FA984":n<=6?"#D49044":"#D8665A";
               const selN = s.pain===n;
               return (
-                <button key={n} onClick={()=>update({pain:n})}
+                <button key={n} type="button" onClick={()=>update({pain:n})} aria-pressed={selN ? "true" : "false"}
                   className="mono"
                   style={{flex:"1 0 36px",height:44,borderRadius:8,border:`1px solid ${selN?color:"var(--ink-200)"}`,
                     background:selN?color:"#fff",color:selN?"#fff":"var(--ink-700)",
@@ -512,15 +512,15 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
             })}
           </div>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--ink-500)",marginBottom:18}}>
-            <span>لا ألم</span><span>متوسط</span><span>لا يُحتمل</span>
+            <span>{tt("لا ألم")}</span><span>{tt("متوسط")}</span><span>{tt("لا يُحتمل")}</span>
           </div>
 
-          <div className="label">المزاج اليوم</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div className="label" id={"mood-label-" + s.id}>{tt("المزاج اليوم")}</div>
+          <div role="group" aria-labelledby={"mood-label-" + s.id} style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {moods.map((m,i)=>{
               const on = s.mood===i;
               return (
-                <button key={i} className="btn btn-secondary" onClick={()=>update({mood:i})}
+                <button key={i} type="button" className="btn btn-secondary" onClick={()=>update({mood:i})} aria-pressed={on ? "true" : "false"}
                   style={{flex:"1 0 30%",justifyContent:"center",fontSize:12,borderColor:on?m.c:"var(--ink-200)",
                     background:on?`${m.c}22`:"#fff",color:on?m.c:"var(--ink-700)",fontWeight:on?600:500}}>{m.l}</button>
               );
@@ -531,34 +531,35 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
         {/* notes */}
         <div className="card card-pad">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-            <div className="h3">ملاحظات الجلسة</div>
-            <button className="btn btn-ghost" style={{fontSize:12}} onClick={handleDictation}><I.Mic size={13}/> إملاء</button>
+            <div className="h3" id={"notes-label-" + s.id}>{tt("ملاحظات الجلسة")}</div>
+            <button className="btn btn-ghost" style={{fontSize:12}} onClick={handleDictation}><I.Mic size={13}/> {tt("إملاء")}</button>
           </div>
           <textarea className="input" style={{height:180,padding:14,resize:"vertical",fontSize:13.5,lineHeight:1.55}}
-            value={s.notes} onChange={e=>update({notes:e.target.value})} placeholder="اكتب ملاحظات الجلسة لهذا المريض…"/>
-          <div className="muted" style={{fontSize:11.5,marginTop:10}}>تُحفظ الملاحظات مع الجلسة عند الإنهاء وتظهر في سجل الجلسات وخطة العلاج.</div>
+            aria-labelledby={"notes-label-" + s.id}
+            value={s.notes} onChange={e=>update({notes:e.target.value})} placeholder={tt("اكتب ملاحظات الجلسة لهذا المريض…")}/>
+          <div className="muted" style={{fontSize:11.5,marginTop:10}}>{tt("تُحفظ الملاحظات مع الجلسة عند الإنهاء وتظهر في سجل الجلسات وخطة العلاج.")}</div>
         </div>
       </div>
 
       {/* aside */}
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
         <div className="card card-pad">
-          <div className="h3" style={{marginBottom:14}}>متابعة التقدّم</div>
+          <div className="h3" style={{marginBottom:14}}>{tt("متابعة التقدّم")}</div>
           <div style={{position:"relative",height:140}}>
             {trend.length > 0
               ? <AreaChart data={trend} height={140} color="#3FA984" fill="rgba(63,169,132,.18)"/>
-              : <div className="muted" style={{fontSize:12.5,paddingTop:50,textAlign:"center"}}>أول جلسة مسجلة — سيظهر الاتجاه بدءًا من الجلسة القادمة.</div>}
+              : <div className="muted" style={{fontSize:12.5,paddingTop:50,textAlign:"center"}}>{tt("أول جلسة مسجلة — سيظهر الاتجاه بدءًا من الجلسة القادمة.")}</div>}
           </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:10}}>
-            <div><div className="muted" style={{fontSize:11}}>ألم أول جلسة</div><div className="mono" style={{fontWeight:600}}>{firstPain != null ? `${firstPain}/10` : "—"}</div></div>
-            <div><div className="muted" style={{fontSize:11}}>الآن</div><div className="mono" style={{fontWeight:600,color:"var(--green)"}}>{s.pain != null ? `${s.pain}/10` : "—"}</div></div>
-            <div><div className="muted" style={{fontSize:11}}>الجلسة</div><div className="mono" style={{fontWeight:600}}>{s.num}{s.total ? `/${s.total}` : ""}</div></div>
+            <div><div className="muted" style={{fontSize:11}}>{tt("ألم أول جلسة")}</div><div className="mono" style={{fontWeight:600}}>{firstPain != null ? `${firstPain}/10` : "—"}</div></div>
+            <div><div className="muted" style={{fontSize:11}}>{tt("الآن")}</div><div className="mono" style={{fontWeight:600,color:"var(--green)"}}>{s.pain != null ? `${s.pain}/10` : "—"}</div></div>
+            <div><div className="muted" style={{fontSize:11}}>{tt("الجلسة")}</div><div className="mono" style={{fontWeight:600}}>{s.num}{s.total ? `/${s.total}` : ""}</div></div>
           </div>
         </div>
 
         {exercises.length > 0 && (
           <div className="card card-pad">
-            <div className="h3" style={{marginBottom:12}}>تمارين الخطة اليوم</div>
+            <div className="h3" style={{marginBottom:12}}>{tt("تمارين الخطة اليوم")}</div>
             {exercises.map((e,i)=>(
               <label key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,background:i%2===0?"var(--ink-50)":"transparent",fontSize:13,marginBottom:4,cursor:"pointer"}}>
                 <input type="checkbox" checked={!!e.done} onChange={()=>toggleExercise(i)}/>
@@ -569,8 +570,8 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
         )}
 
         <div className="card card-pad">
-          <div className="h3" style={{marginBottom:12}}>أهداف الخطة</div>
-          {goals.length === 0 && <div className="muted" style={{fontSize:12.5}}>لا أهداف محددة — تُضاف الأهداف من خطة العلاج.</div>}
+          <div className="h3" style={{marginBottom:12}}>{tt("أهداف الخطة")}</div>
+          {goals.length === 0 && <div className="muted" style={{fontSize:12.5}}>{tt("لا أهداف محددة — تُضاف الأهداف من خطة العلاج.")}</div>}
           {goals.map((g,i)=>(
             <label key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:8,background:i%2===0?"var(--ink-50)":"transparent",fontSize:13,marginBottom:4,cursor:"pointer"}}>
               <input type="checkbox" checked={!!g.done} onChange={()=>toggleGoal(i)}/>
@@ -581,10 +582,10 @@ function SessionDetail({ s, elapsed, update, onEnd, onTogglePause }){
 
         <div className="card card-pad">
           <button className="btn btn-blue" style={{width:"100%",justifyContent:"center"}} onClick={onEnd}>
-            <I.Check size={14}/> إنهاء الجلسة وتسجيلها
+            <I.Check size={14}/> {tt("إنهاء الجلسة وتسجيلها")}
           </button>
           <div className="muted" style={{fontSize:11.5,marginTop:8,textAlign:"center"}}>
-            الإنهاء يسجّل الجلسة على الخطة ويُحدّث عدد الجلسات المكتملة والمتبقية تلقائيًا.
+            {tt("الإنهاء يسجّل الجلسة على الخطة ويُحدّث عدد الجلسات المكتملة والمتبقية تلقائيًا.")}
           </div>
         </div>
       </div>
