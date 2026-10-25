@@ -114,6 +114,21 @@
 | S9 ✅ | N+1 والتحميل (2) | عدّاد استعلامات، فهارس، نافذة تاريخ عند البدء + تحميل الأقدم عند الطلب | عدد الاستعلامات ثابت، والتحميل الأول محدود |
 | S10 ✅ | Webhooks (9) | أساس التوقيع ومنع التكرار والمعالجة الخلفية | جاهز لأول مزوّد (لا مزوّد اليوم) |
 
+## المراجعة الأمنية — 25 أكتوبر 2026
+
+التقرير: [09](09-Security-Audit.md). كل إصلاح باختبار يفشل أولًا.
+
+| المهمة | المخرجات | تعريف الإنجاز |
+|---|---|---|
+| SEC1 ✅ XSS مخزَّن في روابط الملفات | `safeUrl()`، `0017_safe_file_urls` | رابط `javascript:`/`data:` لا يُفتح ولا يُحفظ (`test/apiclient.test.mjs`، `db/test/safe_urls.test.js`، `api/test/files.test.js`) |
+| SEC2 ✅ CSP + SRI | `<meta>` من البناء، ترويسة من الـ API، SRI لمكتبة Excel، لا `onclick` في نافذة الطباعة | `test/build.test.mjs`، `api/test/app.test.js`، `e2e/csp.spec.cjs`، وكل e2e يفشل عند مخالفة |
+| SEC3 ✅ IP الدفع | `SERVER_ARGS` في `/api/rpc`؛ حذف `api.ipify.org` | الخادم يسجل IP الطلب (`api/test/concurrency.test.js`) |
+| SEC4 ✅ أدوات النسخ | `PGPASSWORD` بدل الرابط في سطر الأوامر؛ `umask 077` | `db/test/backup.test.js` (7) |
+| SEC5 ✅ `server.js --dev` | قائمة سماح `index.html` و `src/` و `assets/` | `test/server.test.mjs` |
+| SEC6 ✅ الاعتماديات | `multer` 2.5.0، `body-parser` 2.4.0؛ `nodemailer` 9 بضابط تعويضي | `api/test/security.test.js`، `api/test/mailer.test.js` |
+| SEC7 ✅ فهرس الهجمات | `api/test/attacks.test.js` (11، بحسب CWE) | كل الهجمات مرفوضة مع اختبارات تحكّم |
+| SEC8 مفتوحة (المالك) | تدوير كلمة مرور المدير القديمة في `seed-admin.sql` و `Supabase_All_In_One.sql` ثم حذفها (1.2)؛ أسئلة PRD 8 و 9 و 11؛ `nodemailer` 10 بعد Node 20 (1.15) | انظر [09](09-Security-Audit.md) «غير المحلول» |
+
 ## Milestone 4 — Secondary features
 
 | المهمة | المخرجات | تعريف الإنجاز | يعتمد على |
@@ -201,3 +216,4 @@
 | 25 أكتوبر 2026 | S9 ✅: `0015_indexes`، `db.queryCount()` و `api/test/querycount.test.js`، شرط `organization_id` في `/api/data`، نافذة 180 يومًا و `loadOlder`/`listRange`/`useOlderRows`؛ `db/test/indexes.test.js`، 5 اختبارات عميل، `e2e/history.spec.cjs`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S10 ✅: `api/src/webhooks.js` (`verifySignature`، `webhookRoute`، `webhooksRouter`)، `WEBHOOK_<NAME>_SECRET`، حفظ معرّفات الأحداث 30 يومًا؛ `api/test/webhooks.test.js` (6). (هذا الـ commit) |
 | 25 أكتوبر 2026 | الجاهزية للتوسع مكتملة: قسم دائم في `docs/02`؛ مراجعة S1–S10 (15 ملاحظة: 12 أُصلحت باختبارات، 3 بُقيت مع السبب)؛ `0016_invoices_rpc_org`؛ ملاحظة 4.7 عن `invoices.status` الفارغ. (هذا الـ commit) |
+| 25 أكتوبر 2026 | المراجعة الأمنية: SEC1–SEC7 ✅، SEC8 مفتوحة للمالك. (هذا الـ commit) |

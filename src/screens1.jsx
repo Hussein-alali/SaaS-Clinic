@@ -1841,7 +1841,7 @@ function PatientFiles({ p }) {
 
   async function resolveUrl(f) {
     if (window.getPatientFileUrl) return await window.getPatientFileUrl(f);
-    return f.file_url || "";
+    return window.safeUrl(f.file_url);
   }
   async function openFile(f) {
     const url = await resolveUrl(f);

@@ -61,6 +61,16 @@ function writeLS(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch (e) { console.warn("writeLS failed", key, e); }
 }
+// A URL read from the database (file_url and the like) for <a href> or
+// window.open: http(s) or a path of this site only. Anything else
+// (javascript:, data:, vbscript:...) would run script → "" (CWE-79).
+function safeUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const { protocol } = new URL(value, window.location.href);
+    return protocol === "https:" || protocol === "http:" ? value : "";
+  } catch { return ""; }
+}
 // Escape untrusted text for interpolation into HTML.
 function escHtml(s) {
   return String(s == null ? "" : s)
@@ -1180,9 +1190,12 @@ function printHTML(title, bodyHtml) {
     <h1>${brand} — ${safeTitle}</h1>
     <div class="sub">${escHtml(fmtDate(new Date(), "dateTime"))}</div>
     ${bodyHtml || ""}
-    <div class="no-print" style="margin-top:24px"><button onclick="window.print()">${escHtml(tt("طباعة / حفظ PDF"))}</button></div>
+    <div class="no-print" style="margin-top:24px"><button type="button">${escHtml(tt("طباعة / حفظ PDF"))}</button></div>
     </body></html>`);
   w.document.close();
+  // A listener, not onclick="": the window inherits the page's CSP, which runs no inline handler.
+  const printButton = w.document.querySelector(".no-print button");
+  if (printButton) printButton.addEventListener("click", () => w.print());
   // Wait for load rather than fixed 250ms; falls back to timeout for older browsers.
   const doPrint = () => { try { w.focus(); w.print(); } catch (e) { console.warn("print failed", e); } };
   if (w.document.readyState === "complete") doPrint();
@@ -1957,15 +1970,6 @@ async function loadPaymentHistory(patientId, opts) {
   return src.slice(offset, offset + limit);
 }
 
-// Best-effort IP capture. Not sensitive — used only for the audit log.
-async function __clientIP() {
-  try {
-    const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
-    if (r.ok) { const j = await r.json(); return j.ip || null; }
-  } catch {}
-  return null;
-}
-
 function __receiptNo() {
   const d = new Date();
   const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
@@ -2005,7 +2009,8 @@ async function recordQuickPayment(input) {
   const me = window.ME || {};
   const cashierId = me.staff_id || me.id || me.email || null;
   const cashierName = me.name || me.email || "غير معروف";
-  const ipAddress = await __clientIP();
+  // The IP address is the server's to record (api/src/routes/rpc.js): the
+  // browser no longer asks a third party (api.ipify.org) for it.
 
   // ── Transactional path (Supabase RPC) ────────────────────────
   // One Idempotency-Key per payment attempt (the screen keeps it across a
@@ -2023,7 +2028,6 @@ async function recordQuickPayment(input) {
       p_notes: (input.notes || "").trim() || null,
       p_cashier_id: cashierId,
       p_cashier_name: cashierName,
-      p_ip_address: ipAddress,
     }, { idempotencyKey });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
@@ -2099,7 +2103,7 @@ async function recordQuickPayment(input) {
       transaction_id: (input.transaction_id || "").trim() || null,
       notes: (input.notes || "").trim() || null,
       receipt_no, allocations: allocs,
-      ip_address: ipAddress,
+      ip_address: null,
       status: "completed",
       created_at: new Date().toISOString(),
     });
@@ -2917,15 +2921,17 @@ async function removePatientFile(fileId) {
 
 // Signed URL for private buckets (falls back to whatever file_url already
 // holds, which is a public URL when the bucket is public).
+// file_url is any member's text: only a safe URL is returned (safeUrl).
 async function getPatientFileUrl(row, expiresSeconds = 3600) {
   if (!row) return "";
-  if (!sb || !row.storage_path) return row.file_url || "";
+  const fallback = safeUrl(row.file_url);
+  if (!sb || !row.storage_path) return fallback;
   try {
     const { data, error } = await sb.storage.from(PATIENT_FILES_BUCKET)
       .createSignedUrl(row.storage_path, expiresSeconds);
-    if (error) { console.warn("createSignedUrl failed", error.message || error); return row.file_url || ""; }
-    return (data && data.signedUrl) || row.file_url || "";
-  } catch (e) { console.warn("createSignedUrl failed", e); return row.file_url || ""; }
+    if (error) { console.warn("createSignedUrl failed", error.message || error); return fallback; }
+    return safeUrl(data && data.signedUrl) || fallback;
+  } catch (e) { console.warn("createSignedUrl failed", e); return fallback; }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3486,7 +3492,7 @@ Object.assign(window, {
   adminCreateUser, sendPasswordReset, updateOwnPassword, updateOwnProfile, updateStaffMember,
   adminResetPassword, adminSetStaffStatus, OrgAdmin,
   listAvailableAuthUsers,
-  startDictation, printHTML, escHtml,
+  startDictation, printHTML, escHtml, safeUrl,
   KineticData, QuickPay, TxMethods, InvoicesAPI, PaymentReceipts, Templates, TplCategories, TreatmentsAPI,
   uploadPatientFile, listPatientFiles, removePatientFile, getPatientFileUrl,
 });

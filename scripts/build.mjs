@@ -160,6 +160,34 @@ html = html.slice(0, firstTag)
   + html.slice(blockEnd);
 if (html.includes("text/babel")) fail("a text/babel script survived the build");
 
+// Content-Security-Policy (security audit, 25 Oct 2026; test/build.test.mjs):
+// script runs from this site, from the exact CDN files the app loads (each
+// with SRI: the tags above and the URL literals in the sources, such as
+// the Excel library) and from the inline boot scripts by hash, so an
+// injected <script> or event handler never runs. The API repeats it as a
+// header with frame-ancestors (api/src/static.js). The HTML parser turns
+// CRLF into LF before the browser hashes an inline script.
+const inlineHashes = [...new Set([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  .map(m => `'sha256-${createHash("sha256").update(m[1].replace(/\r\n?/g, "\n")).digest("base64")}'`))];
+const appSource = [...appFiles, IMPORT_PAGE, PLATFORM_PAGE].map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n");
+const cdnScripts = [...new Set([
+  ...[...html.matchAll(/<script src="(https:\/\/[^"]+)"/g)].map(m => m[1]),
+  ...[...appSource.matchAll(/"(https:\/\/(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/[^"\s]+\.js)"/g)].map(m => m[1]),
+])];
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' ${[...inlineHashes, ...cdnScripts].join(" ")}`,
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+html = replaceOnce(html, /<meta charset="utf-8" \/>/, `$&${eol}<meta http-equiv="Content-Security-Policy" content="${csp}" />`, "<meta charset> tag");
+
 fs.writeFileSync(path.join(DIST, "index.html"), html);
 fs.cpSync(path.join(ROOT, "assets"), path.join(DIST, "assets"), { recursive: true });
 

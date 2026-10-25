@@ -19,6 +19,9 @@
 # Exit codes: 0 done · 1 failed · 2 bad usage/environment · 3 not enough free
 # space · 4 unsafe BACKUP_DIR. A failed run leaves no partial backup behind.
 set -euo pipefail
+# Every clinic's records and the password hashes: readable by this account
+# only (0700 / 0600), whatever its umask on the shared server.
+umask 077
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DB_ONLY=0
@@ -51,6 +54,7 @@ if [ "$DB_ONLY" = 0 ] || [ -n "${FILES_DIR:-}" ]; then
 fi
 
 mkdir -p "$dest"
+chmod 700 "$dest"   # a folder made before umask 077 (or by hand)
 
 # Free space: the estimated backup size plus BACKUP_MIN_FREE_MB must fit.
 need_kb=$(node -e '

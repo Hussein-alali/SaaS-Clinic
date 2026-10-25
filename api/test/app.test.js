@@ -9,12 +9,14 @@ const { setup, rawRequest, freePort, TEST_DB_URL, USER } = require('./helpers');
 const { loadConfig } = require('../src/config');
 
 const API_ROOT = path.resolve(__dirname, '..');
+const PAGE_CSP = "default-src 'self'; script-src 'self' 'sha256-abc='; object-src 'none'";
 let h;
 let dist;
 
 before(async () => {
   dist = fs.mkdtempSync(path.join(os.tmpdir(), 'clinicsys-dist-'));
-  fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>ClinicSystem</title>');
+  fs.writeFileSync(path.join(dist, 'index.html'),
+    `<!doctype html><meta charset="utf-8" /><meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}" /><title>ClinicSystem</title>`);
   fs.writeFileSync(path.join(dist, 'app.4ee0f65b03.js'), 'console.log("app")');
   fs.mkdirSync(path.join(dist, 'assets'));
   fs.writeFileSync(path.join(dist, 'assets', 'body-diagram.jpeg'), 'JPEG');
@@ -57,7 +59,12 @@ test('static: index.html no-cache, hashed bundles cached for a year, SPA fallbac
     assert.equal(spa.status, 200, host);
     assert.match(spa.text, /ClinicSystem/);
     assert.equal(spa.headers['cache-control'], 'no-cache');
+    assert.equal(spa.headers['content-security-policy'], `${PAGE_CSP}; frame-ancestors 'none'`, `${host}: the page's CSP as a header`);
   }
+  // The build's policy (a <meta> in index.html) is also the header, with
+  // frame-ancestors, which a <meta> cannot carry (security audit, 25 Oct 2026).
+  assert.equal(root.headers['content-security-policy'], `${PAGE_CSP}; frame-ancestors 'none'`);
+  assert.equal(bundle.headers['content-security-policy'], undefined, 'scripts need no page policy');
   const head = await h.request('HEAD', '/');
   assert.equal(head.status, 200);
 });

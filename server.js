@@ -12,6 +12,10 @@ const PORT = process.env.PORT || 3000;
 const DEV = process.argv.includes("--dev");
 const DIST = path.join(__dirname, "dist");
 const ROOT = !DEV && fs.existsSync(path.join(DIST, "index.html")) ? DIST : __dirname;
+// The repository root (--dev, or no dist/ yet) holds more than the app:
+// seed-admin.sql, DEPLOY.md, .git/, api/.env... From it only the app's own
+// files are served; a dotfile never, in either mode (test/server.test.mjs).
+const APP_PATHS = /^\/(?:index\.html$|src\/|assets\/)/;
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -41,6 +45,10 @@ http.createServer((req, res) => {
     res.writeHead(400); return res.end("Bad request");
   }
   if (urlPath === "/") urlPath = "/index.html";
+  if (urlPath.split(/[\\/]/).some((seg) => seg.startsWith(".")) || (ROOT !== DIST && !APP_PATHS.test(urlPath))) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    return res.end("Not found");
+  }
 
   const filePath = path.join(ROOT, path.normalize(urlPath));
   // Never serve outside the project root.

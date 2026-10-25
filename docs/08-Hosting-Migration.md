@@ -151,7 +151,8 @@
 - **المساحة:** لا تبدأ النسخة إن كانت ستُبقي أقل من `BACKUP_MIN_FREE_MB` (الافتراضي 1024) حرة (خروج 3) — ويصل تنبيه الموارد (S8).
 - **الاتساق:** الـ dump وعدد صفوف كل جدول من لقطة واحدة (`db/backup-tools.js`)، بسياق النظام (`app.system = on`) لأن جداول العيادات FORCE RLS. الـ manifest فيه sha256 لكل ملف.
 - **قاعدة الاسترجاع:** قاعدة ثانية فارغة تُنشأ مرة واحدة في cPanel (مثل `<account>_clinicsys_restore`) لنفس المستخدم، وعنوانها في `RESTORE_DATABASE_URL`. السكربت يرفض أن تكون هي القاعدة الحية.
-- **استرجاع حقيقي بعد كارثة:** أوقف التطبيق (cPanel ← Setup Node.js App ← Stop)، ثم `pg_restore --clean --if-exists --no-owner --no-privileges --dbname="$DATABASE_URL" ~/clinicsys-backups/<stamp>/db.dump` مع `PGOPTIONS="-c app.system=on"`، وفك `files.tar.gz` داخل `FILES_DIR`، ثم شغّل التطبيق.
+- **استرجاع حقيقي بعد كارثة:** أوقف التطبيق (cPanel ← Setup Node.js App ← Stop)، ثم من `~/clinicsys/current`: `RESTORE_DATABASE_URL="$DATABASE_URL" node db/backup-tools.js restore ~/clinicsys-backups/<stamp>/db.dump` (يشغّل `pg_restore --clean` بسياق النظام وكلمة المرور في `PGPASSWORD`، لا في سطر الأوامر الذي يراه كل حساب على الخادم المشترك)، وفك `files.tar.gz` داخل `FILES_DIR`، ثم شغّل التطبيق.
+- **الخصوصية:** النسخة فيها سجلات كل العيادات وبصمات كلمات المرور: `backup.sh` يعمل بـ `umask 077` (المجلدات `0700` والملفات `0600`) ويضبط `BACKUP_DIR` على `0700`؛ لا تنقلها إلا عبر SFTP، ولا تضعها في مكان مشترك.
 - **خطر معروف:** النسخ على نفس الخادم لا تحمي من فقدان الخادم نفسه. **نزّل النسخة الأسبوعية إلى جهازك** (File Manager أو SFTP) حتى يُعتمد مكان خارجي، وفعّل نسخ cPanel/JetBackup من hosting.com إن وُجد في الخطة.
 
 ### النشر والتراجع (S2) ✅

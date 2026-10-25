@@ -102,3 +102,18 @@ test('Idempotency-Key: a payment sent twice (or twice at once) is made once, and
   assert.equal(fixed.status, 200);
   assert.equal(fixed.headers['idempotency-replayed'], undefined);
 });
+
+// Security audit (25 Oct 2026, CWE-501): the payment's IP address used to
+// come from the browser (which asked api.ipify.org); it is the request's
+// now, whatever the client sends.
+test('record_quick_payment stores the request\'s IP address, never the one the client claims', async () => {
+  const id = await priced(5);
+  const r = await recep.rpc('record_quick_payment',
+    { p_patient_id: 'P-PHY-01', p_allocations: [{ type: 'appointment', id, amount: 5 }], p_method: 'cash', p_ip_address: '203.0.113.66' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const { rows: [p] } = await h.asSystem('select ip_address from payments where payment_id = $1', [r.body.payment_id]);
+  assert.match(p.ip_address, /^(::ffff:)?127\.0\.0\.1$|^::1$/);
+  const { rows: [a] } = await h.asSystem(
+    `select payload->>'ip_address' as ip from audit_events where action = 'quick_payment' and row_pk = $1`, [r.body.payment_id]);
+  assert.equal(a.ip, p.ip_address, 'the audit row too');
+});

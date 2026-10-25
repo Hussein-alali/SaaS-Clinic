@@ -72,7 +72,7 @@ function boot({ code = CLIENT_JS, search = "", hostname = "localhost", session =
   const win = {
     console: { log() {}, info() {}, warn() {}, error() {} },
     setTimeout, clearTimeout, setInterval, clearInterval,
-    URLSearchParams, FormData, Blob, Response, TextEncoder, TextDecoder, Event,
+    URL, URLSearchParams, FormData, Blob, Response, TextEncoder, TextDecoder, Event,
     CustomEvent: TestCustomEvent,
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
@@ -1263,7 +1263,6 @@ describe("src/supabase.jsx on top of the client", () => {
   function apiHandler(overrides = {}) {
     return async (req) => {
       if (overrides[req.path]) return overrides[req.path](req);
-      if (req.url.startsWith("https://api.ipify.org")) return json(200, { ip: "203.0.113.7" });
       if (req.path === "/api/data") {
         const key = `${req.body.table}:${req.body.action}`;
         if (overrides[key]) return overrides[key](req);
@@ -1657,6 +1656,23 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.equal(env.requests.at(-1).body.expiresIn, 600);
   });
 
+  test("getPatientFileUrl never hands a script URL to window.open (file_url is any member's text, CWE-79)", async () => {
+    let sign = () => json(500, { error: { message: "down", code: "internal" } });
+    const env = await bootApp({ "/api/files/sign": () => sign() });
+    const bad = ["javascript:alert(document.cookie)", " JavaScript:alert(1)", "java\tscript:alert(1)", "\u0000javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)", "blob:http://evil/x"];
+    for (const file_url of bad) {
+      assert.equal(await env.win.getPatientFileUrl({ storage_path: null, file_url }), "", JSON.stringify(file_url));
+      assert.equal(await env.win.getPatientFileUrl({ storage_path: "P-1/a.pdf", file_url }), "", `${JSON.stringify(file_url)} after a failed sign`);
+    }
+    const good = ["/api/files/object/patient-files/P-1/a.pdf", "https://abc.supabase.co/storage/v1/object/public/patient-files/P-1/a.pdf"];
+    for (const file_url of good) assert.equal(await env.win.getPatientFileUrl({ storage_path: null, file_url }), file_url);
+    sign = () => json(200, { signedUrl: "javascript:alert(1)" });
+    assert.equal(await env.win.getPatientFileUrl({ storage_path: "P-1/a.pdf", file_url: good[0] }), good[0], "a bad signed URL falls back to a safe file_url");
+    assert.equal(env.win.safeUrl("javascript:alert(1)"), "");
+    assert.equal(env.win.safeUrl("/api/x?y=1"), "/api/x?y=1");
+  });
+
   test("QuickPay.attempt: one Idempotency-Key while the payment is unchanged, a new one once it is edited", async () => {
     const env = await bootApp({});
     const pay = { patient_id: "P-1", method: "cash", allocations: [{ type: "invoice", id: "INV-1", amount: 100 }] };
@@ -1678,7 +1694,9 @@ describe("src/supabase.jsx on top of the client", () => {
     const req = env.requests.find((r) => r.path === "/api/rpc/record_quick_payment");
     assert.equal(req.body.args.p_patient_id, "P-1");
     assert.deepEqual(req.body.args.p_allocations, [{ type: "invoice", id: "INV-1", amount: 100 }]);
-    assert.equal(req.body.args.p_ip_address, "203.0.113.7");
+    // The server records the IP address (api/src/routes/rpc.js): no third party is asked.
+    assert.equal("p_ip_address" in req.body.args, false);
+    assert.equal(env.requests.some((r) => !r.url.startsWith("/api/")), false, "only the API is called");
   });
 
   test("TreatmentsAPI.create sends a newRecordId('TRT-') id; list reads {rows,count}", async () => {

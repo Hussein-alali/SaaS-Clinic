@@ -14,12 +14,14 @@ function downloadCsv(rows, filename) {
 
 // Loads a classic script once and resolves after it has run. Used for code
 // only some visits need (Excel export, the ?import=1 page) so it stays out
-// of the first page load.
+// of the first page load. integrity: the SRI hash a CDN file must match
+// (a changed file is refused instead of running with the clinic's session).
 const scriptLoads = {};
-function loadScriptOnce(src) {
+function loadScriptOnce(src, integrity) {
   if (!scriptLoads[src]) {
     scriptLoads[src] = new Promise((resolve, reject) => {
       const s = document.createElement("script");
+      if (integrity) { s.integrity = integrity; s.crossOrigin = "anonymous"; }
       s.src = src;
       s.onload = () => resolve();
       s.onerror = () => { delete scriptLoads[src]; reject(new Error("failed to load " + src)); };
@@ -40,9 +42,12 @@ function loadScriptOnce(src) {
 // cell styles), fetched on the first export rather than on every page load.
 //
 // columns: [{ key, label, type?: 'text'|'number'|'currency'|'date', total?, width? }]
+// XLSX_SRC is also allowed by the page's Content-Security-Policy (scripts/build.mjs);
+// the SRI hash is sha384 of the npm package file, which jsDelivr serves as is.
 const XLSX_SRC = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
+const XLSX_INTEGRITY = "sha384-OUW9euuUyxyHcAhTqbhI+Iyb8LMssXt/cpz0yXhs9UWG2/R/uaWdakx/4cfww7Vb";
 async function exportReportExcel({ filename, sheetName = tt("التقرير"), title, filters = [], columns = [], rows = [] }) {
-  if (!window.XLSX) await loadScriptOnce(XLSX_SRC).catch(() => {});
+  if (!window.XLSX) await loadScriptOnce(XLSX_SRC, XLSX_INTEGRITY).catch(() => {});
   const XLSX = window.XLSX;
   if (!XLSX || !XLSX.utils) {
     window.showToast && window.showToast(tt("مكتبة Excel غير محمّلة — تحقق من الاتصال"), "error");

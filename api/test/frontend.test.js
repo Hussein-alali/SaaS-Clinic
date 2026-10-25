@@ -52,7 +52,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * A vm "browser" at http://localhost/<search> running the app's data layer.
  * Requests to /api/* go to the test API with the jar's cookies; any other
- * URL (api.ipify.org in __clientIP) fails like an offline network.
+ * URL fails like an offline network.
  */
 function browser(h, { who, search = '?org=demo-physio' } = {}) {
   const base = `http://127.0.0.1:${h.port}`;
@@ -113,7 +113,7 @@ function browser(h, { who, search = '?org=demo-physio' } = {}) {
   const win = {
     console: { log: quiet, info: quiet, warn: quiet, error: quiet, debug: quiet },
     setTimeout, clearTimeout, setInterval, clearInterval,
-    URLSearchParams, FormData, Blob, Response, Headers, TextEncoder, TextDecoder, Event,
+    URL, URLSearchParams, FormData, Blob, Response, Headers, TextEncoder, TextDecoder, Event,
     CustomEvent: TestCustomEvent,
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),

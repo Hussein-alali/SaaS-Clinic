@@ -1,6 +1,8 @@
 // Shared test fixtures: every browser context gets the CDN routes from
 // scripts/pw-cdn.cjs, and every page fails the test on an uncaught page
-// error. Import `test` and `expect` from here instead of @playwright/test.
+// error or a Content-Security-Policy violation (the build's policy,
+// scripts/build.mjs: whatever a screen needs must be allowed by it).
+// Import `test` and `expect` from here instead of @playwright/test.
 //
 // Seed accounts (db/seed/dev.sql), password Dev@12345:
 //   super@clinicsys.test                         Super Admin
@@ -16,10 +18,20 @@ const { routeCdn } = require("../scripts/pw-cdn.cjs");
 
 const PASSWORD = "Dev@12345";
 
+const CSP_MARK = "[csp-violation]";
+
 const test = base.test.extend({
   context: async ({ context }, use) => {
     await routeCdn(context);
+    await context.addInitScript((mark) => {
+      document.addEventListener("securitypolicyviolation", (e) =>
+        console.error(`${mark} ${e.effectiveDirective} ${e.blockedURI || "inline"} ${e.sourceFile || ""}:${e.lineNumber || 0}`));
+    }, CSP_MARK);
+    const violations = [];
+    context.on("console", (m) => { if (m.text().startsWith(CSP_MARK)) violations.push(m.text()); });
+    context.cspViolations = violations;
     await use(context);
+    base.expect(violations, "Content-Security-Policy violations").toEqual([]);
   },
   page: async ({ page }, use) => {
     const errors = [];

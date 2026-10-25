@@ -22,6 +22,7 @@ die() { local code=$1; shift; say "$*"; exit "$code"; }
 
 [ -n "${RESTORE_DATABASE_URL:-}" ] || die 2 "RESTORE_DATABASE_URL is not set"
 [ "${RESTORE_DATABASE_URL}" != "${DATABASE_URL:-}" ] || die 2 "RESTORE_DATABASE_URL is the live database"
+export RESTORE_DATABASE_URL   # read by db/backup-tools.js restore
 command -v pg_restore >/dev/null || die 2 "pg_restore is not installed"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/clinicsys-backups}"
 
@@ -30,14 +31,15 @@ for d in "$BACKUP_DIR"/[0-9]*T*Z; do [ -f "$d/manifest.json" ] && latest="$d"; d
 [ -n "$latest" ] || die 2 "no backup in $BACKUP_DIR"
 say "checking $(basename "$latest")"
 
-PGOPTIONS="${PGOPTIONS:-} -c app.system=on" pg_restore --clean --if-exists --no-owner --no-privileges \
-  --exit-on-error --dbname="$RESTORE_DATABASE_URL" "$latest/db.dump" || die 1 "pg_restore failed"
+# backup-tools runs pg_restore with the password in PGPASSWORD, not on its
+# command line (visible to every account of the server in `ps`).
+node "$ROOT/db/backup-tools.js" restore "$latest/db.dump" || die 1 "pg_restore failed"
 
 if [ -f "$latest/files.tar.gz" ]; then
   tar -tzf "$latest/files.tar.gz" >/dev/null || die 1 "the files archive is damaged"
 fi
 
-restored="$(node "$ROOT/db/backup-tools.js" counts "$RESTORE_DATABASE_URL")" || die 1 "could not count the restored tables"
+restored="$(COUNTS_DATABASE_URL="$RESTORE_DATABASE_URL" node "$ROOT/db/backup-tools.js" counts)" || die 1 "could not count the restored tables"
 MANIFEST="$latest/manifest.json" RESTORED="$restored" node -e '
   const expected = JSON.parse(require("fs").readFileSync(process.env.MANIFEST, "utf8")).counts;
   const restored = JSON.parse(process.env.RESTORED);

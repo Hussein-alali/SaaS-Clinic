@@ -5,6 +5,7 @@
 // functions, an object for a function returning one composite row.
 
 const express = require('express');
+const auth = require('../auth');
 const { badRequest, notFound } = require('../errors');
 const { requireOrg } = require('../tenant');
 const { RPC_WHITELIST } = require('../rpc-whitelist');
@@ -15,6 +16,12 @@ const { idempotencyKey, withIdempotency } = require('../idempotency');
 const router = express.Router();
 
 const isJsonType = (type) => type === 'json' || type === 'jsonb';
+
+// Arguments the server fills in, whatever the client sent (CWE-501): a
+// payment's IP address is the request's (Express "trust proxy", TRUST_PROXY).
+const SERVER_ARGS = {
+  record_quick_payment: { p_ip_address: (req) => auth.clientIp(req) },
+};
 
 function bindArg(arg, value) {
   if (value === null || value === undefined) return null;
@@ -51,6 +58,7 @@ router.post('/:fn', requireOrg(), async (req, res) => {
   if (!isPlainObject(body)) throw badRequest('invalid_request', 'Body must be a JSON object');
   const args = body.args === undefined || body.args === null ? {} : body.args;
   if (!isPlainObject(args)) throw badRequest('invalid_args', 'args must be an object');
+  for (const [name, value] of Object.entries(SERVER_ARGS[fn] || {})) args[name] = value(req);
   const keys = Object.keys(args);
   for (const k of keys) {
     if (!IDENT_RE.test(k)) throw badRequest('invalid_args', 'Argument names must be plain identifiers');

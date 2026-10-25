@@ -131,3 +131,51 @@ test('restore-check restores the newest dump into the restore database and compa
   assert.equal(bad.status, 1, bad.stdout);
   assert.match(bad.stdout, /public\.patients\s+\d+\s+\d+\s+DIFF/);
 });
+
+// Security audit (25 Oct 2026, CWE-214): the database password used to be
+// on pg_dump's, pg_restore's and backup-tools' command lines
+// (--dbname=<url>), which every account of a shared server can read with
+// `ps`. The tools now get it from PGPASSWORD / the environment. pg_dump,
+// pg_restore and node are wrapped here to record their arguments.
+test('backup and restore-check never put the database password on a command line', () => {
+  const password = decodeURIComponent(new URL(DATABASE_URL).password);
+  assert.ok(password, 'the test database URL has a password');
+  const bin = path.join(tmp, 'spy-bin');
+  const log = path.join(tmp, 'spy.log');
+  fs.mkdirSync(bin, { recursive: true });
+  for (const tool of ['pg_dump', 'pg_restore', 'node']) {
+    const real = execFileSync('bash', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(bin, tool), `#!/usr/bin/env bash\nprintf '%s pgpassword=%s args=%s\\n' "${tool}" "\${PGPASSWORD:+set}" "$*" >> "${log}"\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  }
+  const PATH = `${bin}:${process.env.PATH}`;
+  const dir = path.join(tmp, 'b-spy');
+  const b = run(BACKUP, [], { BACKUP_DIR: dir, BACKUP_STAMP: '20261026T020000Z', PATH });
+  assert.equal(b.status, 0, b.stderr + b.stdout);
+  const r = run(RESTORE_CHECK, [], { BACKUP_DIR: dir, RESTORE_DATABASE_URL: RESTORE_URL, PATH });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const lines = fs.readFileSync(log, 'utf8').trim().split('\n');
+  for (const tool of ['pg_dump', 'pg_restore']) {
+    const calls = lines.filter((l) => l.startsWith(`${tool} `));
+    assert.equal(calls.length, 1, `${tool} ran once`);
+    assert.match(calls[0], /pgpassword=set/, `${tool} reads the password from PGPASSWORD`);
+  }
+  for (const l of lines) assert.equal(l.includes(password), false, `password on a command line: ${l.slice(0, 120)}`);
+});
+
+// Security audit (25 Oct 2026, CWE-276): a backup holds every clinic's
+// records and the password hashes; on a shared server it is readable by
+// its owner only, whatever the account's umask.
+test('a backup is private to its owner: directories 0700, files 0600', () => {
+  const dir = path.join(tmp, 'b-mode');
+  const r = spawnSync('bash', ['-c', `umask 022 && exec bash "${BACKUP}"`], {
+    env: { ...process.env, DATABASE_URL, FILES_DIR: filesDir, BACKUP_MIN_FREE_MB: '1', BACKUP_DIR: dir, BACKUP_STAMP: '20261027T020000Z' },
+    encoding: 'utf8',
+    timeout: 120000,
+  });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const snap = path.join(dir, '20261027T020000Z');
+  const mode = (p) => fs.statSync(p).mode & 0o777;
+  assert.equal(mode(dir).toString(8), '700');
+  assert.equal(mode(snap).toString(8), '700');
+  for (const f of fs.readdirSync(snap)) assert.equal(mode(path.join(snap, f)).toString(8), '600', f);
+});
