@@ -169,6 +169,30 @@ test("A02 list: search, status filter, paging info, open a clinic and go back", 
   await expect(page.locator("tr[data-slug=demo-physio]")).toBeVisible();
 });
 
+// Task 3.33: the welcome toast sits over the page's primary action (top end
+// of A01) for a few seconds; the action must stay clickable under it, and
+// the toast's own close button must still work.
+test("A01: «إنشاء عيادة» stays clickable under the welcome toast; the toast still closes", async ({ page }) => {
+  await openPanel(page, "#/");
+  await login(page, "super@clinicsys.test");
+  const welcome = toast(page, "مرحبًا بك في لوحة المنصة");
+  await expect(welcome).toBeVisible();
+  const create = page.getByRole("link", { name: "إنشاء عيادة" });
+  const [a, b] = [await welcome.boundingBox(), await create.boundingBox()];
+  // Click inside the strip of the button that the toast covers.
+  const x0 = Math.max(a.x, b.x), x1 = Math.min(a.x + a.width, b.x + b.width);
+  const y0 = Math.max(a.y, b.y), y1 = Math.min(a.y + a.height, b.y + b.height);
+  expect(x1 > x0 && y1 > y0, "precondition: the toast covers part of the button").toBe(true);
+  await create.click({ timeout: 2000, position: { x: (x0 + x1) / 2 - b.x, y: (y0 + y1) / 2 - b.y } });
+  await expect(page.getByRole("heading", { name: /الخطوة 1 من 4/ })).toBeVisible();
+  // The welcome toast of the next page load still closes with its button.
+  await page.goto("/?platform=1#/");
+  const again = toast(page, "مرحبًا بك في لوحة المنصة");
+  await expect(again).toBeVisible();
+  await again.getByRole("button", { name: "إغلاق الإشعار" }).click({ timeout: 2000 });
+  await expect(again).toBeHidden();
+});
+
 test("A03 wizard: slug checks (taken, reserved, invalid), modules, plan, invitation e-mail", async ({ page }) => {
   await loginSuper(page, "#/clinics");
   await page.getByRole("link", { name: "إنشاء عيادة" }).click();

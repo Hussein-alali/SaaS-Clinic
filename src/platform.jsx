@@ -2787,13 +2787,16 @@
 .pa-check{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer}
 .pa-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--ink-200)}
 .pa-json{background:var(--ink-900);color:#E6EDF3;border-radius:10px;padding:12px 14px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:50vh;margin:14px 0 0;text-align:start}
-.pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px));pointer-events:none}
 .pa-toast{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--ink-200);border-radius:12px;box-shadow:var(--shadow-lg);padding-block:11px;padding-inline:12px 14px;font-size:13.5px;animation:popin .2s}
 .pa-toast-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
 .pa-toast-error .pa-toast-dot{background:var(--red)}
 .pa-toast-info .pa-toast-dot{background:var(--blue-700)}
 .pa-toast-error{border-color:#F1C4BE}
-.pa-toast-x{background:none;border:none;color:var(--ink-400);cursor:pointer;padding:4px;border-radius:6px;display:inline-flex}
+/* Toasts let clicks through to the page under them (the primary action of
+   A01 sits there, task 3.33), like the clinic Toast; only the close button
+   takes clicks. */
+.pa-toast-x{background:none;border:none;color:var(--ink-400);cursor:pointer;padding:4px;border-radius:6px;display:inline-flex;pointer-events:auto}
 .pa-toast-x:hover{background:var(--ink-100);color:var(--ink-700)}
 .pa-center{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
 .pa-center-card{max-width:460px;width:100%;padding:32px 28px;text-align:center}
