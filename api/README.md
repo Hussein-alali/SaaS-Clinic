@@ -22,6 +22,9 @@ src/create-app.js      middleware order, route mounting, error handler
 src/db.js              Pool (max 10) + withContext(ctx, fn)
 src/auth.js            bcrypt, JWT cookie, session loading
 src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every process
+src/jobs.js            background jobs in PostgreSQL (SKIP LOCKED, retries, dead jobs); kinds in src/job-handlers.js
+src/password-reset.js  the reset e-mail (route and retry job)
+scripts/run-jobs.js    cron runner: due jobs for up to 55 s
 src/errorlog.js        error tracking: 5xx, process errors and browser reports → error_groups/error_events (scrubbed)
 src/idempotency.js     Idempotency-Key for /api/rpc
 src/tenant.js          clinic from Host / X-Org-Slug, membership, branch

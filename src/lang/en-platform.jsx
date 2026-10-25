@@ -481,6 +481,8 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   // ── A08 errors (docs/06 S6) ──
   "الأخطاء": "Errors",
   "أخطاء مفتوحة": "Open errors",
+  "مهام خلفية في الانتظار": "Background jobs waiting",
+  "مهام خلفية فشلت": "Background jobs failed",
   "الخادم": "Server",
   "المتصفح": "Browser",
   "مفتوحة": "Open",

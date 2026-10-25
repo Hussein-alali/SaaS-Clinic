@@ -1,16 +1,16 @@
 'use strict';
 // /api/auth/* (docs/02-TRD.md "المصادقة والجلسة").
 
-const crypto = require('crypto');
 const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const auth = require('../auth');
 const ratelimit = require('../ratelimit');
-const { isValidEmail, requestLang, bilingualMessage } = require('../mailer');
+const jobs = require('../jobs');
+const passwordReset = require('../password-reset');
+const { isValidEmail, requestLang } = require('../mailer');
 
 const router = express.Router();
 
-const RESET_TTL_SQL = "interval '1 hour'";
 const INVALID_LOGIN = 'Invalid login credentials';
 
 const str = (v) => (typeof v === 'string' ? v : '');
@@ -93,53 +93,22 @@ router.patch('/profile', auth.requireSession, async (req, res) => {
   res.json({ user: auth.publicUser(rows[0]) });
 });
 
-/** The reset e-mail: {subject, text, html}, both languages, `lang` first. */
-function resetMessage(link, lang) {
-  const a = link.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  return bilingualMessage(lang, {
-    ar: {
-      subject: 'إعادة تعيين كلمة المرور',
-      text: [
-        'طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.',
-        `افتح الرابط التالي خلال ساعة واحدة: ${link}`,
-        'إن لم تطلب ذلك فتجاهل هذه الرسالة.',
-      ],
-      html:
-        '<p>طلبتَ إعادة تعيين كلمة المرور لحسابك في ClinicSystem EG.</p>' +
-        `<p><a href="${a}">إعادة تعيين كلمة المرور</a> (صالح لمدة ساعة واحدة)</p>` +
-        '<p>إن لم تطلب ذلك فتجاهل هذه الرسالة.</p>',
-    },
-    en: {
-      subject: 'Reset your password',
-      text: [
-        'You asked to reset your ClinicSystem EG password.',
-        `Open this link within one hour: ${link}`,
-        'If you did not ask for this, ignore this e-mail.',
-      ],
-      html:
-        '<p>You asked to reset your ClinicSystem EG password.</p>' +
-        `<p><a href="${a}">Reset your password</a> (valid for one hour)</p>` +
-        '<p>If you did not ask for this, ignore this e-mail.</p>',
-    },
-  });
-}
-
 // lang: the requester's interface language (X-Lang), first in the e-mail.
+// An e-mail that fails is sent again (new link) by a job (docs/06 S7).
 async function sendResetEmail(app, email, lang) {
-  const { config, db, mailer } = app.locals;
+  const { db } = app.locals;
   const { rows } = await db.query("select id, email from auth.users where lower(email) = lower($1) and status = 'active'", [email]);
   const user = rows[0];
   if (!user) return;
   // At most 3 reset e-mails per account an hour (the rest are dropped silently).
   if (!(await ratelimit.hit(db, 'reset_email', user.id)).allowed) return;
-
-  const token = crypto.randomBytes(32).toString('base64url');
-  await db.query(
-    `insert into auth.password_reset_tokens (token_hash, user_id, expires_at) values ($1, $2, now() + ${RESET_TTL_SQL})`,
-    [auth.sha256(token), user.id],
-  );
-  const link = `${config.publicBaseUrl}/?reset=${encodeURIComponent(token)}`;
-  await mailer.send({ to: user.email, ...resetMessage(link, lang) });
+  try {
+    await passwordReset.sendResetLink(app.locals, db, user, lang);
+  } catch (err) {
+    console.error('[api] password-reset e-mail failed:', err && err.message);
+    await jobs.enqueue(db, 'email.password_reset', { userId: user.id, lang },
+      { runAt: new Date(Date.now() + 60e3), dedupeKey: `email.password_reset:${user.id}` });
+  }
 }
 
 router.post('/reset/request', async (req, res) => {

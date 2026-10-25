@@ -21,6 +21,7 @@ const { sha256 } = require('./auth');
 const { isValidEmail, bilingualMessage } = require('./mailer');
 const { MEMBER_ROLES, validateBranchIds, assertUserSeat } = require('./members');
 const ratelimit = require('./ratelimit');
+const jobs = require('./jobs');
 
 const INVITE_TTL_SQL = "interval '7 days'";
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,200}$/;
@@ -220,6 +221,8 @@ async function sendInvitationEmail(deps, { org, invitation, token, lang }, waitM
   if (db && invitation.id) {
     sending = sending.then(async (sent) => {
       await recordEmailStatus(db, invitation, token, sent);
+      // Failed: a job sends it again later, with a new link (docs/06 S7).
+      if (!sent) await queueRetry(db, invitation, lang);
       return sent;
     });
     if (background) background(() => sending);
@@ -242,6 +245,17 @@ async function sendInvitationEmail(deps, { org, invitation, token, lang }, waitM
  * overwritten by the result of an older e-mail. Never throws, and logs no
  * address.
  */
+// The job's payload is the invitation id and the language: never the
+// address or a token (the job issues a new one). Never throws.
+async function queueRetry(db, invitation, lang) {
+  try {
+    await jobs.enqueue(db, 'email.invitation', { invitationId: invitation.id, lang: lang === 'en' ? 'en' : 'ar' },
+      { runAt: new Date(Date.now() + 60e3), dedupeKey: `email.invitation:${invitation.id}` });
+  } catch (err) {
+    console.error('[api] invitation e-mail retry not queued:', err && err.message);
+  }
+}
+
 async function recordEmailStatus(db, invitation, token, sent) {
   try {
     const { rows } = await db.query(
@@ -294,7 +308,7 @@ async function deliverInvitation({ mailer, config }, { org, invitation, token, l
   const link = inviteLink(config, org.slug, token);
   const name = String(org.name || org.slug);
   try {
-    await mailer.send({ to: invitation.email, ...invitationMessage({ name, role: invitation.role, link, lang }) });
+    await mailer.send({ to: invitation.email, kind: 'invitation', ...invitationMessage({ name, role: invitation.role, link, lang }) });
     return true;
   } catch (err) {
     console.error('[api] invitation e-mail failed:', err && err.message);
@@ -304,6 +318,7 @@ async function deliverInvitation({ mailer, config }, { org, invitation, token, l
 
 module.exports = {
   limitSends,
+  deliverInvitation,
   INVITE_TTL_SQL,
   ROLE_LABELS_AR,
   ROLE_LABELS_EN,

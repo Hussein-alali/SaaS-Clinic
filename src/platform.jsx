@@ -669,6 +669,9 @@
       { key: "pending_invitations", label: tt("دعوات معلقة"), value: s && s.pending_invitations, accent: "#7E6BD3", icon: <I.Mail size={15}/> },
       { key: "retention_overdue", label: tt("تجاوزت مدة الاحتفاظ"), value: s && s.retention_overdue, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/clinics?status=suspended" },
       { key: "open_errors", label: tt("أخطاء مفتوحة"), value: s && s.open_errors, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/errors" },
+      // Background jobs (docs/06 S7): waiting (retries included) and dead after their last attempt.
+      { key: "jobs_queued", label: tt("مهام خلفية في الانتظار"), value: s && s.jobs_queued, accent: "#7E6BD3", icon: <I.Clock size={15}/> },
+      { key: "jobs_failed", label: tt("مهام خلفية فشلت"), value: s && s.jobs_failed, accent: "#D8665A", icon: <PI.Alert size={15}/> },
     ];
     return (
       <>

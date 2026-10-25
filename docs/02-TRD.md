@@ -238,7 +238,7 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 
 | Method & path | الوصف |
 |---|---|
-| `GET /api/platform/stats` | أعداد العيادات حسب الحالة + الدعوات المعلقة + `open_errors` |
+| `GET /api/platform/stats` | أعداد العيادات حسب الحالة + الدعوات المعلقة + `open_errors` + `jobs_queued` و `jobs_failed` |
 | `GET /api/platform/organizations?q=&status=&specialty=` | قائمة مع بحث وتصفية |
 | `POST /api/platform/organizations` | `{name, slug, specialty_code, modules:[code], plan_id, admin_email}` → عيادة `pending_activation` + فرع «الفرع الرئيسي» + إعدادات + دعوة أول مدير. **عملية ذرية** |
 | `GET /api/platform/organizations/:id` | التفاصيل + الوحدات + الفروع + الأعضاء + الاشتراك |
@@ -337,6 +337,7 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 - اتصالات القاعدة: Pool بحد أقصى 10، لأن الاستضافة المشتركة تحدد عدد العمليات والاتصالات.
 - النسخ الاحتياطي ✅ (S1): `scripts/backup.sh` كل ليلة عبر Cron في cPanel (dump + ملفات + manifest بعدد الصفوف من لقطة واحدة، تدوير 7 يومية + 4 أسبوعية، رفض المكان غير الآمن والقرص الممتلئ)، و `scripts/restore-check.sh` أسبوعيًا يسترجع في قاعدة ثانية ويطابق كل جدول (الأوامر في [08](08-Hosting-Migration.md) «Runbook»)؛ النسخ داخل hosting.com بقرار المالك، فالنسخة الأسبوعية تُنزّل يدويًا حتى يُعتمد مكان خارجي؛ **اختبار استرجاع فعلي قبل الترحيل** (NFR-008).
 - **تتبّع الأخطاء ✅ (S6، بلا خدمة خارجية):** أخطاء الـ API ذات `5xx` (بعد الرد، في الخلفية) و `unhandledRejection`/`uncaughtException` (في `api/app.js`، ثم إنهاء العملية فيعيدها Passenger) وتقارير المتصفح (`src/errors.jsx`: `window.onerror` و `unhandledrejection` و `ErrorBoundary` حول كل صفحة في العيادة ولوحة المنصة) → `api/src/errorlog.js`: تنقية (البريد → `[email]`، 8 أرقام فأكثر → `[number]`، حذف query strings، حدود الطول)، و fingerprint = sha256(المصدر + الرسالة بعد توحيد الأرقام والمعرّفات واسم ملف الحزمة + أول سطر في الـ stack)، وعينة واحدة لكل مجموعة في الدقيقة؛ `recordError()` لا يرمي أبدًا. المسار المسجل نمط المسار (`/api/rpc/:fn`) لا العنوان بقيمه. A08 في لوحة المنصة.
+- **المهام الخلفية ✅ (S7، بلا طابور خارجي):** جدول `jobs` و `api/src/jobs.js`: `enqueue(db, kind, payload, {runAt, maxAttempts, dedupeKey})`، و `runDue()` يأخذ مهمة مستحقة واحدة في كل مرة بـ `FOR UPDATE SKIP LOCKED` (عمليات Passenger والـ cron لا تنفذ مهمة مرتين)، في معاملتها الخاصة والمعالج داخل savepoint؛ الفشل ينتظر min(2^المحاولات، 360) دقيقة، وبعد `max_attempts` (5) تُعلّم ميتة وتبقى مع آخر خطأ. المشغّلان: `node api/scripts/run-jobs.js` من Cron كل دقيقة (حتى 55 ث ثم يخرج) ومؤقت داخل عملية الـ API كل `JOBS_POLL_MS` (10 ث؛ 0 = معطّل؛ لا يعمل في الاختبارات). الأنواع: `email.invitation` و `email.password_reset` (عند فشل البريد، برابط جديد، والحمولة معرّف ولغة فقط)، `maintenance.daily` (مرة في اليوم: نوافذ الحدود > يومين، مفاتيح idempotency > يوم، عينات الأخطاء > 30 يومًا، المهام المنتهية > 30 والميتة > 90، `mail_log` > 90). `mail_log` يعدّ كل رسالة (`kind`، `ok`) دون العنوان.
 - **الحزم عند الطلب نطاق مستقل ✅:** `import` و `platform` تُبنى بـ `format: "iife"` لأن مساعدات esbuild في سكربت منفصل كانت تحل محل مساعدات حزمة التطبيق بنفس الاسم المختصر (تعطلت لوحة المنصة كلها في S6 قبل الإصلاح؛ `test/build.test.mjs`).
 - RPO/RTO وهدف التوفر تُحدد مع مزود الاستضافة قبل الإطلاق (NFR-013) — مقترح: RPO ≤ 24 ساعة، RTO ≤ 4 ساعات.
 
@@ -413,3 +414,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 25 أكتوبر 2026 | S4: `slot_taken` و `Idempotency-Key` على `/api/rpc` ورموز أخطائهما، وعدّاد الإيصالات و `new_record_id()`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S5: حدود الطلبات المشتركة في PostgreSQL (`rate_limits`)، و `rate_limited`، و `API_RATE_PER_MIN`، و 50 محاولة خاطئة لكل IP. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S6: تتبّع الأخطاء داخل القاعدة (`errorlog.js`، `/api/client-errors`، `/api/platform/errors`)، و `ErrorBoundary`، والحزم عند الطلب IIFE. (هذا الـ commit) |
+| 25 أكتوبر 2026 | S7: المهام الخلفية في PostgreSQL (`jobs.js`، `run-jobs.js`، المؤقت)، إعادة البريد الفاشل، الصيانة اليومية، `mail_log`. (هذا الـ commit) |

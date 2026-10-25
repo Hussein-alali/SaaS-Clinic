@@ -21,7 +21,8 @@ db/
 │   ├── 0009_inactive_branch_guard.sql # no new row on an inactive branch (BR409)
 │   ├── 0010_concurrency.sql   # one booking per slot (BK409), receipt counters, new_record_id(), idempotency_keys
 │   ├── 0011_rate_limits.sql   # rate-limit counters shared by every API process
-│   └── 0012_error_log.sql     # error_groups / error_events (error tracking, S6)
+│   ├── 0012_error_log.sql     # error_groups / error_events (error tracking, S6)
+│   └── 0013_jobs.sql          # background jobs and the e-mail log (S7)
 ├── seed/
 │   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/

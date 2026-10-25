@@ -88,11 +88,13 @@ function parseDate(value, field) {
 
 router.get('/stats', async (req, res) => {
   const { db } = req.app.locals;
-  const [byStatus, pending, overdue, errors] = await Promise.all([
+  const [byStatus, pending, overdue, errors, queue] = await Promise.all([
     db.query('select status, count(*)::int as n from public.organizations group by status'),
     db.query("select count(*)::int as n from public.invitations where status = 'pending' and expires_at > now()"),
     db.query("select count(*)::int as n from public.organizations where status = 'suspended' and retention_until < now()"),
     db.query('select count(*)::int as n from public.error_groups where resolved_at is null'),
+    db.query(`select count(*) filter (where done_at is null and dead_at is null)::int as queued,
+                     count(*) filter (where dead_at is not null)::int as failed from public.jobs`),
   ]);
   const organizations = Object.fromEntries(P.ORG_STATUSES.map((s) => [s, 0]));
   let total = 0;
@@ -105,6 +107,8 @@ router.get('/stats', async (req, res) => {
     pending_invitations: pending.rows[0].n,
     retention_overdue: overdue.rows[0].n,
     open_errors: errors.rows[0].n,
+    jobs_queued: queue.rows[0].queued,
+    jobs_failed: queue.rows[0].failed,
   });
 });
 

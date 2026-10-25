@@ -176,6 +176,15 @@
 
 **البيئة على الخادم:** ملف `~/clinicsys/shared/env` (صلاحية 600، خارج Git) فيه `export NODE_ENV=production DATABASE_URL=… FILES_DIR=… BACKUP_DIR=… PORT=…`، و `. ~/clinicsys/shared/env` قبل `deploy.sh` و `rollback.sh` وأي `node db/migrate.js` يدوي. `deploy.sh` يشغّل الـ migrations بـ `NODE_ENV=production` إن لم يُضبط.
 
+### المهام الخلفية (S7) ✅
+
+| ماذا | الأمر | متى |
+|---|---|---|
+| المهام المستحقة (إعادة البريد الفاشل، الصيانة اليومية) | `. ~/clinicsys/shared/env && cd ~/clinicsys/current/api && node scripts/run-jobs.js >> ~/clinicsys-jobs.log 2>&1` | كل دقيقة `* * * * *` |
+
+- الـ API نفسه يشغّلها أيضًا كل 10 ثوانٍ ما دامت عمليته حية (`JOBS_POLL_MS`)؛ الـ Cron يضمنها حين يوقف Passenger العمليات الخاملة. `FOR UPDATE SKIP LOCKED` يمنع تنفيذ مهمة مرتين.
+- المهام الفاشلة نهائيًا تظهر في بطاقة «مهام خلفية فشلت» في لوحة المنصة، ومعها آخر خطأ في جدول `jobs`.
+
 ### القاعدة الحية أثناء الـ migrations (S3) ✅
 
 - **لا انتظار طويل:** كل ملف ينتظر القفل 5 ث على الأكثر (`MIGRATE_LOCK_TIMEOUT`) ويعمل 15 دقيقة على الأكثر (`MIGRATE_STATEMENT_TIMEOUT`). عند التجاوز (SQLSTATE `55P03` أو `57014`) يُلغى الملف كاملًا ويقف النشر قبل التبديل (خروج 1، الإصدار الحالي يعمل)؛ أعد المحاولة في وقت أهدأ.
