@@ -48,11 +48,13 @@ jobs.register('email.password_reset', async ({ userId, lang }, { client, deps })
 });
 
 // What each table needs to keep: rate-limit windows 2 days, idempotent
-// answers 1 day, error samples 30 days, finished jobs 30 days (dead ones
+// answers 1 day (webhook event ids 30: providers retry an event for days,
+// docs/06 S10), error samples 30 days, finished jobs 30 days (dead ones
 // 90), the e-mail log 90 days.
 jobs.register('maintenance.daily', async (payload, { client }) => {
   await client.query("delete from public.rate_limits where window_start < now() - interval '2 days'");
-  await client.query("delete from public.idempotency_keys where created_at < now() - interval '1 day'");
+  await client.query(`delete from public.idempotency_keys
+                       where created_at < now() - case when scope like 'webhook:%' then interval '30 days' else interval '1 day' end`);
   await client.query("delete from public.error_events where created_at < now() - interval '30 days'");
   await client.query(`delete from public.jobs where (done_at < now() - interval '30 days')
                          or (dead_at < now() - interval '90 days')`);

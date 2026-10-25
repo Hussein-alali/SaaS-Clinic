@@ -86,6 +86,17 @@ function loadConfig(env = process.env) {
   if (!['smtp', 'file'].includes(mailTransport)) problems.push('MAIL_TRANSPORT must be "smtp" or "file"');
   const smtpPort = int(env.SMTP_PORT, 587);
 
+  // Incoming webhooks (docs/06 S10): WEBHOOK_<NAME>_SECRET turns on
+  // POST /api/webhooks/<name> (lower case, "_" → "-"). None is set today.
+  const webhooks = {};
+  for (const [key, raw] of Object.entries(env)) {
+    const m = /^WEBHOOK_([A-Z0-9][A-Z0-9_]{0,38})_SECRET$/.exec(key);
+    const value = str(raw, '');
+    if (!m || !value) continue;
+    if (value.length < MIN_SECRET_LENGTH) problems.push(`${key} must be at least ${MIN_SECRET_LENGTH} characters`);
+    webhooks[m[1].toLowerCase().replace(/_/g, '-')] = value;
+  }
+
   if (problems.length) {
     const err = new Error(`Invalid API configuration:\n  - ${problems.join('\n  - ')}`);
     err.code = 'CONFIG_INVALID';
@@ -142,6 +153,7 @@ function loadConfig(env = process.env) {
     // The deployed release name (/api/health shows it): RELEASE, else the
     // RELEASE file scripts/deploy.sh writes at the release root.
     release: str(env.RELEASE, '') || readReleaseFile(),
+    webhooks: Object.freeze(webhooks),
     mailTransport,
     mailOutboxDir: path.resolve(API_ROOT, str(env.MAIL_OUTBOX_DIR, '.outbox')),
     mailFrom: str(env.MAIL_FROM, 'ClinicSystem EG <no-reply@localhost>'),

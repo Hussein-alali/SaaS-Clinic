@@ -12,6 +12,7 @@ const { HttpError, isPgError, mapPgError, sendError } = require('./errors');
 const { staticHandlers } = require('./static');
 const { throttle } = require('./ratelimit');
 const errorlog = require('./errorlog');
+const { webhooksRouter } = require('./webhooks');
 require('./job-handlers'); // the kinds of background job (docs/06 S7)
 
 const CSRF_HEADER_VALUE = 'clinicsys';
@@ -140,6 +141,9 @@ function createApp(config, deps = {}) {
   });
   // Before the CSRF check and the session: deploys and monitoring call it bare.
   api.use('/health', require('./routes/health'));
+  // Signed by the provider (no browser, no session) and read raw for the
+  // signature: before the CSRF check, the throttle and the JSON parser (docs/06 S10).
+  api.use('/webhooks', (req, res, next) => { req.mountPath = req.baseUrl; next(); }, webhooksRouter(config));
   api.use(requireCsrfHeader);
   api.use(cookieParser());
   // A runaway screen loop must not flood the database (docs/06 S5).

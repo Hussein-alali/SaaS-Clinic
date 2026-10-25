@@ -160,7 +160,8 @@ test('mail_log counts every send and failure, without addresses; the platform st
 test('maintenance.daily removes what is no longer needed and keeps the rest', async () => {
   await h.sql(`insert into public.rate_limits (bucket, key_hash, window_start, count) values
     ('login_ip', 'old', now() - interval '3 days', 1), ('login_ip', 'new', now() - interval '1 hour', 1)`);
-  await h.sql(`insert into public.idempotency_keys (scope, key, created_at) values ('t', 'old-key', now() - interval '2 days'), ('t', 'new-key', now())`);
+  await h.sql(`insert into public.idempotency_keys (scope, key, created_at) values ('t', 'old-key', now() - interval '2 days'), ('t', 'new-key', now()),
+    ('webhook:fakepay', 'evt-2-days', now() - interval '2 days'), ('webhook:fakepay', 'evt-31-days', now() - interval '31 days')`);
   await h.sql(`insert into public.error_groups (fingerprint, source, message) values ('${'f'.repeat(64)}', 'api', 'x')`);
   await h.sql(`insert into public.error_events (fingerprint, message, created_at) values
     ('${'f'.repeat(64)}', 'old', now() - interval '31 days'), ('${'f'.repeat(64)}', 'new', now())`);
@@ -171,6 +172,8 @@ test('maintenance.daily removes what is no longer needed and keeps the rest', as
   const left = async (sql) => (await h.sql(sql)).rows.map((r) => r.v).sort();
   assert.deepEqual(await left("select key_hash v from public.rate_limits where key_hash in ('old', 'new')"), ['new']);
   assert.deepEqual(await left("select key v from public.idempotency_keys where scope = 't'"), ['new-key']);
+  // Webhook event ids 30 days: providers retry an event for days (docs/06 S10).
+  assert.deepEqual(await left("select key v from public.idempotency_keys where scope like 'webhook:%'"), ['evt-2-days']);
   assert.deepEqual(await left(`select message v from public.error_events where fingerprint = '${'f'.repeat(64)}'`), ['new']);
   assert.equal((await h.sql("select count(*)::int n from public.jobs where done_at < now() - interval '30 days'")).rows[0].n, 0);
   assert.equal((await h.sql("select count(*)::int n from public.mail_log where sent_at < now() - interval '90 days'")).rows[0].n, 0);
