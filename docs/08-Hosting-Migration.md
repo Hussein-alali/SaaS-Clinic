@@ -147,7 +147,7 @@
 | تجربة استرجاع (تطابق عدد صفوف كل جدول) | `cd ~/clinicsys/current && scripts/restore-check.sh >> ~/clinicsys-backups/restore-check.log 2>&1` | الأحد `0 4 * * 0` |
 
 - **المكان:** `BACKUP_DIR` (الافتراضي `~/clinicsys-backups`) خارج `public_html` وخارج مجلد الملفات؛ السكربت يرفض غير ذلك (خروج 4).
-- **الاحتفاظ:** آخر 7 نسخ يومية و 4 أسبوعية (نسخة الأحد أسبوعية): `BACKUP_KEEP_DAILY` و `BACKUP_KEEP_WEEKLY`.
+- **الاحتفاظ:** آخر 7 نسخ يومية و 4 أسبوعية (نسخة الأحد أسبوعية): `BACKUP_KEEP_DAILY` و `BACKUP_KEEP_WEEKLY`. نسخ القاعدة وحدها التي يأخذها `deploy.sh` قبل كل نشر نوعها `db-only` ولها تدويرها (آخر 5، `BACKUP_KEEP_DB_ONLY`)، فلا تُخرج النشرات النسخ الليلية التي فيها الملفات.
 - **المساحة:** لا تبدأ النسخة إن كانت ستُبقي أقل من `BACKUP_MIN_FREE_MB` (الافتراضي 1024) حرة (خروج 3) — ويصل تنبيه الموارد (S8).
 - **الاتساق:** الـ dump وعدد صفوف كل جدول من لقطة واحدة (`db/backup-tools.js`)، بسياق النظام (`app.system = on`) لأن جداول العيادات FORCE RLS. الـ manifest فيه sha256 لكل ملف.
 - **قاعدة الاسترجاع:** قاعدة ثانية فارغة تُنشأ مرة واحدة في cPanel (مثل `<account>_clinicsys_restore`) لنفس المستخدم، وعنوانها في `RESTORE_DATABASE_URL`. السكربت يرفض أن تكون هي القاعدة الحية.
@@ -162,19 +162,19 @@
 |---|---|
 | `releases/<stamp>-<id>/` | إصدار كامل: `api/` و `db/` و `dist/` و `scripts/` وملف `RELEASE` |
 | `current` | رابط رمزي إلى الإصدار العامل. في cPanel ← Setup Node.js App: **Application root = `clinicsys/current/api`**، و Startup file = `app.js` |
-| `shared/` | ما يبقى بين الإصدارات (مجلد ملفات العيادات `FILES_DIR`) |
+| `shared/` | ما يبقى بين الإصدارات: `shared/files` (ملفات العيادات، `FILES_DIR`) و `shared/env` |
 
 **الخطوات:**
 
 1. على جهازك (أو في CI): `scripts/package-release.sh` ← `release-<sha>.tar.gz` (البناء على جهازك، لأن esbuild أداة تطوير).
 2. ارفع الملف إلى الخادم.
 3. شغّل `DATABASE_URL=… PORT=… ~/clinicsys/current/scripts/deploy.sh release-<sha>.tar.gz` (في أول نشر يُشغّل من النسخة المفكوكة).
-4. ما يحدث تلقائيًا: نسخة احتياطية للقاعدة ← فك الإصدار ← `npm ci --omit=dev` ← migrations ← تبديل `current` ← إعادة التشغيل (`tmp/restart.txt`) ← فحص `GET /api/health` لمدة 60 ثانية.
+4. ما يحدث تلقائيًا: نسخة احتياطية للقاعدة ← فك الإصدار ← `npm ci --omit=dev` ← migrations ← تبديل `current` ← إعادة التشغيل (`tmp/restart.txt`) ← فحص `GET /api/health` لمدة 60 ثانية حتى يجيب **باسم الإصدار الجديد** (`release`)، فلا يُحسب ردّ العملية القديمة نجاحًا. العنوان `https://$APP_BASE_DOMAIN/api/health` (Passenger لا يستمع على منفذ محلي)، أو `HEALTH_URL` صراحة.
 5. إن لم يصح الإصدار الجديد: يعود `current` تلقائيًا إلى الإصدار السابق (خروج 2)، ويُعلَّم الإصدار الفاشل بملف `.failed`.
 
 **التراجع اليدوي:** `scripts/rollback.sh` يعود إلى أحدث إصدار سابق سليم، و `scripts/rollback.sh <release>` إلى إصدار بعينه. يُحتفظ بآخر 5 إصدارات.
 
-**البيئة على الخادم:** ملف `~/clinicsys/shared/env` (صلاحية 600، خارج Git) فيه `export NODE_ENV=production DATABASE_URL=… FILES_DIR=… BACKUP_DIR=… PORT=…`، و `. ~/clinicsys/shared/env` قبل `deploy.sh` و `rollback.sh` وأي `node db/migrate.js` يدوي. `deploy.sh` يشغّل الـ migrations بـ `NODE_ENV=production` إن لم يُضبط.
+**البيئة على الخادم:** ملف `~/clinicsys/shared/env` (صلاحية 600، خارج Git) فيه `export NODE_ENV=production DATABASE_URL=… APP_BASE_DOMAIN=clinicsyseg.com FILES_DIR=~/clinicsys/shared/files BACKUP_DIR=… PORT=…`، تقرؤه السكربتات فقط: **التطبيق نفسه يأخذ متغيراته من شاشة Setup Node.js App**، فضع فيها `FILES_DIR` نفسه (الـ API يرفض البدء في الإنتاج بدونه، لأن الافتراضي داخل مجلد الإصدار ويضيع مع النشر التالي) ولا تضع فيها `RELEASE`، و `. ~/clinicsys/shared/env` قبل `deploy.sh` و `rollback.sh` وأي `node db/migrate.js` يدوي. `deploy.sh` يشغّل الـ migrations بـ `NODE_ENV=production` إن لم يُضبط.
 
 ### المهام الخلفية (S7) ✅
 

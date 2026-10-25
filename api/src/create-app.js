@@ -6,7 +6,7 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { createDb } = require('./db');
-const { createMailer } = require('./mailer');
+const { createMailer, countSends } = require('./mailer');
 const { TableCatalog, FunctionCatalog } = require('./catalog');
 const { HttpError, isPgError, mapPgError, sendError } = require('./errors');
 const { staticHandlers } = require('./static');
@@ -72,25 +72,6 @@ function errorHandler(err, req, res, next) {
   console.error('[api] unhandled error:', err && (err.stack || err.message || err));
   track(req, err, 500);
   return sendError(res, 500, 'internal_error', 'Internal server error');
-}
-
-// Every e-mail sent or failed is counted in mail_log (kind, ok; never the
-// address): the SMTP hourly/daily limits are watched from it (docs/06 S8).
-function countSends(mailer, db) {
-  return {
-    ...mailer,
-    async send(message) {
-      let ok = false;
-      try {
-        const result = await mailer.send(message);
-        ok = true;
-        return result;
-      } finally {
-        await db.query('insert into public.mail_log (kind, ok) values ($1, $2)', [(message && message.kind) || null, ok])
-          .catch((err) => console.error('[api] mail_log not written:', err.message));
-      }
-    },
-  };
 }
 
 /**

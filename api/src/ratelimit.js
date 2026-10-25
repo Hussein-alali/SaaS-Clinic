@@ -94,7 +94,11 @@ function throttle(limitPerMin) {
     const start = t - (t % MINUTE);
     if (start !== windowStart) { counts.clear(); windowStart = start; }
     const cookie = req.cookies && req.cookies.cs_session;
-    const key = cookie ? `s:${keyHash(cookie)}` : `ip:${req.ip}`;
+    const ip = req.ip || (req.socket && req.socket.remoteAddress) || null;
+    // No session and no address (a Unix-socket proxy without TRUST_PROXY):
+    // no bucket, rather than one bucket shared by every such visitor.
+    if (!cookie && !ip) return next();
+    const key = cookie ? `s:${keyHash(cookie)}` : `ip:${ip}`;
     const n = (counts.get(key) || 0) + 1;
     counts.set(key, n);
     if (n > limitPerMin) return next(rateLimited(res, Math.max(1, start + MINUTE - t)));

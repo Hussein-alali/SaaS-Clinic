@@ -58,7 +58,7 @@ test/                  node:test against the real migrations + db/seed/dev.sql (
 | `COOKIE_DOMAIN` | empty (host-only cookie) | `.clinicsyseg.com` |
 | `COOKIE_SECURE` | `false` | `true` by default (also sends HSTS); `false` turns it off |
 | `TRUST_PROXY` | `loopback` | hops or addresses of the web server in front of Node (see deployment) |
-| `FILES_DIR` | `api/uploads` | a folder **outside** `public_html`, e.g. `/home/<user>/clinicsys-files` |
+| `FILES_DIR` | `api/uploads` | **required** (the default would sit inside a release folder): outside `public_html` and the releases, e.g. `/home/<user>/clinicsys/shared/files` |
 | `DIST_DIR` | `../dist` (relative to `api/`) | where `dist/` was uploaded |
 | `MAIL_TRANSPORT` | `file` | `smtp` |
 | `MAIL_OUTBOX_DIR` | `api/.outbox` | — |
@@ -187,7 +187,7 @@ Error messages stay English; the frontend shows its own text per `code`.
 | `GET /api/orgs/resolve?slug=` | public. Active or `pending_activation`: `{id, slug, name, status, specialty_code, modules, settings:{display_name, subtitle, logo, primary_color}}`; suspended: `{slug, status}`; closed/draft/unknown: 404 |
 | `GET /api/orgs/current` | `{organization:{…as resolve}, role, branches:[branch rows], current_branch_id}` |
 | `POST /api/data` | PostgREST replacement, `{data, count}`, ≤ 1000 rows per response |
-| `POST /api/webhooks/:provider` | a provider's signed event (`src/webhooks.js`), only for a provider with `WEBHOOK_<NAME>_SECRET` (else 404); no session, no CSRF header, raw body ≤ 1 MB. Headers `X-Webhook-Id`, `X-Webhook-Timestamp` (Unix seconds, ±5 min), `X-Webhook-Signature` (hex HMAC-SHA256 of `<timestamp>.<raw body>`, `sha256=` allowed); body `{type, data}`. → 200 `{received:true}` and a job `webhook.<name>.<type>`; the same event id again → 200 `{received:true, duplicate:true}` (ids kept 30 days); 400 `invalid_signature` / `invalid_webhook` |
+| `POST /api/webhooks/:provider` | a provider's signed event (`src/webhooks.js`), only for a provider with `WEBHOOK_<NAME>_SECRET` (else 404); no session, no CSRF header, raw body ≤ 1 MB. Headers `X-Webhook-Id`, `X-Webhook-Timestamp` (Unix seconds, ±5 min), `X-Webhook-Signature` (hex HMAC-SHA256 of `<id>.<timestamp>.<raw body>`, `sha256=` allowed); body `{type, data}`. → 200 `{received:true}` and a job `webhook.<name>.<type>`; the same event id again → 200 `{received:true, duplicate:true}` (ids kept 30 days); 400 `invalid_signature` / `invalid_webhook` |
 | `POST /api/client-errors` `{message, stack, route, kind, component}` | 204; a browser error (src/errors.jsx), no session needed (account and clinic attached when present), ≤ 8 KB, 30/min per IP |
 | `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments. Optional `Idempotency-Key` (8–100 of `[A-Za-z0-9_-]`, `src/idempotency.js`): claimed in the call's transaction, so a repeat answers the stored result with `Idempotency-Replayed: true`; another user's key → 409 `idempotency_conflict`; malformed → 400 `invalid_idempotency_key`; a failed call stores nothing |
 | `POST /api/files/upload` (multipart `bucket`, `path`, `file`, `upsert`) | `{path, fullPath}`; 409 exists, 413 > 20 MB, 422 plan storage limit |

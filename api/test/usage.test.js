@@ -72,6 +72,18 @@ test('levels: 72 % → one 70 % alert to the platform admins; again → nothing;
   assert.match(mails[2].text, /back below/i);
 });
 
+test('hovering around 70 %: one alert and one «انتهى الخطر», not one every time it dips', async () => {
+  await h.sql("delete from public.alert_state");
+  const from = h.outbox().length;
+  const levels = [];
+  for (const pct of [71, 69, 71, 69, 72, 68]) {
+    const r = await usage.checkUsage(deps, { usage: fake(pct) });
+    levels.push(...r.sent.filter((a) => a.key === 'disk').map((a) => a.level));
+  }
+  assert.deepEqual(levels, [70, 0], 'the 70 % alert once a day, and its recovery once');
+  assert.equal(alertsTo(USER.superAdmin.email, from).length, 2);
+});
+
 test('the e-mail budget: the hourly and daily SMTP limits are levels too', async () => {
   const r = await usage.checkUsage(deps, { usage: fake(10, { emailsLastHour: 10, emailsToday: 20 }) });
   assert.deepEqual(r.sent.map((a) => [a.key, a.level]).sort(), [['email_hour', 95]]);

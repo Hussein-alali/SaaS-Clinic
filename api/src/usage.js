@@ -8,7 +8,8 @@
 //                               diskTotalBytes, diskFreeBytes, emailsLastHour, emailsToday}
 //   checkUsage(deps, { usage }) → {usage, levels, sent}: stores a snapshot;
 //     a level (70 / 85 / 95 %) crossed upward e-mails every platform admin,
-//     at most once per level a day; back below 70 % sends «انتهى الخطر».
+//     at most once per level a day; back below 70 % sends «انتهى الخطر»
+//     once per alert actually sent.
 //   emailBudgetLeft(db, config) → e-mails still allowed this hour (≥ 0)
 //
 // The hourly job usage.check (src/job-handlers.js) runs checkUsage().
@@ -138,7 +139,12 @@ async function checkUsage(deps, { usage } = {}) {
     const sentAt = { ...(prev.sent || {}) };
     let send = false;
     if (level > prev.level) send = !(sentAt[level] && now - Date.parse(sentAt[level]) < DAY_MS);
-    else if (level === 0 && prev.level > 0) send = true; // back below 70 %
+    else if (level === 0 && prev.level > 0) {
+      // Back below 70 %: only after an alert that was actually sent since the
+      // last «انتهى الخطر» (hovering around 70 % sends it once, not hourly).
+      const lastAlert = Math.max(0, ...LEVELS.map((l) => (sentAt[l] ? Date.parse(sentAt[l]) : 0)));
+      send = lastAlert > (sentAt[0] ? Date.parse(sentAt[0]) : 0);
+    }
     if (send) {
       const to = await adminEmails(db);
       const message = alertMessage(key, level, pct[key]);

@@ -33,12 +33,19 @@ before(async () => {
   fs.mkdirSync(path.join(src, "api"), { recursive: true });
   fs.mkdirSync(path.join(src, "db"), { recursive: true });
   fs.writeFileSync(path.join(src, "api", "app.js"), "// fake");
+  // Answers like /api/health: 503 for a release named "bad"; for one named
+  // "stale" the previous process keeps answering (its release name).
+  let lastGood = null;
+  // ?home=<APP_HOME> for a test with its own app folder.
   server = http.createServer((req, res) => {
+    const home = new URL(req.url, "http://x").searchParams.get("home") || appHome;
     let current = "";
-    try { current = fs.readlinkSync(path.join(appHome, "current")); } catch {}
-    const ok = !/bad/.test(path.basename(current));
+    try { current = fs.readlinkSync(path.join(home, "current")); } catch {}
+    const name = path.basename(current);
+    const ok = !/bad/.test(name);
+    if (ok && !/stale/.test(name)) lastGood = name;
     res.writeHead(ok ? 200 : 503, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok }));
+    res.end(JSON.stringify({ ok, release: /stale/.test(name) ? lastGood : name }));
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   healthUrl = `http://127.0.0.1:${server.address().port}/api/health`;
@@ -120,7 +127,10 @@ test("first deploy (no running release): the new release takes the backup, befor
   fs.cpSync(src, fresh, { recursive: true });
   fs.mkdirSync(path.join(fresh, "scripts"));
   fs.writeFileSync(path.join(fresh, "scripts", "backup.sh"), `#!/usr/bin/env bash\necho "backup $*" >> ${JSON.stringify(trail)}\n`, { mode: 0o755 });
-  const r = await sh(DEPLOY, [fresh], { APP_HOME: home, RELEASE_ID: "first", BACKUP_CMD: "", MIGRATE_CMD: `echo migrate >> ${JSON.stringify(trail)}` });
+  const r = await sh(DEPLOY, [fresh], {
+    APP_HOME: home, HEALTH_URL: `${healthUrl}?home=${encodeURIComponent(home)}`,
+    RELEASE_ID: "first", BACKUP_CMD: "", MIGRATE_CMD: `echo migrate >> ${JSON.stringify(trail)}`,
+  });
   assert.equal(r.status, 0, log.at(-1));
   assert.deepEqual(fs.readFileSync(trail, "utf8").trim().split("\n"), ["backup --db-only", "migrate"]);
 });
@@ -135,4 +145,13 @@ test("package-release.sh builds a tarball that deploys", async () => {
   const r = await sh(DEPLOY, [out], { RELEASE_ID: "pkg", DEPLOY_STAMP: "20261025T130000Z" });
   assert.equal(r.status, 0, log.at(-1));
   assert.ok(fs.existsSync(path.join(appHome, "current", "dist", "index.html")));
+});
+
+test("a release the health check does not see running (the old process still answers) is switched back too", async () => {
+  assert.equal((await deploy("good")).status, 0, log.at(-1));
+  const before = current();
+  const r = await deploy("stale");
+  assert.equal(r.status, 2, r.out);
+  assert.match(r.out, /answers release .*good.*, not .*stale/);
+  assert.equal(current(), before);
 });

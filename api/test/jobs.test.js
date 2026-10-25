@@ -179,8 +179,23 @@ test('maintenance.daily removes what is no longer needed and keeps the rest', as
   assert.equal((await h.sql("select count(*)::int n from public.mail_log where sent_at < now() - interval '90 days'")).rows[0].n, 0);
 });
 
+test('a job may wait on SMTP longer than a request: its transaction allows 10 minutes idle (the pool says 60 s)', async () => {
+  let seen = null;
+  jobs.register('test.idle', async (payload, { client }) => {
+    seen = (await client.query('show idle_in_transaction_session_timeout')).rows[0].idle_in_transaction_session_timeout;
+  });
+  await jobs.enqueue(deps.db, 'test.idle', {});
+  assert.equal((await jobs.runDue(deps.db, { deps, now: minutes(1) })).done, 1);
+  assert.equal(seen, '10min');
+  const outside = await deps.db.withContext({}, (c) => c.query('show idle_in_transaction_session_timeout'));
+  assert.equal(outside.rows[0].idle_in_transaction_session_timeout, '1min', 'requests keep the short limit');
+});
+
 test('node api/scripts/run-jobs.js (cron, every minute): queues the day\'s maintenance and the hour\'s check once, drains, exits 0', async () => {
   await h.sql("delete from public.jobs where kind = 'maintenance.daily'");
+  // An e-mail sent by the cron runner counts in mail_log like one sent by the app (the SMTP budget, S8).
+  await jobs.enqueue(deps.db, 'email.password_reset', { userId: USER.physioTherapist.id, lang: 'ar' });
+  const sentBefore = (await h.sql("select count(*)::int n from public.mail_log where kind = 'password_reset'")).rows[0].n;
   const env = {
     ...process.env, NODE_ENV: 'test', DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'localhost',
     FILES_DIR: h.config.filesDir, MAIL_TRANSPORT: 'file', MAIL_OUTBOX_DIR: h.config.mailOutboxDir, JOBS_MAX_SECONDS: '5',
@@ -195,5 +210,7 @@ test('node api/scripts/run-jobs.js (cron, every minute): queues the day\'s maint
   assert.deepEqual(rows[0], { n: 1, done: 1 }, 'once a day, whatever the number of runs');
   const { rows: [u] } = await h.sql("select count(*)::int n from public.jobs where kind = 'usage.check' and done_at is not null");
   assert.equal(u.n, 1, 'and the resource check once an hour');
+  const sentAfter = (await h.sql("select count(*)::int n from public.mail_log where kind = 'password_reset'")).rows[0].n;
+  assert.equal(sentAfter, sentBefore + 1, 'the cron runner writes mail_log');
   assert.ok(ORG.physio);
 });

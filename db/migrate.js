@@ -51,6 +51,14 @@ const DESTRUCTIVE = [
   [/\balter\s+column\s+\S+\s+(set\s+data\s+)?type\b/i, 'column type change'],
   [/\bset\s+not\s+null\b/i, 'set not null'],
 ];
+// From 0016 (the applied 0010-0015 keep the rules above): what the running
+// release may still call or rely on.
+const LINT_MORE_FROM = 16;
+const DESTRUCTIVE_MORE = [
+  [/\bdrop\s+(function|procedure|view|materialized\s+view)\b/i, 'drop function/procedure/view'],
+  [/\bdrop\s+constraint\b/i, 'drop constraint'],
+  [/\bdrop\s+default\b/i, 'drop default'],
+];
 const CONTRACT_RE = /--\s*contract:\s*\S/i;
 const BACKUP_MAX_AGE_MS = 2 * 3600 * 1000;
 
@@ -95,14 +103,21 @@ function readMigration(m) {
 }
 
 // Expand/contract lint: one problem per destructive line of a file numbered
-// 0010 or later that has no `-- contract: <reason>` on it or the line above.
+// 0010 or later that has no `-- contract: <reason>` on it or the line above
+// (more patterns from 0016, DESTRUCTIVE_MORE).
 function lintMigration(sql, file) {
-  if (Number(file.slice(0, 4)) < LINT_FROM) return [];
+  const n = Number(file.slice(0, 4));
+  if (n < LINT_FROM) return [];
+  const rules = n >= LINT_MORE_FROM ? DESTRUCTIVE.concat(DESTRUCTIVE_MORE) : DESTRUCTIVE;
   const lines = sql.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' ')).split('\n');
+  const codeOf = (line) => (line || '').replace(/--.*$/, '');
   const problems = [];
   lines.forEach((line, i) => {
-    const code = line.replace(/--.*$/, '');
-    const hit = DESTRUCTIVE.find(([re]) => re.test(code));
+    // From 0016, a line ending in "alter column x" is read with the next one
+    // ("type bigint" written below it is still a type change).
+    const code = n >= LINT_MORE_FROM && /\balter\s+column\s+\S+\s*$/i.test(codeOf(line))
+      ? `${codeOf(line)} ${codeOf(lines[i + 1])}` : codeOf(line);
+    const hit = rules.find(([re]) => re.test(code));
     if (!hit || CONTRACT_RE.test(line) || (i > 0 && CONTRACT_RE.test(lines[i - 1]))) return;
     problems.push(`${file}:${i + 1}: ${hit[1]} breaks the release that is still running during a deploy; ` +
       'split it (expand now, contract in a later release) or explain it with "-- contract: <reason>" on the line before');

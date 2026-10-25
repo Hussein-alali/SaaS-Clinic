@@ -78,6 +78,10 @@ function loadConfig(env = process.env) {
   const filesSigningSecret = secret('FILES_SIGNING_SECRET', DEV_FILES_SECRET);
   const databaseUrl = str(env.DATABASE_URL, production ? '' : 'postgres://clinic_owner:clinic_owner_dev@127.0.0.1:54329/clinicsys');
   if (!databaseUrl) problems.push('DATABASE_URL is required in production');
+  // The default (api/uploads) sits inside releases/<name>/ on the server
+  // (scripts/deploy.sh): the clinic files would be gone after the next
+  // deploys. Production names the folder: APP_HOME/shared/files.
+  if (production && !str(env.FILES_DIR, '')) problems.push('FILES_DIR is required in production (a folder outside the releases, e.g. ~/clinicsys/shared/files)');
   if (production && jwtSecret && jwtSecret === filesSigningSecret) {
     problems.push('JWT_SECRET and FILES_SIGNING_SECRET must be different');
   }
@@ -150,9 +154,11 @@ function loadConfig(env = process.env) {
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,
     distDir: path.resolve(API_ROOT, str(env.DIST_DIR, '../dist')),
-    // The deployed release name (/api/health shows it): RELEASE, else the
-    // RELEASE file scripts/deploy.sh writes at the release root.
-    release: str(env.RELEASE, '') || readReleaseFile(),
+    // The deployed release name (/api/health shows it): the RELEASE file
+    // scripts/deploy.sh writes at the release root, else RELEASE. The file
+    // wins: the deploy's health check compares it, and a RELEASE left in the
+    // cPanel variables must not hide it.
+    release: readReleaseFile() || str(env.RELEASE, '') || null,
     webhooks: Object.freeze(webhooks),
     mailTransport,
     mailOutboxDir: path.resolve(API_ROOT, str(env.MAIL_OUTBOX_DIR, '.outbox')),

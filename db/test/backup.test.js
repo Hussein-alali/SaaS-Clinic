@@ -76,20 +76,31 @@ test('a backup is a dump, the files and a manifest with sha256 and per-table cou
   assert.ok(m.counts['public.patients'] > 0, 'the seed has patients: a count of 0 would mean RLS hid them');
 });
 
-test('rotation keeps the 7 newest daily and the 4 newest weekly backups', () => {
+test('rotation keeps the 7 newest daily and the 4 newest weekly backups; the deploys\' --db-only backups rotate on their own (5)', () => {
   const dir = path.join(tmp, 'rot');
+  const kinds = () => list(dir).map((s) => [s, JSON.parse(fs.readFileSync(path.join(dir, s, 'manifest.json'), 'utf8'))]);
+  const days = (kind) => kinds().filter(([, m]) => m.kind === kind).map(([s]) => s.slice(0, 8));
   // 2026-10-04 is a Sunday; 30 days → 5 Sundays, 25 other days.
   for (let d = 0; d < 30; d++) {
     const day = new Date(Date.UTC(2026, 9, 4 + d)).toISOString().slice(0, 10).replace(/-/g, '');
-    const r = run(BACKUP, ['--db-only'], { BACKUP_DIR: dir, BACKUP_STAMP: `${day}T020000Z` });
+    const r = run(BACKUP, [], { BACKUP_DIR: dir, BACKUP_STAMP: `${day}T020000Z` });
     assert.equal(r.status, 0, r.stderr);
   }
-  const kept = list(dir).map((s) => [s, JSON.parse(fs.readFileSync(path.join(dir, s, 'manifest.json'), 'utf8')).kind]);
-  const weekly = kept.filter(([, k]) => k === 'weekly').map(([s]) => s.slice(0, 8));
-  const daily = kept.filter(([, k]) => k === 'daily').map(([s]) => s.slice(0, 8));
-  assert.deepEqual(weekly, ['20261011', '20261018', '20261025', '20261101']);
-  assert.deepEqual(daily, ['20261026', '20261027', '20261028', '20261029', '20261030', '20261031', '20261102']);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, kept[0][0], 'manifest.json'), 'utf8')).files, null, '--db-only');
+  const weekly = ['20261011', '20261018', '20261025', '20261101'];
+  const daily = ['20261026', '20261027', '20261028', '20261029', '20261030', '20261031', '20261102'];
+  assert.deepEqual(days('weekly'), weekly);
+  assert.deepEqual(days('daily'), daily);
+  // Nine deploys afterwards (scripts/deploy.sh takes --db-only backups), one on a Sunday.
+  for (let n = 0; n < 9; n++) {
+    const r = run(BACKUP, ['--db-only'], { BACKUP_DIR: dir, BACKUP_STAMP: `2026110${n < 6 ? 3 : 8}T1${n}0000Z` });
+    assert.equal(r.status, 0, r.stderr);
+  }
+  assert.deepEqual(days('weekly'), weekly, 'the nightly backups with the clinic files stay');
+  assert.deepEqual(days('daily'), daily);
+  const dbOnly = kinds().filter(([, m]) => m.kind === 'db-only');
+  assert.equal(dbOnly.length, 5);
+  assert.ok(dbOnly.every(([, m]) => m.files === null), '--db-only');
+  assert.ok(kinds().filter(([, m]) => m.kind !== 'db-only').every(([, m]) => m.files && m.files.bytes > 0), 'with files.tar.gz');
 });
 
 test('refuses a backup folder inside the clinic files or inside public_html', () => {

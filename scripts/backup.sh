@@ -11,7 +11,8 @@
 # Environment: DATABASE_URL (required), FILES_DIR (the clinic files; skipped
 # with --db-only), BACKUP_DIR (default $HOME/clinicsys-backups — never inside
 # public_html or FILES_DIR), BACKUP_KEEP_DAILY (7), BACKUP_KEEP_WEEKLY (4;
-# Sunday backups are weekly), BACKUP_MIN_FREE_MB (1024: the disk must keep at
+# Sunday backups are weekly), BACKUP_KEEP_DB_ONLY (5: the --db-only backups
+# deploy.sh takes, kind "db-only"), BACKUP_MIN_FREE_MB (1024: the disk must keep at
 # least this much free AFTER the backup), RELEASE (written to the manifest),
 # BACKUP_STAMP (UTC YYYYMMDDTHHMMSSZ; tests only).
 #
@@ -33,6 +34,7 @@ command -v pg_dump >/dev/null || die 2 "pg_dump is not installed"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/clinicsys-backups}"
 KEEP_DAILY="${BACKUP_KEEP_DAILY:-7}"
 KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
+KEEP_DB_ONLY="${BACKUP_KEEP_DB_ONLY:-5}"
 MIN_FREE_MB="${BACKUP_MIN_FREE_MB:-1024}"
 STAMP="${BACKUP_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 [[ "$STAMP" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die 2 "bad BACKUP_STAMP $STAMP"
@@ -79,6 +81,8 @@ fi
 dow=$(date -u -d "${STAMP:0:8}" +%u)   # 7 = Sunday
 kind=daily
 [ "$dow" = 7 ] && kind=weekly
+# The deploys' database-only backups never take a nightly backup's slot.
+[ "$DB_ONLY" = 1 ] && kind=db-only
 
 STAMP="$STAMP" KIND="$kind" WORK="$work" node -e '
   const fs = require("fs"), crypto = require("crypto"), path = require("path");
@@ -100,9 +104,10 @@ mv "$work" "$dest/$STAMP"
 trap - EXIT
 say "done: $dest/$STAMP ($kind)"
 
-# Rotation: the newest KEEP_DAILY daily and KEEP_WEEKLY weekly backups stay.
-for k in daily weekly; do
-  keep=$KEEP_DAILY; [ "$k" = weekly ] && keep=$KEEP_WEEKLY
+# Rotation: the newest KEEP_DAILY daily, KEEP_WEEKLY weekly and KEEP_DB_ONLY
+# db-only backups stay, each kind on its own.
+for k in daily weekly db-only; do
+  keep=$KEEP_DAILY; [ "$k" = weekly ] && keep=$KEEP_WEEKLY; [ "$k" = db-only ] && keep=$KEEP_DB_ONLY
   mapfile -t snaps < <(for d in "$dest"/[0-9]*T*Z; do
     [ -f "$d/manifest.json" ] || continue
     grep -q "\"kind\": \"$k\"" "$d/manifest.json" && basename "$d"

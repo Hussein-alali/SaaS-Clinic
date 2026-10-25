@@ -67,6 +67,23 @@ test('lint: from 0010 on, destructive statements need a «-- contract:» reason'
     assert.equal(problems.length, 1, sql);
     assert.match(problems[0], /^0010_x\.sql:\d+: .*-- contract:/);
   }
+  // From 0016 also what the running release may still call or rely on, and
+  // a type change written over two lines (the applied 0010-0015 keep the old rules).
+  const more = [
+    'drop function public.list_invoices_filtered(text, date, date);',
+    'drop procedure public.p();',
+    'drop view public.v_report;',
+    'drop materialized view public.mv;',
+    'alter table public.patients drop constraint patients_phone_check;',
+    'alter table public.patients alter column age drop default;',
+    'alter table public.patients alter column age\n  type bigint;',
+  ];
+  for (const sql of more) {
+    assert.equal(lintMigration(sql, '0016_x.sql').length, 1, sql);
+    assert.deepEqual(lintMigration(sql, '0015_x.sql'), [], `not for ${sql} in 0015`);
+  }
+  assert.deepEqual(lintMigration('drop trigger if exists t on public.patients;\ncreate trigger t before insert on public.patients for each row execute function f();', '0016_x.sql'), [],
+    'a trigger dropped and created again in the same file is fine');
   // The reason on the line before, or at the end of the same line.
   assert.deepEqual(lintMigration('-- contract: notes moved to patient_notes in 0009, unused since\nalter table public.patients drop column notes;', '0010_x.sql'), []);
   assert.deepEqual(lintMigration('alter table public.patients drop column notes; -- contract: unused since 0009', '0010_x.sql'), []);

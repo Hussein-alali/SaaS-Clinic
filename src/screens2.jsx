@@ -1859,8 +1859,9 @@ function QuickPaymentModal({ onClose, onDone }) {
   // ── Flow control ──────────────────────────────────────────
   const [confirming, setConfirming] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  // One Idempotency-Key per payment attempt, kept until it succeeds: a
-  // second click or a retry after a timeout never pays twice (docs/06 S4).
+  // One Idempotency-Key per payment attempt (QuickPay.attempt): kept while
+  // the payment is unchanged, so a second click or a retry after a timeout
+  // never pays twice; a new one once it was edited (docs/06 S4).
   const attemptKey = React.useRef(null);
   const [receipt, setReceipt] = React.useState(null); // set on success
   const [error, setError] = React.useState("");
@@ -1949,16 +1950,16 @@ function QuickPaymentModal({ onClose, onDone }) {
       const allocations = selected.map(a => ({
         type: a.type, id: a.id, amount: Number(a.amount),
       }));
-      if (!attemptKey.current) attemptKey.current = newRecordId("qp-");
-      const res = await window.QuickPay.recordPayment({
+      const payment = {
         patient_id: patient.patient_id || patient.id,
         method,
         reference: reference.trim(),
         transaction_id: txId.trim(),
         notes: notes.trim(),
         allocations,
-        idempotency_key: attemptKey.current,
-      });
+      };
+      attemptKey.current = window.QuickPay.attempt(attemptKey.current, payment);
+      const res = await window.QuickPay.recordPayment({ ...payment, idempotency_key: attemptKey.current.key });
       if (!res.ok) { setError(res.error || tt("تعذّر تسجيل الدفع")); setSaving(false); return; }
       attemptKey.current = null;
       // Snapshot everything needed for the receipt BEFORE state resets.

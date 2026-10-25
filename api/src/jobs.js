@@ -60,6 +60,10 @@ async function enqueueOnce(db, kind, payload, key) {
 // 'failed' (dead), or null when nothing is due (or every due job is taken).
 async function runOne(db, { workerId, deps, now }) {
   return db.withContext({ system: true }, async (client) => {
+    // A handler may wait on SMTP or the disk with this transaction open; the
+    // pool's 60 s idle-in-transaction limit (src/db.js, for requests) would end
+    // the session and lose the attempt. Jobs get 10 minutes.
+    await client.query("select set_config('idle_in_transaction_session_timeout', '600000', true)");
     const { rows } = await client.query(
       `select * from public.jobs
         where done_at is null and dead_at is null and run_at <= coalesce($1::timestamptz, now())

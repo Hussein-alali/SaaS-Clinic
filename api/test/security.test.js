@@ -88,7 +88,7 @@ test('create-user rejects an oversized e-mail at once (no regex backtracking on 
 
 test('config: the session cookie is Secure by default in production (TRD), and can be turned off explicitly', () => {
   const strong = 'x'.repeat(40);
-  const base = { NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: `y${strong}`, DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'clinicsyseg.com' };
+  const base = { NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: `y${strong}`, DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'clinicsyseg.com', FILES_DIR: '/srv/files' };
   assert.equal(loadConfig(base).cookieSecure, true);
   assert.equal(loadConfig({ ...base, COOKIE_SECURE: 'false' }).cookieSecure, false);
   assert.equal(loadConfig({}).cookieSecure, false, 'development (http://localhost) stays without Secure');

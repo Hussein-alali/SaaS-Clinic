@@ -112,3 +112,15 @@ test('the screens\' queries (as /api/data sends them, under RLS) use them for th
     }
   });
 });
+
+// The invoices screen's RPC reads invoices six times a call (the page and
+// five totals): each read names the clinic, or each scans every clinic.
+test('list_invoices_filtered says organization_id = the clinic in every read of invoices (0016)', async () => {
+  await inTx(async (c) => {
+    const { rows: [f] } = await c.query(
+      "select pg_get_functiondef('public.list_invoices_filtered(timestamptz, timestamptz, text, text, integer, integer)'::regprocedure) as src");
+    const reads = (f.src.match(/from invoices i/g) || []).length;
+    assert.equal(reads, 6);
+    assert.equal((f.src.match(/i\.organization_id = v_org/g) || []).length, reads, f.src);
+  });
+});

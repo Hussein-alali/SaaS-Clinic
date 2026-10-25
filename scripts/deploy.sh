@@ -21,7 +21,8 @@
 # restoring the pre-deploy dump (runbook).
 #
 # Environment: APP_HOME, RELEASE_ID (default: the source name), KEEP_RELEASES
-# (5), HEALTH_URL (http://127.0.0.1:$PORT/api/health), HEALTH_TIMEOUT (60 s),
+# (5), HEALTH_URL (https://$APP_BASE_DOMAIN/api/health, or 127.0.0.1:$PORT
+# locally; it must answer {release: <this release>}), HEALTH_TIMEOUT (60 s),
 # HEALTH_INTERVAL (2 s), and for tests or special set-ups BACKUP_CMD,
 # MIGRATE_CMD, RESTART_CMD, SKIP_INSTALL=1, DEPLOY_STAMP.
 #
@@ -83,13 +84,13 @@ fi
 # 4–5. Switch, restart, check.
 switch_to "$NAME"
 log "switched to $NAME"
-if restart_and_check; then
+if restart_and_check "$NAME"; then
   log "deployed $NAME"
 else
   touch "$NEW/.failed"
   if [ -n "$PREV" ]; then
     switch_to "$PREV"
-    restart_and_check || log "WARNING: the previous release $PREV is not healthy either"
+    restart_and_check "$PREV" || log "WARNING: the previous release $PREV is not healthy either"
     log "$NAME was not healthy — back on $PREV"
   else
     log "$NAME was not healthy and there is no previous release"

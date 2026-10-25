@@ -1325,6 +1325,7 @@ describe("src/supabase.jsx on top of the client", () => {
   const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
   const OPS = {
     is: (a, b) => (a ?? null) === b,
+    in: (a, b) => b.includes(a),
     eq: (a, b) => a === b, neq: (a, b) => a != null && a !== b,
     gte: (a, b) => a != null && String(a) >= String(b), lt: (a, b) => a != null && String(a) < String(b),
     lte: (a, b) => a != null && String(a) <= String(b),
@@ -1417,6 +1418,24 @@ describe("src/supabase.jsx on top of the client", () => {
     // A later hydrate (a save elsewhere, slot_taken) keeps them.
     await env.win.hydrateDomainTables();
     assert.deepEqual(ids(env.win.DATA.sessions), ["S-new-1", "S-old-1"]);
+  });
+
+  test("a hydrate re-reads the older rows of the patients loaded on demand (one request per table): a change on the server shows", async () => {
+    const tables = JSON.parse(JSON.stringify(HISTORY));
+    const env = await bootWithData(historyServer(tables));
+    await env.win.KineticData.loadOlder({ patientId: "P-2" });
+    await env.win.KineticData.loadOlder({ patientId: "P-1" });
+    // Last year's open invoice of P-2 is paid elsewhere (a quick payment), then the app refreshes.
+    Object.assign(tables.invoices.find((r) => r.invoice_id === "INV-old-open"), { paid: 100, status: "paid" });
+    env.requests.length = 0;
+    await env.win.hydrateDomainTables();
+    const row = [...env.win.DATA.payments].find((r) => r.id === "INV-old-open");
+    assert.equal(row.paid, 100);
+    assert.equal(row.status, "مدفوع");
+    assert.deepEqual(ids(env.win.DATA.sessions), ["S-new-1", "S-old-1"]);
+    const older = env.requests.filter((r) => r.body && r.body.table === "bookings" && (r.body.filters || []).some((f) => f.op === "in"));
+    assert.equal(older.length, 1, "one request for every patient loaded on demand");
+    assert.deepEqual(plain(older[0].body.filters).find((f) => f.op === "in").value.sort(), ["P-1", "P-2"]);
   });
 
   test("KineticData.loadOlder({ from }): every row since that date (reports, calendar); later hydrates read from it; a branch switch starts over", async () => {
@@ -1636,6 +1655,17 @@ describe("src/supabase.jsx on top of the client", () => {
     const url = await env.win.getPatientFileUrl({ storage_path: "P-1/pf_1-a.pdf", file_url: "/api/files/object/patient-files/P-1/pf_1-a.pdf" });
     assert.equal(url, "/api/files/signed?token=t");
     assert.equal(env.requests.at(-1).body.expiresIn, 600);
+  });
+
+  test("QuickPay.attempt: one Idempotency-Key while the payment is unchanged, a new one once it is edited", async () => {
+    const env = await bootApp({});
+    const pay = { patient_id: "P-1", method: "cash", allocations: [{ type: "invoice", id: "INV-1", amount: 100 }] };
+    const first = env.win.QuickPay.attempt(null, pay);
+    assert.match(first.key, /^qp-/);
+    assert.equal(env.win.QuickPay.attempt(first, { ...pay }).key, first.key, "a double click or a retry after a lost answer");
+    const edited = env.win.QuickPay.attempt(first, { ...pay, allocations: [{ type: "invoice", id: "INV-1", amount: 150 }] });
+    assert.notEqual(edited.key, first.key, "another amount is another payment");
+    assert.notEqual(env.win.QuickPay.attempt(edited, { ...pay, method: "visa", allocations: edited.payload.allocations }).key, edited.key);
   });
 
   test("QuickPay.recordPayment → rpc record_quick_payment", async () => {

@@ -146,6 +146,19 @@ test('every API process also caps one session at API_RATE_PER_MIN requests a min
   }
 });
 
+test('the per-process cap never puts every client without an address in one bucket (a Unix-socket proxy gives no req.ip)', () => {
+  const { throttle } = require('../src/ratelimit');
+  const mw = throttle(2);
+  const pass = (req) => {
+    let out = 'none';
+    mw(req, { set() {} }, (err) => { out = err ? err.status || 'error' : 'next'; });
+    return out;
+  };
+  for (let i = 0; i < 5; i++) assert.equal(pass({ cookies: {}, socket: {} }), 'next', `anonymous request ${i + 1} without an address`);
+  const known = { cookies: {}, ip: '10.60.0.1', socket: {} };
+  assert.deepEqual([pass(known), pass(known), pass(known)], ['next', 'next', 429], 'a known address still has its cap');
+});
+
 // The environment that produced h.config, for a second app with one change.
 function configEnv(c) {
   return {

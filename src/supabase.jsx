@@ -1357,18 +1357,23 @@ function __uniqueRows(cfg, rows) {
   const seen = new Set();
   return rows.filter(r => { const k = pkOf(cfg, r); if (seen.has(k)) return false; seen.add(k); return true; });
 }
-// range: { from, before, patientId, withKept } (each optional) — rows with
-// from <= date < before of one patient; withKept adds the rows a window
-// always holds: not fully paid before `from` (cfg.openRows), and undated
-// (cfg.undated).
+// range: { from, before, patientId, patientIds, withKept } (each optional)
+// — rows with from <= date < before of one patient (or of several, 200 per
+// request); withKept adds the rows a window always holds: not fully paid
+// before `from` (cfg.openRows), and undated (cfg.undated).
 async function selectRange(cfg, range, opts) {
-  const where = (q) => {
+  const where = (ids) => (q) => {
     if (range.from) q = q.gte(cfg.window, range.from);
     if (range.before) q = q.lt(cfg.window, range.before);
     if (range.patientId) q = q.eq("patient_id", range.patientId);
+    if (ids) q = q.in("patient_id", ids);
     return q;
   };
-  const parts = [selectAllRows(cfg, { ...opts, where })];
+  const groups = [];
+  for (let i = 0; range.patientIds && i < range.patientIds.length; i += 200) groups.push(range.patientIds.slice(i, i + 200));
+  const parts = range.patientIds
+    ? groups.map(ids => selectAllRows(cfg, { ...opts, where: where(ids) }))
+    : [selectAllRows(cfg, { ...opts, where: where(null) })];
   if (range.withKept && range.from && cfg.openRows) {
     parts.push(selectAllRows(cfg, { ...opts, where: (q) => cfg.openRows(q.lt(cfg.window, range.from)) }));
   }
@@ -1657,8 +1662,19 @@ async function hydrateDomainTables() {
   const epoch = __historyForBranch();
   const readFrom = dataWindowFrom();
   const names = Object.keys(DATA_TABLES);
-  const results = await Promise.all(names.map(name =>
-    listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; })));
+  // The patients whose whole history was loaded (loadOlder) are read again
+  // too, one request per table for all of them: an old row changed
+  // elsewhere (an old invoice paid) must not stay stale.
+  const covered = [...__history.patients];
+  const windowed = names.filter(n => DATA_TABLES[n].window);
+  const [results, olderRows] = await Promise.all([
+    Promise.all(names.map(name =>
+      listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; }))),
+    covered.length
+      ? Promise.all(windowed.map(name => selectRange(DATA_TABLES[name], { before: readFrom, patientIds: covered })
+          .catch(e => ({ data: null, error: e }))))
+      : Promise.resolve([]),
+  ]);
   if (generation !== __hydrateGeneration) return;
   const fetched = {};
   names.forEach((name, i) => {
@@ -1667,18 +1683,23 @@ async function hydrateDomainTables() {
     if (Array.isArray(results[i])) fetched[name] = results[i];
   });
   // Rows from before the window that were loaded on demand (loadOlder) stay:
-  // the patients' whole history, and a period loaded while this ran.
+  // the covered patients' history as just read (the copy in memory only when
+  // that read failed), and a period loaded while this ran.
   if (window.DATA && epoch === __history.epoch) {
     const since = dataWindowFrom();
-    for (const name of names) {
+    const readNow = new Set(covered); // patients loaded while this ran keep their copy
+    windowed.forEach((name, i) => {
       const cfg = DATA_TABLES[name];
-      if (!cfg.window || !fetched[name]) continue;
+      if (!fetched[name]) return;
+      const fresh = olderRows[i] && !olderRows[i].error && Array.isArray(olderRows[i].data) ? olderRows[i].data : null;
       const keep = (window.DATA[name] || []).filter(r => {
         const day = __rowDay(cfg, r);
-        return day < readFrom && (__history.patients.has(r.patient_id) || day >= since);
+        if (day >= readFrom) return false;
+        if (day >= since) return true;
+        return __history.patients.has(r.patient_id) && (!fresh || !readNow.has(r.patient_id));
       });
-      if (keep.length) fetched[name] = __uniqueRows(cfg, fetched[name].concat(keep));
-    }
+      fetched[name] = __uniqueRows(cfg, fetched[name].concat(fresh || [], keep));
+    });
   }
   if (window.DATA) {
     for (const [name, rows] of Object.entries(fetched)) window.DATA[name] = rows;
@@ -2100,11 +2121,21 @@ async function recordQuickPayment(input) {
   }
 }
 
+// One Idempotency-Key per payment attempt (docs/06 S4): the same key while
+// the payment is unchanged (a second click, a retry after a lost answer —
+// the server then answers with the first payment), a new key once anything
+// in it was edited, since the stored answer would be the old payment's.
+function quickPayAttempt(prev, payload) {
+  const sig = JSON.stringify(payload);
+  return prev && prev.sig === sig ? prev : { key: newRecordId("qp-"), sig, payload };
+}
+
 const QuickPay = {
   searchPatients:      searchPatientsFor,
   loadFinancials:      loadPatientFinancials,
   loadHistory:         loadPaymentHistory,
   recordPayment:       recordQuickPayment,
+  attempt:             quickPayAttempt,
 };
 
 // ══════════════════════════════════════════════════════════════

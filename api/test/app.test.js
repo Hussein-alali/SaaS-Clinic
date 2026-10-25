@@ -148,7 +148,7 @@ test('config: production refuses to start without secrets; development has defau
   const strong = 'x'.repeat(40);
   assert.throws(() => loadConfig({ NODE_ENV: 'production', JWT_SECRET: 'short', FILES_SIGNING_SECRET: strong, DATABASE_URL: TEST_DB_URL }), /at least 32/);
   assert.throws(() => loadConfig({ NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: strong, DATABASE_URL: TEST_DB_URL }), /must be different/);
-  const prod = loadConfig({
+  const prodEnv = {
     NODE_ENV: 'production',
     JWT_SECRET: strong,
     FILES_SIGNING_SECRET: `y${strong}`,
@@ -156,7 +156,12 @@ test('config: production refuses to start without secrets; development has defau
     APP_BASE_DOMAIN: 'ClinicSysEG.com',
     COOKIE_DOMAIN: '.clinicsyseg.com',
     COOKIE_SECURE: 'true',
-  });
+  };
+  // The default api/uploads would sit inside releases/<name>/ (docs/06 S2):
+  // the clinic files would vanish with the next deploy.
+  assert.throws(() => loadConfig(prodEnv), /FILES_DIR is required in production/);
+  const prod = loadConfig({ ...prodEnv, FILES_DIR: '/home/clinic/clinicsys/shared/files' });
+  assert.equal(prod.filesDir, '/home/clinic/clinicsys/shared/files');
   assert.equal(prod.appBaseDomain, 'clinicsyseg.com');
   assert.equal(prod.publicBaseUrl, 'https://clinicsyseg.com');
   assert.equal(prod.mailTransport, 'smtp');

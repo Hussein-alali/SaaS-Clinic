@@ -1,8 +1,8 @@
 'use strict';
 // Incoming webhooks (docs/06 S10, api/src/webhooks.js): a provider is on
 // only with WEBHOOK_<NAME>_SECRET; each delivery is signed (HMAC-SHA256 of
-// "<timestamp>.<raw body>"), recent (5 minutes), deduplicated by its event
-// id, and queued as a job instead of processed in the request. No provider
+// "<event id>.<timestamp>.<raw body>"), recent (5 minutes), deduplicated by
+// its event id, and queued as a job instead of processed in the request. No provider
 // exists today: "fakepay" stands for one. setup() wipes and re-seeds the
 // database for this file.
 const { test, before, after } = require('node:test');
@@ -18,30 +18,32 @@ before(async () => { h = await setup({ env: { WEBHOOK_FAKEPAY_SECRET: SECRET } }
 after(async () => { await h.close(); });
 
 const now = () => Math.floor(Date.now() / 1000);
-const hmac = (secret, ts, body) => crypto.createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
+const hmac = (secret, id, ts, body) => crypto.createHmac('sha256', secret).update(`${id}.${ts}.${body}`).digest('hex');
 
-test('verifySignature: HMAC-SHA256 of "<timestamp>.<raw body>", constant-time, within the replay window', () => {
+test('verifySignature: HMAC-SHA256 of "<event id>.<timestamp>.<raw body>", constant-time, within the replay window', () => {
   const body = '{"type":"payment.succeeded","data":{"amount":100}}';
   const ts = now();
-  const good = hmac(SECRET, ts, body);
-  assert.equal(sign(SECRET, ts, body), good);
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: good, timestamp: ts }), true);
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: `sha256=${good}`, timestamp: String(ts) }), true, 'sha256= prefix');
-  assert.equal(verifySignature({ secret: 'other', rawBody: body, signatureHex: good, timestamp: ts }), false, 'another secret');
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body.replace('100', '900'), signatureHex: good, timestamp: ts }), false, 'body changed');
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: hmac(SECRET, ts + 1, body), timestamp: ts }), false, 'timestamp changed');
+  const id = 'evt_unit_1';
+  const good = hmac(SECRET, id, ts, body);
+  const v = (o) => verifySignature({ secret: SECRET, eventId: id, rawBody: body, signatureHex: good, timestamp: ts, ...o });
+  assert.equal(sign(SECRET, id, ts, body), good);
+  assert.equal(v({}), true);
+  assert.equal(v({ signatureHex: `sha256=${good}`, timestamp: String(ts) }), true, 'sha256= prefix');
+  assert.equal(v({ secret: 'other' }), false, 'another secret');
+  assert.equal(v({ rawBody: body.replace('100', '900') }), false, 'body changed');
+  assert.equal(v({ signatureHex: hmac(SECRET, id, ts + 1, body) }), false, 'timestamp changed');
+  assert.equal(v({ eventId: 'evt_unit_2' }), false, 'event id changed: a replay cannot pass as a new event');
   const old = ts - 600;
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: hmac(SECRET, old, body), timestamp: old }), false, '10 minutes old');
+  assert.equal(v({ signatureHex: hmac(SECRET, id, old, body), timestamp: old }), false, '10 minutes old');
   const ahead = ts + 600;
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: hmac(SECRET, ahead, body), timestamp: ahead }), false, '10 minutes ahead');
-  assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: hmac(SECRET, old, body), timestamp: old, now: (old + 60) * 1000 }), true, 'clock passed in');
+  assert.equal(v({ signatureHex: hmac(SECRET, id, ahead, body), timestamp: ahead }), false, '10 minutes ahead');
+  assert.equal(v({ signatureHex: hmac(SECRET, id, old, body), timestamp: old, now: (old + 60) * 1000 }), true, 'clock passed in');
   for (const bad of ['', 'zz', good.slice(0, 63), `${good}00`, null, undefined, 42]) {
-    assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: bad, timestamp: ts }), false, `signature ${bad}`);
+    assert.equal(v({ signatureHex: bad }), false, `signature ${bad}`);
   }
-  for (const bad of ['', 'abc', null, '1e3', ts + 0.5]) {
-    assert.equal(verifySignature({ secret: SECRET, rawBody: body, signatureHex: good, timestamp: bad }), false, `timestamp ${bad}`);
-  }
-  assert.equal(verifySignature({ secret: '', rawBody: body, signatureHex: hmac('', ts, body), timestamp: ts }), false, 'no secret, no webhook');
+  for (const bad of ['', 'abc', null, '1e3', ts + 0.5]) assert.equal(v({ timestamp: bad }), false, `timestamp ${bad}`);
+  assert.equal(v({ secret: '', signatureHex: hmac('', id, ts, body) }), false, 'no secret, no webhook');
+  assert.equal(v({ eventId: '' }), false, 'no event id');
 });
 
 test('config: WEBHOOK_<NAME>_SECRET turns a provider on (lower case, "_" → "-"); a short secret is refused; none by default', () => {
@@ -59,7 +61,7 @@ function deliver(body, { id = `evt_${crypto.randomUUID()}`, ts = now(), secret =
       'content-type': 'application/json',
       'x-webhook-id': id,
       'x-webhook-timestamp': String(ts),
-      'x-webhook-signature': signature === undefined ? hmac(secret, ts, raw) : signature,
+      'x-webhook-signature': signature === undefined ? hmac(secret, id, ts, raw) : signature,
     },
     body: raw,
   });
@@ -114,9 +116,16 @@ test('refused with 400 and nothing queued: wrong signature, another secret, a ti
   // Signed for one body, sent with another.
   const ts = now();
   const res = await deliver(JSON.stringify({ type: 'payment.succeeded', data: { amount: 999 } }),
-    { id: 'evt_changed', ts, signature: hmac(SECRET, ts, JSON.stringify(body)) });
+    { id: 'evt_changed', ts, signature: hmac(SECRET, 'evt_changed', ts, JSON.stringify(body)) });
   assert.equal(res.status, 400);
   assert.equal((await jobsFor('evt_changed')).length, 0);
+  // A captured delivery sent again within the window under a new event id.
+  const raw = JSON.stringify(body);
+  const sig = hmac(SECRET, 'evt_captured', ts, raw);
+  assert.equal((await deliver(raw, { id: 'evt_captured', ts, signature: sig })).status, 200);
+  const replay = await deliver(raw, { id: 'evt_captured_again', ts, signature: sig });
+  assert.equal(replay.status, 400, replay.text);
+  assert.equal((await jobsFor('evt_captured_again')).length, 0);
 });
 
 test('400 invalid_webhook for an unreadable delivery (no id, no type, not JSON); 404 for a provider without a secret', async () => {

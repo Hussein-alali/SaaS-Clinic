@@ -124,7 +124,7 @@
 | 4.4 إعدادات العيادة (C08) | اسم العرض وساعات التقويم (+ شعار/لون حسب القرار المفتوح) | كل عيادة ترى إعداداتها فقط | 3.4 |
 | 4.5 الاحتفاظ | `retention_until` + تقرير العيادات المتجاوزة | لا حذف آلي حتى قرار المالك | 3.6 |
 | 4.6 تغيير الـ slug | حسب السياسة المعتمدة | AT-12 | قرار المالك |
-| 4.7 ترحيل الإنتاج | تنفيذ M2 على الإنتاج بعد staging | AT-11 + تقرير ترحيل | كل ما سبق |
+| 4.7 ترحيل الإنتاج | تنفيذ M2 على الإنتاج بعد staging؛ يضبط `invoices.status` الفارغ (`null` ← `pending` أو `paid` حسب المدفوع)، لأن نافذة البدء (S9) تقرأ الفواتير القديمة غير المسددة بحالتها | AT-11 + تقرير ترحيل | كل ما سبق |
 | 4.8 وحدات الأسنان والطب العام (P2) | تُبنى وحدة وحدة بعد تحديد نطاقها مع مستخدمين متخصصين | قبول من مستخدمين تجريبيين متخصصين | قرار المالك |
 
 ## Milestone 5 — Quality
@@ -200,3 +200,4 @@
 | 25 أكتوبر 2026 | S8 ✅: `0014_usage`، `api/src/usage.js`، `usage.check`، `jobs.defer`، «الموارد» في A01؛ `api/test/usage.test.js` (5). (هذا الـ commit) |
 | 25 أكتوبر 2026 | S9 ✅: `0015_indexes`، `db.queryCount()` و `api/test/querycount.test.js`، شرط `organization_id` في `/api/data`، نافذة 180 يومًا و `loadOlder`/`listRange`/`useOlderRows`؛ `db/test/indexes.test.js`، 5 اختبارات عميل، `e2e/history.spec.cjs`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S10 ✅: `api/src/webhooks.js` (`verifySignature`، `webhookRoute`، `webhooksRouter`)، `WEBHOOK_<NAME>_SECRET`، حفظ معرّفات الأحداث 30 يومًا؛ `api/test/webhooks.test.js` (6). (هذا الـ commit) |
+| 25 أكتوبر 2026 | الجاهزية للتوسع مكتملة: قسم دائم في `docs/02`؛ مراجعة S1–S10 (15 ملاحظة: 12 أُصلحت باختبارات، 3 بُقيت مع السبب)؛ `0016_invoices_rpc_org`؛ ملاحظة 4.7 عن `invoices.status` الفارغ. (هذا الـ commit) |

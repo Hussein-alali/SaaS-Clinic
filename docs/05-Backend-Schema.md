@@ -325,7 +325,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 13. ✅ `0013_jobs.sql` — `jobs(id, kind, payload jsonb, run_at, attempts, max_attempts 5, last_error, locked_by, done_at, dead_at, dedupe_key, created_at, updated_at)` مع فهرس المستحقة، وفهرس فريد جزئي على `dedupe_key` للمهام المعلقة؛ و `mail_log(id, sent_at, kind, ok)` بلا عناوين. الحمولة معرّفات فقط (لا بريد ولا رمز ولا بيانات صحية). جدولان تشغيليان بلا RLS (القاعدة 4).
 14. ✅ `0014_usage.sql` — `usage_snapshots(id, taken_at, db_bytes, files_bytes, backups_bytes, disk_total_bytes, disk_free_bytes, emails_last_hour, emails_today, levels jsonb)` (90 يومًا) و `alert_state(key, level, sent jsonb, updated_at)`. جدولان تشغيليان بلا RLS (القاعدة 4).
 15. ✅ `0015_indexes.sql` — `(organization_id, branch_id, date)` على `bookings` و `sessions`، و `(organization_id, branch_id, created_at)` على `invoices` و `payments` (نافذة البدء، S9). لا فهارس `(organization_id, patient_id)`: `patient_id` فريد على المنصة (`patients_pkey`) وفهارسه الحالية تكفي.
-16. `0016_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+16. ✅ `0016_invoices_rpc_org.sql` — `list_invoices_filtered` (نفس التوقيع والنتيجة) يذكر `i.organization_id = app_org_id()` في قراءاته الست للفواتير، فيستعمل فهرس `0015` بدل مسح فواتير كل العيادات (صيغة `OR` في `tenant_isolation`). قاعدة لكل دالة جديدة: اذكر العيادة صراحة بجانب RLS.
+17. `0017_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**. فحص expand/contract في `migrate.js` يشمل من `0016` أيضًا حذف الدوال والإجراءات والـ views والقيود والقيم الافتراضية، وتغيير النوع المكتوب على سطرين.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -360,3 +361,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 25 أكتوبر 2026 | `0014_usage` (S8). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0015_indexes` ونافذة البدء وشرط `organization_id` في `/api/data` (S9). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `idempotency_keys` لمعرّفات أحداث الـ Webhooks (نطاق `webhook:<name>`، 30 يومًا) (S10). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0016_invoices_rpc_org`؛ أنماط فحص expand/contract الإضافية من `0016` (مراجعة S1–S10). (هذا الـ commit) |

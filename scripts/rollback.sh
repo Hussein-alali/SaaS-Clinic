@@ -28,5 +28,5 @@ fi
 
 switch_to "$target"
 log "switched from ${cur:-nothing} to $target"
-restart_and_check || { log "$target is not healthy"; exit 2; }
+restart_and_check "$target" || { log "$target is not healthy"; exit 2; }
 log "rolled back to $target"

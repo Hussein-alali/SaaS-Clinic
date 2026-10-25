@@ -4,10 +4,11 @@
 // None is configured today — subscriptions are set by hand — and
 // WEBHOOK_<NAME>_SECRET turns one on at POST /api/webhooks/<name>
 // (config.webhooks). Each delivery is:
-//   1. verified: HMAC-SHA256 of "<timestamp>.<raw body>" with the
-//      provider's secret, compared in constant time, and a timestamp at
-//      most 5 minutes from now (a captured delivery cannot be replayed
-//      later) — else 400 invalid_signature;
+//   1. verified: HMAC-SHA256 of "<event id>.<timestamp>.<raw body>" with
+//      the provider's secret, compared in constant time, and a timestamp at
+//      most 5 minutes from now: a captured delivery can be neither replayed
+//      later nor sent again under another event id — else 400
+//      invalid_signature;
 //   2. deduplicated: its event id is claimed in idempotency_keys (scope
 //      webhook:<name>), so a provider's retry answers
 //      200 {received:true, duplicate:true} and does nothing more;
@@ -32,16 +33,16 @@ const PROVIDER_RE = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 const TYPE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/;
 const EVENT_ID_RE = /^[A-Za-z0-9_.:-]{1,200}$/;
 
-const sign = (secret, timestamp, rawBody) =>
-  crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+const sign = (secret, eventId, timestamp, rawBody) =>
+  crypto.createHmac('sha256', secret).update(`${eventId}.${timestamp}.${rawBody}`).digest('hex');
 
-function verifySignature({ secret, rawBody, signatureHex, timestamp, toleranceSec = TOLERANCE_SEC, now = Date.now() }) {
-  if (!secret || typeof rawBody !== 'string' || typeof signatureHex !== 'string') return false;
+function verifySignature({ secret, eventId, rawBody, signatureHex, timestamp, toleranceSec = TOLERANCE_SEC, now = Date.now() }) {
+  if (!secret || !eventId || typeof eventId !== 'string' || typeof rawBody !== 'string' || typeof signatureHex !== 'string') return false;
   const ts = typeof timestamp === 'number' ? timestamp : /^\d{1,12}$/.test(String(timestamp || '')) ? Number(timestamp) : NaN;
   if (!Number.isSafeInteger(ts) || Math.abs(now / 1000 - ts) > toleranceSec) return false;
   const hex = signatureHex.replace(/^sha256=/, '');
   if (!/^[0-9a-f]{64}$/i.test(hex)) return false;
-  return crypto.timingSafeEqual(Buffer.from(hex, 'hex'), Buffer.from(sign(secret, ts, rawBody), 'hex'));
+  return crypto.timingSafeEqual(Buffer.from(hex, 'hex'), Buffer.from(sign(secret, eventId, ts, rawBody), 'hex'));
 }
 
 function parseDefault(rawBody, headers) {
@@ -68,7 +69,7 @@ function webhookRoute({ provider, secret, parse = parseDefault, toleranceSec = T
         || typeof event.type !== 'string' || !TYPE_RE.test(event.type)) {
       throw badRequest('invalid_webhook', 'The delivery has no readable event id or type');
     }
-    if (!verifySignature({ secret, rawBody, signatureHex: event.signature, timestamp: event.timestamp, toleranceSec })) {
+    if (!verifySignature({ secret, eventId: event.eventId, rawBody, signatureHex: event.signature, timestamp: event.timestamp, toleranceSec })) {
       throw badRequest('invalid_signature', 'Bad signature or timestamp outside the replay window');
     }
     const { db } = req.app.locals;

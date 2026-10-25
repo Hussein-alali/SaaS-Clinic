@@ -15,14 +15,14 @@
 
 const { loadConfig } = require('../src/config');
 const { createDb } = require('../src/db');
-const { createMailer } = require('../src/mailer');
+const { createMailer, countSends } = require('../src/mailer');
 const jobs = require('../src/jobs');
 const { queueScheduled } = require('../src/job-handlers');
 
 async function main() {
   const config = loadConfig();
   const db = createDb(config);
-  const deps = { config, db, mailer: createMailer(config) };
+  const deps = { config, db, mailer: countSends(createMailer(config), db) };
   const until = Date.now() + Number(process.env.JOBS_MAX_SECONDS || 55) * 1000;
   const total = { done: 0, retried: 0, failed: 0 };
   try {
