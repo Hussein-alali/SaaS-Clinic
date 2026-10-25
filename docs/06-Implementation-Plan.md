@@ -110,7 +110,7 @@
 | S5 ✅ | حدود الطلبات (4) | `rate_limits` في PostgreSQL مشتركة بين العمليات (2.19 ضمنها) | 429 بنص عربي/إنجليزي |
 | S6 ✅ | تتبّع الأخطاء (3) | `error_groups`/`error_events`، تقارير المتصفح، `ErrorBoundary`، صفحة A08 | الأخطاء مجمّعة ومنقّاة من البيانات الشخصية |
 | S7 ✅ | المهام الخلفية (5) | جدول `jobs` + cron + إعادة محاولة البريد | لا ضياع لبريد فشل إرساله |
-| S8 | تنبيهات الموارد (6) | القرص وحجم القاعدة والنسخ وحد SMTP | تنبيه لمديري المنصة عند 70/85/95% |
+| S8 ✅ | تنبيهات الموارد (6) | القرص وحجم القاعدة والنسخ وحد SMTP | تنبيه لمديري المنصة عند 70/85/95% |
 | S9 | N+1 والتحميل (2) | عدّاد استعلامات، فهارس، نافذة تاريخ عند البدء + تحميل الأقدم عند الطلب | عدد الاستعلامات ثابت، والتحميل الأول محدود |
 | S10 | Webhooks (9) | أساس التوقيع ومنع التكرار والمعالجة الخلفية | جاهز لأول مزوّد (لا مزوّد اليوم) |
 
@@ -197,3 +197,4 @@
 | 25 أكتوبر 2026 | S5 ✅ و 2.19 ✅: `0011_rate_limits`، `api/src/ratelimit.js`؛ `api/test/ratelimit.test.js` (9)، اختبار عميل؛ ساعة الحدود ثابتة في اختبارات الـ API. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S6 ✅: `0012_error_log`، `api/src/errorlog.js`، `/api/client-errors`، `src/errors.jsx`، A08؛ `api/test/errorlog.test.js` (5)، `e2e/errors.spec.cjs` (3)، `test/build.test.mjs` (2، الحزم عند الطلب IIFE). (هذا الـ commit) |
 | 25 أكتوبر 2026 | S7 ✅: `0013_jobs`، `api/src/jobs.js` و `job-handlers.js` و `password-reset.js` و `scripts/run-jobs.js`؛ `api/test/jobs.test.js` (10). (هذا الـ commit) |
+| 25 أكتوبر 2026 | S8 ✅: `0014_usage`، `api/src/usage.js`، `usage.check`، `jobs.defer`، «الموارد» في A01؛ `api/test/usage.test.js` (5). (هذا الـ commit) |

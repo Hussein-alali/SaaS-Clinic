@@ -176,7 +176,7 @@ test('maintenance.daily removes what is no longer needed and keeps the rest', as
   assert.equal((await h.sql("select count(*)::int n from public.mail_log where sent_at < now() - interval '90 days'")).rows[0].n, 0);
 });
 
-test('node api/scripts/run-jobs.js (cron, every minute): queues the day\'s maintenance once, drains, exits 0', async () => {
+test('node api/scripts/run-jobs.js (cron, every minute): queues the day\'s maintenance and the hour\'s check once, drains, exits 0', async () => {
   await h.sql("delete from public.jobs where kind = 'maintenance.daily'");
   const env = {
     ...process.env, NODE_ENV: 'test', DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'localhost',
@@ -190,5 +190,7 @@ test('node api/scripts/run-jobs.js (cron, every minute): queues the day\'s maint
   }
   const { rows } = await h.sql("select count(*)::int n, count(done_at)::int done from public.jobs where kind = 'maintenance.daily'");
   assert.deepEqual(rows[0], { n: 1, done: 1 }, 'once a day, whatever the number of runs');
+  const { rows: [u] } = await h.sql("select count(*)::int n from public.jobs where kind = 'usage.check' and done_at is not null");
+  assert.equal(u.n, 1, 'and the resource check once an hour');
   assert.ok(ORG.physio);
 });

@@ -322,7 +322,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 11. ✅ `0011_rate_limits.sql` — `rate_limits(bucket, key_hash, window_start, count)` بمفتاح `(bucket, key_hash, window_start)` وفهرس على `window_start`: عدادات حدود الطلبات المشتركة بين عمليات الـ API (`api/src/ratelimit.js`)؛ المفتاح sha256 فقط. جدول تشغيلي بلا RLS (القاعدة 4).
 12. ✅ `0012_error_log.sql` — `error_groups(fingerprint PK, source api|client, message, route, status, code, count, first_seen, last_seen, last_event_at, last_release, resolved_at)` و `error_events(id, fingerprint → error_groups, created_at, message, stack, route, method, status, code, organization_id, user_id, release, user_agent)`؛ نصوص منقّاة فقط، وعينة واحدة لكل مجموعة في الدقيقة. جدولان تشغيليان بلا RLS (القاعدة 4)؛ العينات الأقدم من 30 يومًا تُحذف في مهمة الصيانة (S7).
 13. ✅ `0013_jobs.sql` — `jobs(id, kind, payload jsonb, run_at, attempts, max_attempts 5, last_error, locked_by, done_at, dead_at, dedupe_key, created_at, updated_at)` مع فهرس المستحقة، وفهرس فريد جزئي على `dedupe_key` للمهام المعلقة؛ و `mail_log(id, sent_at, kind, ok)` بلا عناوين. الحمولة معرّفات فقط (لا بريد ولا رمز ولا بيانات صحية). جدولان تشغيليان بلا RLS (القاعدة 4).
-14. `0014_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+14. ✅ `0014_usage.sql` — `usage_snapshots(id, taken_at, db_bytes, files_bytes, backups_bytes, disk_total_bytes, disk_free_bytes, emails_last_hour, emails_today, levels jsonb)` (90 يومًا) و `alert_state(key, level, sent jsonb, updated_at)`. جدولان تشغيليان بلا RLS (القاعدة 4).
+15. `0015_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -354,3 +355,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 25 أكتوبر 2026 | `0011_rate_limits` (S5). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0012_error_log` (S6). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0013_jobs` (S7). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0014_usage` (S8). (هذا الـ commit) |

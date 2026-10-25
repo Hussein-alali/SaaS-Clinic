@@ -5,7 +5,8 @@
 //
 //   * * * * *  cd ~/clinicsys/current/api && node scripts/run-jobs.js >> ~/clinicsys-jobs.log 2>&1
 //
-// Queues the day's maintenance once, then drains due jobs for at most
+// Queues the day's maintenance and the hour's resource check (once each),
+// then drains due jobs for at most
 // JOBS_MAX_SECONDS (55), so two cron runs never overlap for long (and
 // SKIP LOCKED keeps them apart when they do). Same environment as the app
 // (DATABASE_URL, SMTP_*, APP_BASE_DOMAIN...). Exit 0 when the run went
@@ -16,7 +17,7 @@ const { loadConfig } = require('../src/config');
 const { createDb } = require('../src/db');
 const { createMailer } = require('../src/mailer');
 const jobs = require('../src/jobs');
-const { queueDaily } = require('../src/job-handlers');
+const { queueScheduled } = require('../src/job-handlers');
 
 async function main() {
   const config = loadConfig();
@@ -25,7 +26,7 @@ async function main() {
   const until = Date.now() + Number(process.env.JOBS_MAX_SECONDS || 55) * 1000;
   const total = { done: 0, retried: 0, failed: 0 };
   try {
-    await queueDaily(db);
+    await queueScheduled(db);
     while (Date.now() < until) {
       const r = await jobs.runDue(db, { deps, workerId: `cron:${process.pid}` });
       for (const k of Object.keys(total)) total[k] += r[k];

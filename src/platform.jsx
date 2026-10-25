@@ -657,6 +657,55 @@
   // ══════════════════════════════════════════════════════════════
   // A01 — platform stats
   // ══════════════════════════════════════════════════════════════
+  // «الموارد» (docs/06 S8): what stops the platform on shared hosting — the
+  // account's disk quota and the SMTP budget — from the hourly usage.check.
+  function bytesText(b) {
+    if (b === null || b === undefined) return "—";
+    const gb = b / 1073741824;
+    return gb >= 1 ? fmtNumber(Math.round(gb * 10) / 10) + " GB" : fmtNumber(Math.round(b / 1048576)) + " MB";
+  }
+  function ResourcesCard() {
+    const res = useApi(P("/usage"));
+    const d = res.data;
+    const snap = d && d.snapshot;
+    const rows = snap ? [
+      { key: "disk", label: tt("مساحة القرص (القاعدة + الملفات + النسخ)"), used: (snap.db_bytes || 0) + (snap.files_bytes || 0) + (snap.backups_bytes || 0), max: d.limits.disk_bytes, fmt: bytesText },
+      { key: "email_hour", label: tt("البريد في الساعة"), used: snap.emails_last_hour || 0, max: d.limits.emails_per_hour, fmt: fmtNumber },
+      { key: "email_day", label: tt("البريد اليوم"), used: snap.emails_today || 0, max: d.limits.emails_per_day, fmt: fmtNumber },
+    ] : [];
+    return (
+      <div className="card" style={{ marginBottom: 22 }} data-usage="">
+        <div className="pa-card-head">
+          <h2 className="h3">{tt("الموارد")}</h2>
+          {snap && <span className="muted" style={{ fontSize: 12 }}>{ttx("آخر فحص: {when}", { when: <DateText value={snap.taken_at} time/> })}</span>}
+        </div>
+        {res.error ? <div style={{ padding: 16 }}><ErrorBox error={res.error} onRetry={res.reload}/></div>
+          : !d ? <SkeletonRows count={3}/>
+          : !snap ? <div className="muted" style={{ padding: "4px 16px 16px" }}>{tt("لم يُجرَ فحص الموارد بعد — يعمل كل ساعة.")}</div>
+          : (
+            <div className="pa-usage">
+              {rows.map((r) => {
+                const pct = Math.min(100, Math.round((100 * r.used) / r.max));
+                return (
+                  <div key={r.key} className="pa-usage-row" data-resource={r.key} data-level={(d.levels && d.levels[r.key]) || 0}>
+                    <div className="pa-usage-line">
+                      <span>{r.label}</span>
+                      <span className="tnum">{tt("{used} من {max}", { used: r.fmt(r.used), max: r.fmt(r.max) })} · {pct}%</span>
+                    </div>
+                    <div className="pa-bar" role="progressbar" aria-label={r.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                      <span style={{ width: pct + "%" }}/>
+                    </div>
+                  </div>
+                );
+              })}
+              {snap.disk_free_bytes !== null && snap.disk_free_bytes !== undefined &&
+                <div className="muted" style={{ fontSize: 12 }}>{tt("المساحة الحرة على الخادم: {free}", { free: bytesText(snap.disk_free_bytes) })}</div>}
+            </div>
+          )}
+      </div>
+    );
+  }
+
   function StatsPage() {
     const stats = useApi(P("/stats"));
     const recent = useApi(P("/audit") + qs({ limit: 8 }));
@@ -698,6 +747,7 @@
               : <div key={c.key} data-stat={c.key} role="group" aria-label={label}>{body}</div>;
           })}
         </div>
+        <ResourcesCard/>
         <div className="card">
           <div className="pa-card-head">
             <h2 className="h3">{tt("أحدث العمليات")}</h2>
@@ -2913,6 +2963,12 @@
 .pa-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--ink-200)}
 .pa-json{background:var(--ink-900);color:#E6EDF3;border-radius:10px;padding:12px 14px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:50vh;margin:14px 0 0;text-align:start}
 .pa-error-event{padding:10px 0;border-top:1px solid var(--ink-100)}
+.pa-usage{padding:4px 16px 16px;display:grid;gap:14px}
+.pa-usage-line{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:6px}
+.pa-bar{height:8px;border-radius:999px;background:var(--ink-100);overflow:hidden}
+.pa-bar>span{display:block;height:100%;background:var(--green);border-radius:999px}
+.pa-usage-row[data-level="70"] .pa-bar>span{background:#D49044}
+.pa-usage-row[data-level="85"] .pa-bar>span,.pa-usage-row[data-level="95"] .pa-bar>span{background:#C0574C}
 .pa-error-event .pa-json{margin-top:8px;max-height:30vh}
 .pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px));pointer-events:none}
 .pa-toast{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--ink-200);border-radius:12px;box-shadow:var(--shadow-lg);padding-block:11px;padding-inline:12px 14px;font-size:13.5px;animation:popin .2s}

@@ -25,6 +25,7 @@ src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every 
 src/jobs.js            background jobs in PostgreSQL (SKIP LOCKED, retries, dead jobs); kinds in src/job-handlers.js
 src/password-reset.js  the reset e-mail (route and retry job)
 scripts/run-jobs.js    cron runner: due jobs for up to 55 s
+src/usage.js           resource snapshot and alerts (disk quota, SMTP budget), hourly
 src/errorlog.js        error tracking: 5xx, process errors and browser reports → error_groups/error_events (scrubbed)
 src/idempotency.js     Idempotency-Key for /api/rpc
 src/tenant.js          clinic from Host / X-Org-Slug, membership, branch

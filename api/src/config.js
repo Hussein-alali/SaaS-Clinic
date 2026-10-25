@@ -4,6 +4,7 @@
 // `cd api && npm start` works against scripts/dev-db.sh; in production
 // (NODE_ENV=production) the API refuses to start without its secrets.
 
+const os = require('os');
 const path = require('path');
 
 function readReleaseFile() {
@@ -129,6 +130,12 @@ function loadConfig(env = process.env) {
     trustProxy: trustProxy(env.TRUST_PROXY),
     // Requests per session (or IP) a minute, per process; 0 = no cap (docs/06 S5).
     apiRatePerMin: Math.max(0, Number(str(env.API_RATE_PER_MIN, '600')) || 0),
+    // Resource alerts (docs/06 S8): the account's disk quota, the SMTP budget,
+    // and where scripts/backup.sh writes (its size counts against the quota).
+    diskQuotaMb: Math.max(1, Number(str(env.DISK_QUOTA_MB, '30720')) || 30720),
+    smtpHourlyLimit: Math.max(1, Number(str(env.SMTP_HOURLY_LIMIT, '100')) || 100),
+    smtpDailyLimit: Math.max(1, Number(str(env.SMTP_DAILY_LIMIT, '1000')) || 1000),
+    backupDir: path.resolve(str(env.BACKUP_DIR, path.join(os.homedir(), 'clinicsys-backups'))),
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,
     distDir: path.resolve(API_ROOT, str(env.DIST_DIR, '../dist')),

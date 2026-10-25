@@ -18,6 +18,7 @@ const members = require('../members');
 const invites = require('../invites');
 const { isValidEmail, requestLang } = require('../mailer');
 const P = require('../platform');
+const usage = require('../usage');
 
 const router = express.Router();
 const ACTOR_ROLE = 'super_admin';
@@ -602,6 +603,18 @@ router.get('/audit', async (req, res) => {
     return { data: list.rows, count: count.rows[0].n };
   });
   res.json(result);
+});
+
+// ── resources (A01 «الموارد», docs/06 S8) ───────────────────────────────
+
+router.get('/usage', async (req, res) => {
+  const { db, config } = req.app.locals;
+  const { rows: [snapshot] } = await db.query('select * from public.usage_snapshots order by taken_at desc, id desc limit 1');
+  const levels = snapshot ? snapshot.levels : { disk: 0, email_hour: 0, email_day: 0 };
+  if (snapshot) for (const k of ['db_bytes', 'files_bytes', 'backups_bytes', 'disk_total_bytes', 'disk_free_bytes']) {
+    snapshot[k] = snapshot[k] === null ? null : Number(snapshot[k]);
+  }
+  res.json({ snapshot: snapshot || null, limits: usage.limitsOf(config), levels });
 });
 
 // ── errors (A08, docs/06 S6) ────────────────────────────────────────────

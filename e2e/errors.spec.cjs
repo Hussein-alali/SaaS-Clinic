@@ -89,4 +89,6 @@ test("the platform's «الأخطاء» page lists the browser error, scrubbed, 
   // A01 counts the open ones.
   await page.goto("/?platform=1#/");
   await expect(page.locator('[data-stat="open_errors"]')).toBeVisible();
+  // «الموارد» (S8): the disk and e-mail budgets from the hourly check, or a note before the first one.
+  await expect(page.locator("[data-usage]")).toContainText("الموارد");
 });

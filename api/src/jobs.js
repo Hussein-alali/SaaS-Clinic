@@ -13,6 +13,10 @@
 //   enqueueOnce(db, kind, payload, key) → id | null (never twice for a key)
 //   runDue(db, { limit, workerId, deps, now }) → { done, retried, failed }
 //
+// A handler that must wait (the SMTP hourly budget is spent) throws
+// defer(until, reason): the job runs again then, and the attempt is not
+// counted.
+//
 // Payloads hold ids only: no e-mail address, token or health data.
 
 const os = require('os');
@@ -23,6 +27,10 @@ const WORKER = `${os.hostname()}:${process.pid}`;
 
 function register(kind, fn) {
   handlers.set(kind, fn);
+}
+
+function defer(until, reason) {
+  return Object.assign(new Error(reason), { deferUntil: until });
 }
 
 async function enqueue(db, kind, payload = {}, { runAt = null, maxAttempts = 5, dedupeKey = null } = {}) {
@@ -70,6 +78,12 @@ async function runOne(db, { workerId, deps, now }) {
       return 'done';
     } catch (err) {
       await client.query('rollback to savepoint job');
+      if (err && err.deferUntil) {
+        await client.query(
+          'update public.jobs set run_at = $2, last_error = $3, locked_by = $4, updated_at = now() where id = $1',
+          [job.id, err.deferUntil, scrub(err.message, 500), workerId]);
+        return 'retried';
+      }
       const attempts = job.attempts + 1;
       const dead = attempts >= job.max_attempts;
       await client.query(
@@ -94,4 +108,4 @@ async function runDue(db, { limit = 20, workerId = WORKER, deps = {}, now = null
   return stats;
 }
 
-module.exports = { register, enqueue, enqueueOnce, runDue, handlers };
+module.exports = { register, defer, enqueue, enqueueOnce, runDue, handlers };

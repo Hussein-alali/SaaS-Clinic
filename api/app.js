@@ -8,7 +8,7 @@ const { loadConfig } = require('./src/config');
 const { createApp } = require('./src/create-app');
 const { recordError } = require('./src/errorlog');
 const jobs = require('./src/jobs');
-const { queueDaily } = require('./src/job-handlers');
+const { queueScheduled } = require('./src/job-handlers');
 
 /* global PhusionPassenger */
 const underPassenger =
@@ -54,7 +54,7 @@ if (runDirectly) {
     setInterval(() => {
       if (busy) return;
       busy = true;
-      queueDaily(app.locals.db)
+      queueScheduled(app.locals.db)
         .then(() => jobs.runDue(app.locals.db, { deps: app.locals }))
         .catch((err) => console.error('[api] jobs:', err.message))
         .finally(() => { busy = false; });
