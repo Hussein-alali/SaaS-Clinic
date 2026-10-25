@@ -305,7 +305,9 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 
 ## Migration and seed data
 
-**المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser). `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
+**المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser).
+
+**expand/contract (من `0010`، يفرضه `migrate.js`، S3):** أثناء النشر يعمل الإصدار السابق على المخطط الجديد، فالـ migration يضيف ولا يكسر: أعمدة وجداول ودوال جديدة، وأعمدة بقيمة افتراضية أو `NULL`. الحذف وإعادة التسمية وتغيير النوع و `set not null` على مرحلتين: الإصدار N يتوقف عن استخدام القديم، والإصدار N+1 يحذفه بسطر يسبقه `-- contract: <السبب>`. المهلة 5 ث للقفل: ما يحتاج قفلًا طويلًا على جدول كبير (فهرس، إعادة كتابة) يُقسّم أو يُشغّل في وقت هادئ. `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
 
 1. ✅ `0001_baseline.sql` (4,866 سطرًا؛ مُتحقق منه على 13.23 و 16.15، ومطابق لكتالوج الأصل: الجداول والأعمدة والقيود والفهارس والـ triggers و 57 سياسة و md5 كل دالة). **ما حُذف:** 30 أمر `GRANT ... TO authenticated`، و `storage.buckets` و 4 سياسات `storage.objects`، و**بذرتا** المدير (القسم 14) و 6 حسابات موظفين بكلمة مرور ثابتة (القسم 15)، و `pgcrypto` (كانت تستخدمه البذرتان فقط)، و `notify pgrst`. **ما بقي داخل الملف:** 49 قالب علاج وتصنيفان، و 9 طرق علاج، وسجل `clinic_settings` (id=1). الوصف الأصلي للمهمة: نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي: schema `auth` التوافقي (القاعدة 2)، وحذف `pgcrypto` و `storage.*` و `auth.identities` و `grant`/`to authenticated`، وتحويل السياسات إلى `TO PUBLIC`، وفصل بذور قوالب العلاج إن لزم. **السلوك لعيادة واحدة يبقى كما هو.**
 2. ✅ `0002_platform.sql` (12 جدولًا بلا RLS، و trigger يرفض الـ slugs المحجوزة، و 16 وحدة منها 5 `planned`) — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
@@ -343,3 +345,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 23 أكتوبر 2026 | قاعدة «الجنس» في Data validation: `F`/`M` من الواجهة، والقيم القديمة `Female`/`Male` (مراجعة 3.10). (هذا الـ commit) |
 | 25 أكتوبر 2026 | قاعدة «اللغة والقيم المخزنة»: لا تغيير في المخطط للغتين؛ القيم تبقى كما هي وتُترجم عند العرض؛ `X-Lang` للبريد فقط. (هذا الـ commit) |
 | 25 أكتوبر 2026 | سطر «النسخ الاحتياطي» في Retention and deletion (S1). (هذا الـ commit) |
+| 25 أكتوبر 2026 | قاعدة expand/contract للـ migrations من `0010` و `-- contract:` (S3). (هذا الـ commit) |

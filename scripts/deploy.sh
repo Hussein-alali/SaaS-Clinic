@@ -10,8 +10,10 @@
 #                            (application root: APP_HOME/current/api)
 #   shared/                  what outlives releases (clinic files, env file)
 #
-# Steps: backup of the database (abort on failure) → copy the release →
-# npm ci --omit=dev in api/ and db/ → migrations → atomic switch of
+# Steps: backup of the database (abort on failure; on the first deploy it
+# comes from the new release, after its install) → copy the release →
+# npm ci --omit=dev in api/ and db/ → migrations (NODE_ENV defaults to
+# production: db/migrate.js then insists on that fresh backup) → atomic switch of
 # `current` → restart (Passenger: current/api/tmp/restart.txt) → health
 # check → on failure, switch back to the previous release and restart.
 # The database is never rolled back here: migrations are expand/contract
@@ -46,10 +48,13 @@ PREV="$(current_release)"
 abort() { log "$1 — nothing was switched"; rm -rf "$NEW"; exit 1; }
 
 # 1. Backup first, from the release that is running now.
+backed_up=0
 if [ -n "${BACKUP_CMD:-}" ]; then
   bash -c "$BACKUP_CMD" || abort "the backup failed"
+  backed_up=1
 elif [ -n "$PREV" ] && [ -x "$APP_HOME/current/scripts/backup.sh" ]; then
   "$APP_HOME/current/scripts/backup.sh" --db-only || abort "the backup failed"
+  backed_up=1
 fi
 
 # 2. The new release.
@@ -62,12 +67,17 @@ if [ "${SKIP_INSTALL:-0}" != 1 ]; then
     (cd "$NEW/$d" && npm ci --omit=dev --no-audit --no-fund >/dev/null) || abort "npm ci failed in $d/"
   done
 fi
+# No running release took the backup (first deploy): the new one does, still
+# before its migrations.
+if [ "$backed_up" = 0 ] && [ -x "$NEW/scripts/backup.sh" ]; then
+  "$NEW/scripts/backup.sh" --db-only || abort "the backup failed"
+fi
 
 # 3. Migrations (expand/contract: the running release keeps working).
 if [ -n "${MIGRATE_CMD:-}" ]; then
   (cd "$NEW" && bash -c "$MIGRATE_CMD") || abort "the migrations failed"
 else
-  (cd "$NEW" && node db/migrate.js) || abort "the migrations failed"
+  (cd "$NEW" && NODE_ENV="${NODE_ENV:-production}" node db/migrate.js) || abort "the migrations failed"
 fi
 
 # 4–5. Switch, restart, check.

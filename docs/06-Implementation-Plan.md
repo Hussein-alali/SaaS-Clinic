@@ -105,7 +105,7 @@
 |---|---|---|---|
 | S1 ✅ | النسخ الاحتياطي (10) | `scripts/backup.sh` و `scripts/restore-check.sh` | نسخة يومية بتدوير 7 يومية + 4 أسبوعية، واستعادة تجريبية تطابق الأعداد |
 | S2 ✅ | التراجع (7) | `/api/health`، `scripts/deploy.sh`، `scripts/rollback.sh` | إصدار لا يعمل يُرجع للسابق تلقائيًا |
-| S3 | القاعدة الحية (8) | `lock_timeout` في `migrate.js`، شرط نسخة حديثة في الإنتاج، فحص expand/contract | migration لا يعلق، ولا يُطبق على الإنتاج بلا نسخة |
+| S3 ✅ | القاعدة الحية (8) | `lock_timeout` في `migrate.js`، شرط نسخة حديثة في الإنتاج، فحص expand/contract | migration لا يعلق، ولا يُطبق على الإنتاج بلا نسخة |
 | S4 | التعارض (1) | `0010_concurrency`: حماية الموعد، عدّاد إيصالات لكل عيادة، معرّفات SQL (2.10)، مفاتيح idempotency للدفع | موعد واحد ودفعة واحدة عند النقر المتزامن |
 | S5 | حدود الطلبات (4) | `rate_limits` في PostgreSQL مشتركة بين العمليات (2.19 ضمنها) | 429 بنص عربي/إنجليزي |
 | S6 | تتبّع الأخطاء (3) | `error_groups`/`error_events`، تقارير المتصفح، `ErrorBoundary`، صفحة A08 | الأخطاء مجمّعة ومنقّاة من البيانات الشخصية |
@@ -191,4 +191,5 @@
 | 25 أكتوبر 2026 | قسم «الجاهزية للتوسع» (S1–S10) من قائمة المالك، وخطة تفصيلية في `docs/superpowers/plans/`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S1 ✅: `scripts/backup.sh`، `scripts/restore-check.sh`، `db/backup-tools.js`، `db/test/backup.test.js` (5 اختبارات)، وقاعدة `clinicsys_restore` في `dev-db.sh`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | S2 ✅: نشر وتراجع مع فحص صحة (`test/deploy.test.mjs` 6 اختبارات، `api/test/health.test.js` اختباران). (هذا الـ commit) |
+| 25 أكتوبر 2026 | S3 ✅: `db/test/migrate-safety.test.js` (6 اختبارات)، واختبار أول نشر في `test/deploy.test.mjs`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | 3.34 ✅ مؤقتات الـ Toast. القاعدة والـ API: 233 نجاحًا و 2 متخطّيان؛ العميل 120/120؛ المتصفح 129 نجاحًا و 2 متخطّيان. (هذا الـ commit) |

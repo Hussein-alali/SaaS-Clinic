@@ -174,4 +174,12 @@
 
 **التراجع اليدوي:** `scripts/rollback.sh` يعود إلى أحدث إصدار سابق سليم، و `scripts/rollback.sh <release>` إلى إصدار بعينه. يُحتفظ بآخر 5 إصدارات.
 
+**البيئة على الخادم:** ملف `~/clinicsys/shared/env` (صلاحية 600، خارج Git) فيه `export NODE_ENV=production DATABASE_URL=… FILES_DIR=… BACKUP_DIR=… PORT=…`، و `. ~/clinicsys/shared/env` قبل `deploy.sh` و `rollback.sh` وأي `node db/migrate.js` يدوي. `deploy.sh` يشغّل الـ migrations بـ `NODE_ENV=production` إن لم يُضبط.
+
+### القاعدة الحية أثناء الـ migrations (S3) ✅
+
+- **لا انتظار طويل:** كل ملف ينتظر القفل 5 ث على الأكثر (`MIGRATE_LOCK_TIMEOUT`) ويعمل 15 دقيقة على الأكثر (`MIGRATE_STATEMENT_TIMEOUT`). عند التجاوز (SQLSTATE `55P03` أو `57014`) يُلغى الملف كاملًا ويقف النشر قبل التبديل (خروج 1، الإصدار الحالي يعمل)؛ أعد المحاولة في وقت أهدأ.
+- **نسخة قبل كل migration:** مع `NODE_ENV=production` يرفض `migrate.js` ملفات معلقة بلا نسخة أحدث من ساعتين في `BACKUP_DIR` (خروج 5): شغّل `scripts/backup.sh --db-only` أولًا. `deploy.sh` يأخذها تلقائيًا (من الإصدار العامل، وفي أول نشر من الإصدار الجديد). `--no-backup-check` للحالات المقصودة فقط.
+- **expand/contract:** من `0010` يرفض `migrate.js` الحذف وإعادة التسمية وتغيير النوع و `set not null` إلا بسطر `-- contract: <السبب>` قبلها ([05](05-Backend-Schema.md) «Migration and seed data»).
+
 **القاعدة لا تُرجع تلقائيًا أبدًا:** كل migration يُبقي الإصدار السابق عاملًا (expand/contract، المهمة S3). إن أفسد migration البيانات: استرجع النسخة التي أخذها `deploy.sh` قبل النشر (أحدث مجلد في `BACKUP_DIR`) كما في «استرجاع حقيقي بعد كارثة» أعلاه، ثم `rollback.sh`.

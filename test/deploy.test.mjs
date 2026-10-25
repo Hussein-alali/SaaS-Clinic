@@ -115,6 +115,16 @@ test("only the 5 newest releases are kept (never the current one)", async () => 
   assert.ok(releases().includes(current()));
 });
 
+test("first deploy (no running release): the new release takes the backup, before its migrations", async () => {
+  const home = path.join(tmp, "fresh-app"), fresh = path.join(tmp, "fresh-src"), trail = path.join(tmp, "fresh.log");
+  fs.cpSync(src, fresh, { recursive: true });
+  fs.mkdirSync(path.join(fresh, "scripts"));
+  fs.writeFileSync(path.join(fresh, "scripts", "backup.sh"), `#!/usr/bin/env bash\necho "backup $*" >> ${JSON.stringify(trail)}\n`, { mode: 0o755 });
+  const r = await sh(DEPLOY, [fresh], { APP_HOME: home, RELEASE_ID: "first", BACKUP_CMD: "", MIGRATE_CMD: `echo migrate >> ${JSON.stringify(trail)}` });
+  assert.equal(r.status, 0, log.at(-1));
+  assert.deepEqual(fs.readFileSync(trail, "utf8").trim().split("\n"), ["backup --db-only", "migrate"]);
+});
+
 test("package-release.sh builds a tarball that deploys", async () => {
   const out = path.join(tmp, "release.tar.gz");
   const p = spawnSync("bash", [PACKAGE, out], { encoding: "utf8", timeout: 120000, env: { ...process.env, BUILD_OUT: undefined } });

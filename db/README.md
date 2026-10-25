@@ -26,6 +26,8 @@ db/
     ├── audit.test.js        # 0004: audit rows cannot be forged or squat ids
     ├── index.js             # `node --test db/test/` on Node 21+
     ├── baseline.test.js     # migrate.js and the 0001 port
+    ├── migrate-safety.test.js # lock/statement timeouts, production backup gate, expand/contract lint
+    ├── backup.test.js       # scripts/backup.sh and restore-check.sh
     ├── isolation.test.js    # tenant isolation of every clinic table
     ├── branch.test.js       # branch_scope / member_branches
     ├── limits.test.js       # plan limits (PL422)
@@ -78,9 +80,20 @@ node db/migrate.js --status   # lists applied/pending files, applies nothing
   PostgreSQL reports with a position (syntax errors, unknown
   columns/relations).
 
-On hosting.com, run the same command from the cPanel Terminal (or SSH) in the
-application directory, with the production `DATABASE_URL`. Take a backup with
-`pg_dump` first (docs/02-TRD.md, "Rollback").
+Live-database safety (docs/06 S3, `db/test/migrate-safety.test.js`):
+
+- Each file waits at most `MIGRATE_LOCK_TIMEOUT` (default `5s`) for a lock
+  and runs at most `MIGRATE_STATEMENT_TIMEOUT` (default `15min`). A file that
+  hits either (SQLSTATE `55P03` / `57014`) is rolled back; retry it later,
+  instead of every clinic's requests queueing behind it.
+- With `NODE_ENV=production`, pending files need a backup younger than 2
+  hours in `BACKUP_DIR` (default `~/clinicsys-backups`, written by
+  `scripts/backup.sh`), else exit code 5. `--no-backup-check` skips this on
+  purpose. `scripts/deploy.sh` takes that backup before migrating.
+
+On hosting.com, `scripts/deploy.sh` runs the migrations of a release
+(docs/08 «النشر والتراجع»); by hand, from the cPanel Terminal (or SSH) after
+`. ~/clinicsys/shared/env`.
 
 ### Writing a migration
 
@@ -89,6 +102,12 @@ application directory, with the production `DATABASE_URL`. Take a backup with
 - Do not write `BEGIN`/`COMMIT`/`ROLLBACK` in the file. The runner wraps it
   and refuses files that contain them.
 - Never edit a file that has been applied to a shared database. Add a new one.
+- Expand/contract (from `0010`, enforced): the release still running during
+  a deploy uses the new schema, so add, do not break. `drop table`,
+  `drop column`, `rename`, a column type change and `set not null` are
+  refused unless the line before (or the same line) carries
+  `-- contract: <reason>` — do them one release after the code stopped
+  using the old shape.
 - PostgreSQL 13 syntax only: no `CREATE OR REPLACE TRIGGER`, `MERGE`,
   `NULLS NOT DISTINCT`, `security_invoker` views or jsonb subscripting. No
   extensions. No `CREATE ROLE`, `GRANT` to Supabase roles, or `ALTER SYSTEM`.
