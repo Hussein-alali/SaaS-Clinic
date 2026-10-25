@@ -153,3 +153,25 @@
 - **قاعدة الاسترجاع:** قاعدة ثانية فارغة تُنشأ مرة واحدة في cPanel (مثل `<account>_clinicsys_restore`) لنفس المستخدم، وعنوانها في `RESTORE_DATABASE_URL`. السكربت يرفض أن تكون هي القاعدة الحية.
 - **استرجاع حقيقي بعد كارثة:** أوقف التطبيق (cPanel ← Setup Node.js App ← Stop)، ثم `pg_restore --clean --if-exists --no-owner --no-privileges --dbname="$DATABASE_URL" ~/clinicsys-backups/<stamp>/db.dump` مع `PGOPTIONS="-c app.system=on"`، وفك `files.tar.gz` داخل `FILES_DIR`، ثم شغّل التطبيق.
 - **خطر معروف:** النسخ على نفس الخادم لا تحمي من فقدان الخادم نفسه. **نزّل النسخة الأسبوعية إلى جهازك** (File Manager أو SFTP) حتى يُعتمد مكان خارجي، وفعّل نسخ cPanel/JetBackup من hosting.com إن وُجد في الخطة.
+
+### النشر والتراجع (S2) ✅
+
+**الترتيب على الخادم** (`APP_HOME`، الافتراضي `~/clinicsys`):
+
+| المسار | المحتوى |
+|---|---|
+| `releases/<stamp>-<id>/` | إصدار كامل: `api/` و `db/` و `dist/` و `scripts/` وملف `RELEASE` |
+| `current` | رابط رمزي إلى الإصدار العامل. في cPanel ← Setup Node.js App: **Application root = `clinicsys/current/api`**، و Startup file = `app.js` |
+| `shared/` | ما يبقى بين الإصدارات (مجلد ملفات العيادات `FILES_DIR`) |
+
+**الخطوات:**
+
+1. على جهازك (أو في CI): `scripts/package-release.sh` ← `release-<sha>.tar.gz` (البناء على جهازك، لأن esbuild أداة تطوير).
+2. ارفع الملف إلى الخادم.
+3. شغّل `DATABASE_URL=… PORT=… ~/clinicsys/current/scripts/deploy.sh release-<sha>.tar.gz` (في أول نشر يُشغّل من النسخة المفكوكة).
+4. ما يحدث تلقائيًا: نسخة احتياطية للقاعدة ← فك الإصدار ← `npm ci --omit=dev` ← migrations ← تبديل `current` ← إعادة التشغيل (`tmp/restart.txt`) ← فحص `GET /api/health` لمدة 60 ثانية.
+5. إن لم يصح الإصدار الجديد: يعود `current` تلقائيًا إلى الإصدار السابق (خروج 2)، ويُعلَّم الإصدار الفاشل بملف `.failed`.
+
+**التراجع اليدوي:** `scripts/rollback.sh` يعود إلى أحدث إصدار سابق سليم، و `scripts/rollback.sh <release>` إلى إصدار بعينه. يُحتفظ بآخر 5 إصدارات.
+
+**القاعدة لا تُرجع تلقائيًا أبدًا:** كل migration يُبقي الإصدار السابق عاملًا (expand/contract، المهمة S3). إن أفسد migration البيانات: استرجع النسخة التي أخذها `deploy.sh` قبل النشر (أحدث مجلد في `BACKUP_DIR`) كما في «استرجاع حقيقي بعد كارثة» أعلاه، ثم `rollback.sh`.

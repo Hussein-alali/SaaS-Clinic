@@ -345,7 +345,7 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 - **التشغيل محليًا:** `scripts/dev-stack.sh start [dbport] [apiport]` يعيد ضبط القاعدة ويطبق الـ migrations والبذر ويبني `dist/` ويشغّل الـ API، ويطبع الرابط (`?org=demo-physio` للعيادة، و `?platform=1` للمنصة، وكلمة المرور `Dev@12345`). الخطوات اليدوية المكافئة: `scripts/dev-db.sh start` → `node db/migrate.js` → `psql -f db/seed/dev.sql` → `npm run build` → `cd api && npm start`.
 - **CI (GitHub Actions):** `npm run build` + `node db/migrate.js` على PostgreSQL مؤقت (service container) + `node --test 'db/test/*.test.js' 'api/test/*.test.js' 'test/*.test.mjs'` على **قاعدة واحدة** (289 اختبارًا؛ قفل advisory يجعل اختبارات القاعدة مشتركة واختبارات الـ API حصرية). كل ملف اختبار API يمسح القاعدة ويعيد تطبيق الـ migrations والبذر، **ويرفض العمل** على قاعدة فيها حساب لا ينتهي بـ `.test` أو عيادة غير تجريبية. اختبارات القاعدة تطبق `db/seed/dev.sql` تلقائيًا: لا تُوجَّه أبدًا إلى قاعدة حقيقية. تتطلب `npm --prefix db install` و `npm --prefix api install` + Playwright (`e2e/`) لكل PR.
 - **CD:** النشر من `main` بعد نجاح CI؛ migrations تُطبق على staging أولًا ثم production بعد الموافقة.
-- **Rollback:** كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
+- **Rollback ✅ (S2):** `scripts/deploy.sh` (نسخة ← migrations ← تبديل رابط `current` ذريًا ← فحص `/api/health` ← عودة تلقائية للإصدار السابق) و `scripts/rollback.sh` و `scripts/package-release.sh`؛ `GET /api/health` → `{ok, db, release}` (200/503) بلا جلسة ولا CSRF. الكود فقط يُرجع؛ القاعدة expand/contract. — كل migration لها خطة رجوع موثقة؛ نسخة احتياطية قبل كل migration إنتاجية.
 
 ## Key technical decisions and tradeoffs
 
@@ -400,3 +400,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 23 أكتوبر 2026 | ملاحظات تنفيذ مراجعة 3.10: `useDialogFocus` و `DialogFocusGuard`، الأرقام اللاتينية، axe-core كأداة فحص خارج `package.json`، الحجم ≈ 273 KB. (هذا الـ commit) |
 | 25 أكتوبر 2026 | ملاحظات تنفيذ اللغتين (i18n، القواميس المختزلة، cookie اللغة بين النطاقات، `X-Lang`، البريد بلغتين)؛ لوحة المنصة ملف منفصل (3.12)؛ قرارات جديدة في الجدول؛ إصلاح `SessionTimeline`؛ الحجم ≈ 247/282 KB. (هذا الـ commit) |
 | 25 أكتوبر 2026 | النسخ الاحتياطي (S1) منفذ: `backup.sh` و `restore-check.sh` و `db/backup-tools.js`. (هذا الـ commit) |
+| 25 أكتوبر 2026 | S2: `/api/health`، النشر بإصدارات و `current` ذري، والعودة التلقائية، و `rollback.sh` و `package-release.sh`؛ `config.release` من `RELEASE` أو ملف `RELEASE`. (هذا الـ commit) |

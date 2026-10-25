@@ -6,6 +6,14 @@
 
 const path = require('path');
 
+function readReleaseFile() {
+  try {
+    return require('fs').readFileSync(path.resolve(__dirname, '..', '..', 'RELEASE'), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 const API_ROOT = path.resolve(__dirname, '..');
 
 const DEV_JWT_SECRET = 'dev-only-jwt-secret-change-me-0123456789abcdef';
@@ -122,6 +130,9 @@ function loadConfig(env = process.env) {
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,
     distDir: path.resolve(API_ROOT, str(env.DIST_DIR, '../dist')),
+    // The deployed release name (/api/health shows it): RELEASE, else the
+    // RELEASE file scripts/deploy.sh writes at the release root.
+    release: str(env.RELEASE, '') || readReleaseFile(),
     mailTransport,
     mailOutboxDir: path.resolve(API_ROOT, str(env.MAIL_OUTBOX_DIR, '.outbox')),
     mailFrom: str(env.MAIL_FROM, 'ClinicSystem EG <no-reply@localhost>'),

@@ -109,6 +109,8 @@ function createApp(config, deps = {}) {
     res.set('Cache-Control', 'no-store');
     next();
   });
+  // Before the CSRF check and the session: deploys and monitoring call it bare.
+  api.use('/health', require('./routes/health'));
   api.use(requireCsrfHeader);
   api.use(cookieParser());
   api.use(express.json({ limit: '10mb' }));
