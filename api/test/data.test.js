@@ -577,6 +577,46 @@ test('branch scoping: rows of the member branches only; inserts default to the c
   assert.equal(foreignBranch.body.error.code, '23503');
 });
 
+// docs/06 S9: RLS alone cannot narrow an index scan to one clinic
+// (tenant_isolation is `app_is_system() OR organization_id = app_org_id()`),
+// so every statement on a one-clinic table also says organization_id = the
+// current clinic. The template tables keep their global rows (organization_id
+// IS NULL in their policy), so they get no such filter.
+test('select, count, update and delete of one-clinic tables also filter organization_id; template tables keep global rows', async () => {
+  const { parseRequest, buildQuery } = require('../src/data-query');
+  const { catalog } = h.app.locals;
+  const bookings = await catalog.getTable('bookings');
+  assert.equal(bookings.orgScoped, true);
+  const sel = buildQuery(parseRequest({ table: 'bookings', filters: [{ column: 'date', op: 'gte', value: '2026-01-01' }], count: 'exact' }),
+    bookings, { orgId: ORG.physio });
+  assert.match(sel.sql, /where "organization_id" = \$1 and "date" >= \$2 /);
+  assert.match(sel.countSql, /where "organization_id" = \$1 and "date" >= \$2$/);
+  assert.equal(sel.params[0], ORG.physio);
+  assert.equal(sel.countParams[0], ORG.physio);
+  const upd = buildQuery(parseRequest({ table: 'bookings', action: 'update', values: { notes: 'x' }, filters: [{ column: 'booking_id', op: 'eq', value: 'B' }] }),
+    bookings, { orgId: ORG.physio });
+  assert.match(upd.sql, /where "organization_id" = \$2 and "booking_id" = \$3/);
+  const del = buildQuery(parseRequest({ table: 'bookings', action: 'delete', filters: [{ column: 'booking_id', op: 'eq', value: 'B' }] }),
+    bookings, { orgId: ORG.physio });
+  assert.match(del.sql, /where "organization_id" = \$1 and "booking_id" = \$2/);
+  assert.match(buildQuery(parseRequest({ table: 'patients' }), await catalog.getTable('patients'), { orgId: ORG.physio }).sql,
+    /where "organization_id" = \$1 /, 'also without filters');
+
+  for (const t of ['template_categories', 'template_usage', 'treatment_methods', 'treatment_templates']) {
+    const meta = await catalog.getTable(t);
+    assert.equal(meta.orgScoped, false, t);
+    assert.doesNotMatch(buildQuery(parseRequest({ table: t }), meta, { orgId: ORG.physio }).sql, /organization_id/, t);
+  }
+  const methods = await admin.data({ table: 'treatment_methods' });
+  assert.equal(methods.status, 200);
+  assert.ok(methods.body.data.some((r) => r.organization_id === null), 'the global treatment methods');
+  assert.ok(methods.body.data.every((r) => r.organization_id === null || r.organization_id === ORG.physio));
+  // Results are unchanged: still the clinic's rows, all of them.
+  const patients = await admin.data({ table: 'patients' });
+  assert.ok(PHY.every((id) => ids(patients).includes(id)));
+  assert.ok(patients.body.data.every((r) => r.organization_id === ORG.physio));
+});
+
 test('data requires the CSRF header, a session and a clinic', async () => {
   const { cookie } = await h.login(USER.physioAdmin.email);
   const noCsrf = await h.client({ cookie, slug: 'demo-physio', csrf: false }).data({ table: 'patients' });

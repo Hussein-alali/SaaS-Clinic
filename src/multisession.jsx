@@ -170,6 +170,11 @@ function ConcurrentSessions(){
     try {
       if (window.TreatmentsAPI) plan = await window.TreatmentsAPI.activeFor(pid);
     } catch (e) { console.warn("activeTreatmentFor failed", e); }
+    // Without a plan the number counts the patient's sessions: all of them,
+    // also those from before the startup window (docs/06 S9).
+    if (!plan && window.KineticData && window.KineticData.loadOlder) {
+      try { await window.KineticData.loadOlder({ patientId: pid }); } catch (e) { console.warn("loadOlder failed", e); }
+    }
     const completedBefore = plan ? (Number(plan.completed_sessions) || 0)
       : (DATA.sessions || []).filter(s => s.patient_id === pid && s.status !== "in_progress").length;
     const total = plan ? (Number(plan.estimated_sessions) || 0) : 0;

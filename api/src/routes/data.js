@@ -24,7 +24,7 @@ router.post('/', requireOrg(), async (req, res) => {
   // Re-read after a possible refresh so column metadata is current.
   const table = await catalog.getTable(q.table);
   checkOrganization(q, table, req.ctx.orgId);
-  const plan = buildQuery(q, table);
+  const plan = buildQuery(q, table, { orgId: req.ctx.orgId });
 
   const result = await db.withContext(req.ctx, async (client) => {
     let data = null;

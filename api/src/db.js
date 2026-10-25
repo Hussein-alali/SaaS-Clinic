@@ -58,6 +58,19 @@ function createDb(config) {
   // An idle client losing its connection must not crash the process.
   pool.on('error', (err) => console.error('[db] idle client error:', err.message));
 
+  // Statements sent on any pooled connection (pool.query goes through
+  // client.query too). queryCount() is the test hook of docs/06 S9: a list
+  // endpoint runs as many statements for 3 rows as for 60 (no N+1).
+  let statements = 0;
+  pool.on('connect', (client) => {
+    const send = client.query;
+    client.query = function countedQuery(...args) {
+      statements += 1;
+      return send.apply(this, args);
+    };
+  });
+  const queryCount = () => statements;
+
   const query = (text, params) => pool.query(text, params);
 
   /**
@@ -94,7 +107,7 @@ function createDb(config) {
 
   const close = () => pool.end();
 
-  return { pool, query, withContext, close };
+  return { pool, query, withContext, close, queryCount };
 }
 
 module.exports = { createDb, getTypeParser };

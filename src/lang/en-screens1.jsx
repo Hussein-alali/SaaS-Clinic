@@ -187,6 +187,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "ملاحظات العلاج / متابعة الجلسات": "Treatment notes / session follow-up",
   // Patient detail
   "معلومات المريض غير مكتملة — أُنشئ هذا الملف عبر الحجز السريع. أكمل البيانات الناقصة.": "This patient's details are incomplete — the file was created by a quick booking. Fill in what is missing.",
+  "جارٍ تحميل السجل الأقدم…": "Loading the older history…",
   "إكمال البيانات": "Complete details",
   "سُجّل في {date}": "Registered {date}",
   "اتصال": "Call",

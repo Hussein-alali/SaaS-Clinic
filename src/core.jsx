@@ -116,6 +116,32 @@ function useDataVersion() {
 }
 window.useDataVersion = useDataVersion;
 
+// Bounded loading (docs/06 S9): window.DATA holds bookings, sessions,
+// invoices and payments from KineticData.windowFrom() onwards. A screen
+// showing an older period ({ from: "YYYY-MM-DD" }) or one patient's whole
+// history ({ patientId }) calls this; the rows are merged into window.DATA
+// (kinetic:data-updated re-renders the readers). → { loading, error, retry }.
+function useOlderRows({ from, patientId } = {}) {
+  const [state, setState] = React.useState({ loading: false, error: "" });
+  const [attempt, setAttempt] = React.useState(0);
+  React.useEffect(() => {
+    const K = window.KineticData;
+    if (!K || !K.loadOlder || (!from && !patientId) || K.covers({ from, patientId })) {
+      setState(s => (s.loading || s.error ? { loading: false, error: "" } : s));
+      return;
+    }
+    let live = true;
+    setState({ loading: true, error: "" });
+    K.loadOlder({ from, patientId }).then(
+      () => { if (live) setState({ loading: false, error: "" }); },
+      (e) => { if (live) setState({ loading: false, error: (e && e.message) || tt("تعذّر تحميل البيانات الأقدم") }); });
+    return () => { live = false; };
+  }, [from, patientId, attempt]);
+  const retry = React.useCallback(() => setAttempt(n => n + 1), []);
+  return { ...state, retry };
+}
+window.useOlderRows = useOlderRows;
+
 
 // ===== src/charts.jsx =====
 // Lightweight SVG charts — no external lib. Tabular numerics, brand blues.

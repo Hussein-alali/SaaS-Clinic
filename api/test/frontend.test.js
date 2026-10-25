@@ -96,6 +96,7 @@ function browser(h, { who, search = '?org=demo-physio' } = {}) {
         path: u.split('?')[0],
         table: body && body.table,
         action: body && body.action,
+        filters: (body && body.filters) || [],
         status: res.status,
         code: error && typeof error === 'object' ? error.code : typeof error === 'string' ? error : null,
         org: headers['X-Org-Slug'] || null,
@@ -204,7 +205,9 @@ describe('clinic admin (admin@demo-physio.test, ?org=demo-physio)', () => {
 
   test('boot before sign-in: loadClinic/loadSections/loadBranches/hydrate answer 401, nothing breaks', () => {
     const boot = b.log.filter((r) => r.label === 'boot');
-    assert.equal(boot.length, 18, boot.map(describeReq).join('\n'));
+    // 18 tables; invoices twice (its startup window, the open ones before it),
+    // bookings and sessions twice (the window, the undated rows), docs/06 S9.
+    assert.equal(boot.length, 21, boot.map(describeReq).join('\n'));
     for (const r of boot) {
       assert.equal(r.status, 401, describeReq(r));
       assert.equal(r.org, 'demo-physio', 'X-Org-Slug from ?org=');
@@ -305,7 +308,10 @@ describe('clinic admin (admin@demo-physio.test, ?org=demo-physio)', () => {
       return out;
     });
     allOk(res);
-    assert.equal(res.reqs.length, 15);
+    assert.equal(res.reqs.length, 18, 'one per table; invoices, bookings and sessions twice (window + open or undated rows)');
+    const windowed = res.reqs.filter((r) => ['bookings', 'sessions', 'invoices', 'payments'].includes(r.table));
+    assert.ok(windowed.length === 7 && windowed.every((r) => r.filters.some((f) => ['date', 'created_at'].includes(f.column))),
+      'the time-series tables are read from a date (bounded loading)');
     const lists = res.out;
     assert.ok(lists.patients.length >= 4);
     assert.ok(lists.patients.every((p) => /^P-PHY-/.test(p.patient_id)), 'no other clinic rows');

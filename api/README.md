@@ -19,7 +19,7 @@ Edge Functions) on hosting.com. The binding design is in
 app.js                 entry point (cPanel startup file); exports the Express app
 src/config.js          environment variables (below)
 src/create-app.js      middleware order, route mounting, error handler
-src/db.js              Pool (max 10) + withContext(ctx, fn)
+src/db.js              Pool (max 10) + withContext(ctx, fn) + queryCount() (statements sent; the N+1 test hook)
 src/auth.js            bcrypt, JWT cookie, session loading
 src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every process
 src/jobs.js            background jobs in PostgreSQL (SKIP LOCKED, retries, dead jobs); kinds in src/job-handlers.js
@@ -219,6 +219,13 @@ by the database with 409 `{code:'branch_inactive', message:'Branch is inactive'}
   "head": false, "ignoreDuplicates": false }
 ```
 
+- Every select, count, update and delete on a table holding one clinic's rows
+  (`meta.orgScoped`: it has `organization_id` and its `tenant_isolation`
+  policy shows no `organization_id IS NULL` rows, i.e. not the template
+  tables) also says `organization_id = <current clinic>`. RLS still decides
+  what is visible; the policy reaches the planner as `app_is_system() OR
+  organization_id = …`, which is no index condition, so without it every
+  read would scan all clinics' rows (docs/06 S9, `0015_indexes`).
 - `table`: public tables with RLS **and** FORCE RLS, minus the platform and
   identity tables. Columns (in `columns`, filters, order, values, `onConflict`)
   must exist in `information_schema.columns`; the catalog is cached and

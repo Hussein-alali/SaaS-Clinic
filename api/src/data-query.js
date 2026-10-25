@@ -202,9 +202,16 @@ class Params {
   }
 }
 
-function whereClause(req, meta, params) {
-  if (!req.filters.length) return '';
-  const parts = req.filters.map((f) => {
+// orgId: on a table holding one clinic's rows (meta.orgScoped), the
+// statement also says organization_id = the current clinic. RLS still
+// decides what is visible; tenant_isolation reaches the planner as
+// `app_is_system() OR organization_id = app_org_id()`, which is no index
+// condition, so without this every read would scan all clinics' rows
+// (docs/06 S9, 0015_indexes).
+function whereClause(req, meta, params, orgId) {
+  const parts = [];
+  if (orgId && meta.orgScoped) parts.push(`${qi('organization_id')} = ${params.add(orgId)}`);
+  parts.push(...req.filters.map((f) => {
     const col = qi(f.column);
     const info = meta.columns.get(f.column);
     if (f.op === 'is') return `${col} is ${f.value === null ? 'null' : f.value ? 'true' : 'false'}`;
@@ -214,8 +221,8 @@ function whereClause(req, meta, params) {
     }
     if (!info.json && !info.array && !isScalar(f.value)) throw badRequest('invalid_filter', `Filter value for ${f.column} must be a scalar`);
     return `${col} ${OPS[f.op]} ${params.add(bindValue(info, f.value, f.column))}`;
-  });
-  return ` where ${parts.join(' and ')}`;
+  }));
+  return parts.length ? ` where ${parts.join(' and ')}` : '';
 }
 
 const target = (meta) => `public.${qi(meta.name)}`;
@@ -233,9 +240,9 @@ function checkOrganization(req, meta, orgId) {
   }
 }
 
-function buildSelect(req, meta) {
+function buildSelect(req, meta, orgId) {
   const params = new Params();
-  const where = whereClause(req, meta, params);
+  const where = whereClause(req, meta, params, orgId);
   const countParams = params.values.slice();
   let order = '';
   if (req.order.length) {
@@ -288,34 +295,35 @@ function buildInsert(req, meta) {
   return { sql: sql + returningClause(req), params: params.values };
 }
 
-function buildUpdate(req, meta) {
+function buildUpdate(req, meta, orgId) {
   const params = new Params();
   const values = req.rows[0];
   const sets = Object.keys(values).map((c) => {
     if (meta.columns.get(c).generated) throw badRequest('invalid_column', `Column ${c} is generated and cannot be written`);
     return `${qi(c)} = ${params.add(bindValue(meta.columns.get(c), values[c], c))}`;
   });
-  const where = whereClause(req, meta, params);
+  const where = whereClause(req, meta, params, orgId);
   return { sql: `update ${target(meta)} set ${sets.join(', ')}${where}${returningClause(req)}`, params: params.values };
 }
 
-function buildDelete(req, meta) {
+function buildDelete(req, meta, orgId) {
   const params = new Params();
-  const where = whereClause(req, meta, params);
+  const where = whereClause(req, meta, params, orgId);
   return { sql: `delete from ${target(meta)}${where}${returningClause(req)}`, params: params.values };
 }
 
-function buildQuery(req, meta) {
+/** opts.orgId: the current clinic (see whereClause). */
+function buildQuery(req, meta, { orgId = null } = {}) {
   switch (req.action) {
     case 'select':
-      return buildSelect(req, meta);
+      return buildSelect(req, meta, orgId);
     case 'insert':
     case 'upsert':
       return buildInsert(req, meta);
     case 'update':
-      return buildUpdate(req, meta);
+      return buildUpdate(req, meta, orgId);
     case 'delete':
-      return buildDelete(req, meta);
+      return buildDelete(req, meta, orgId);
     default:
       throw badRequest('invalid_action', 'Unsupported action');
   }

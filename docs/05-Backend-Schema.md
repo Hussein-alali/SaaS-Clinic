@@ -266,6 +266,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 - **حد الصفوف:** `/api/data` يعيد في كل طلب 1000 صف كحد أقصى، كما كان يفعل PostgREST في Supabase. أي قراءة لقائمة كاملة **يجب** أن تمر عبر `selectAllRows(cfg)` في `src/supabase.jsx`: طلب أول مع `count: "exact"`، ثم إذا كان الجدول أكبر مما وصل، صفحات متوازية مرتبة بالمفتاح الأساسي. المفتاح الأساسي مفهرس دائمًا، فالترتيب رخيص.
 - **التوازي:** الجداول المستقلة تُطلب معًا (`Promise.all`)، لا واحدًا بعد الآخر.
 - **ترتيب الصفوف:** الجداول الأكبر من *Max rows* تصل مرتبة بالمفتاح الأساسي. الشاشات التي تحتاج ترتيبًا آخر ترتب بنفسها.
+- ✅ **نافذة البدء (S9):** الحجوزات والجلسات والفواتير والمدفوعات تُقرأ من اليوم − 180 يومًا (والفواتير غير المسددة كلها، والصفوف بلا تاريخ)، والأقدم عند الطلب (`KineticData.loadOlder`، `listRange`). و `/api/data` يضيف `organization_id = <العيادة الحالية>` إلى كل قراءة وتعديل وحذف في جدول بصفوف عيادة واحدة (لا جداول القوالب ذات الصفوف العامة)، فتعمل فهارس `(organization_id, …)` رغم صيغة `OR` في `tenant_isolation`.
 - **المستقبل (F18):** بدل تحميل كل الجداول عند البداية، كل شاشة تطلب ما تعرضه: المواعيد لنطاق التاريخ، والمرضى بالبحث و `.range()`، والتقارير عبر دوال RPC تجمّع داخل قاعدة البيانات. مع تعدد العيادات تُضاف فهارس `(organization_id, date)` و `(organization_id, branch_id)`.
 - **إن نُقلت القاعدة إلى hosting.com:** القواعد نفسها تُطبق في خادم Node.js API بدل PostgREST ([08](08-Hosting-Migration.md)).
 
@@ -323,7 +324,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 12. ✅ `0012_error_log.sql` — `error_groups(fingerprint PK, source api|client, message, route, status, code, count, first_seen, last_seen, last_event_at, last_release, resolved_at)` و `error_events(id, fingerprint → error_groups, created_at, message, stack, route, method, status, code, organization_id, user_id, release, user_agent)`؛ نصوص منقّاة فقط، وعينة واحدة لكل مجموعة في الدقيقة. جدولان تشغيليان بلا RLS (القاعدة 4)؛ العينات الأقدم من 30 يومًا تُحذف في مهمة الصيانة (S7).
 13. ✅ `0013_jobs.sql` — `jobs(id, kind, payload jsonb, run_at, attempts, max_attempts 5, last_error, locked_by, done_at, dead_at, dedupe_key, created_at, updated_at)` مع فهرس المستحقة، وفهرس فريد جزئي على `dedupe_key` للمهام المعلقة؛ و `mail_log(id, sent_at, kind, ok)` بلا عناوين. الحمولة معرّفات فقط (لا بريد ولا رمز ولا بيانات صحية). جدولان تشغيليان بلا RLS (القاعدة 4).
 14. ✅ `0014_usage.sql` — `usage_snapshots(id, taken_at, db_bytes, files_bytes, backups_bytes, disk_total_bytes, disk_free_bytes, emails_last_hour, emails_today, levels jsonb)` (90 يومًا) و `alert_state(key, level, sent jsonb, updated_at)`. جدولان تشغيليان بلا RLS (القاعدة 4).
-15. `0015_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+15. ✅ `0015_indexes.sql` — `(organization_id, branch_id, date)` على `bookings` و `sessions`، و `(organization_id, branch_id, created_at)` على `invoices` و `payments` (نافذة البدء، S9). لا فهارس `(organization_id, patient_id)`: `patient_id` فريد على المنصة (`patients_pkey`) وفهارسه الحالية تكفي.
+16. `0016_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -356,3 +358,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 25 أكتوبر 2026 | `0012_error_log` (S6). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0013_jobs` (S7). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0014_usage` (S8). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0015_indexes` ونافذة البدء وشرط `organization_id` في `/api/data` (S9). (هذا الـ commit) |

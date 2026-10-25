@@ -206,6 +206,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "المستخدم غير موجود": "User not found",
   // clinic admin API (OrgAdmin)
   "هذه الميزة تحتاج الاتصال بالخادم": "This feature needs a connection to the server",
+  "تعذّر تحميل البيانات الأقدم": "Couldn't load the older records",
   "تعذّر تحميل قائمة الموظفين": "Couldn't load the staff list",
   "تعذّر حفظ التغييرات": "Couldn't save the changes",
   "تعذّر تحميل حدود الخطة": "Couldn't load the plan limits",

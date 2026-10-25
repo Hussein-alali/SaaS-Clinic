@@ -3086,25 +3086,36 @@ function reportBranchActive(b) {
   return window.branchIsActive ? window.branchIsActive(b) : String((b && b.status) || "active") !== "inactive";
 }
 // scope: "current" | "all" → { scope, all, label, rowsOf(name), loading,
-// waiting (nothing loaded yet), error, retry } for the report tabs.
+// waiting (nothing loaded yet), loadingOlder, error, retry, need(from) } for
+// the report tabs. A tab calls need(its «من» date): rows from before the
+// startup window are read for it (docs/06 S9) — merged into window.DATA for
+// the current branch, read with every branch's for «كل الفروع».
 function useReportScope(scope, version) {
   const wide = scope === "all";
   const [state, setState] = React.useState({ tables: null, loading: false, error: "" });
+  const [since, setSince] = React.useState(null);
+  // An empty «من» means from the first day: every row.
+  const need = React.useCallback((from) => {
+    const day = from || "1900-01-01";
+    setSince(s => (!s || day < s ? day : s));
+  }, []);
+  const older = window.useOlderRows({ from: wide ? null : since });
   const reqRef = React.useRef(0);
   const fetchAll = React.useCallback(() => {
     const n = ++reqRef.current;
     setState(s => ({ ...s, loading: true, error: "" }));
-    window.KineticData.listAllBranches(REPORT_SCOPE_TABLES).then(
+    window.KineticData.listAllBranches(REPORT_SCOPE_TABLES, { from: since }).then(
       tables => { if (n === reqRef.current) setState({ tables, loading: false, error: "" }); },
       e => { if (n === reqRef.current) setState(s => ({ ...s, loading: false, error: (e && e.message) || tt("تعذّر تحميل بيانات الفروع") })); });
-  }, []);
+  }, [since]);
   // Read again whenever the clinic's data changes (a save, a branch switch).
   React.useEffect(() => { if (wide) fetchAll(); }, [wide, version, fetchAll]);
   return {
-    scope, all: wide,
+    scope, all: wide, need,
     label: wide ? tt("كل الفروع ({n})", { n: (window.BRANCHES || []).length }) : tt("الفرع: {name}", { name: activeBranchName() }),
     rowsOf: (name) => wide ? ((state.tables && state.tables[name]) || []) : ((window.DATA && window.DATA[name]) || []),
-    loading: wide && state.loading, waiting: wide && !state.tables, error: wide ? state.error : "", retry: fetchAll,
+    loading: wide && state.loading, waiting: wide && !state.tables, loadingOlder: !wide && older.loading,
+    error: wide ? state.error : older.error, retry: wide ? fetchAll : older.retry,
   };
 }
 
@@ -3185,6 +3196,7 @@ function Reports({ go }) {
                 <span className="pill"><I.MapPin size={12}/> {view.label}</span>
                 {!canPick && <span className="muted" style={{fontSize:12,marginInlineStart:8}}>{tt("بدّل الفرع من القائمة الجانبية لعرض تقاريره.")}</span>}
               </div>
+              {view.loadingOlder && <span className="muted" role="status" data-older="loading" style={{fontSize:12}}>{tt("جارٍ تحميل الفترة الأقدم…")}</span>}
               {canPick && (
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <Segmented className="report-scope" label={tt("نطاق التقرير")} value={view.scope} onChange={setScopeChoice} options={[
@@ -3234,6 +3246,7 @@ function Reports({ go }) {
 function FinancialReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: false, doctor: false, patient: true };
 
@@ -3333,6 +3346,7 @@ function FinancialReport({ view }) {
 function MedicalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: true, doctor: true, patient: true };
 
@@ -3456,6 +3470,7 @@ function MedicalReport({ view }) {
 function OperationalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: true, doctor: true, patient: true };
 

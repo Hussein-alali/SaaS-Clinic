@@ -485,6 +485,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "جارٍ تحميل بيانات الفروع": "Loading the branches' data",
   "إعادة المحاولة": "Try again",
   "جارٍ تحميل بيانات الفروع…": "Loading the branches' data…",
+  "جارٍ تحميل الفترة الأقدم…": "Loading the earlier period…",
   "المتبقي": "Outstanding",
   "تقرير-مالي-{date}.xlsx": "financial-report-{date}.xlsx",
   "التقرير المالي": "Financial report",

@@ -846,8 +846,11 @@ function setOnboardingFlag(kind, key, on) {
     store.setItem(ONBOARDING_KEYS[kind], JSON.stringify(map));
   } catch (_) {}
 }
-function onboardingSteps(usage) {
+// extra.bookedBefore: the clinic has bookings older than the startup window
+// (window.DATA holds the last 180 days, docs/06 S9).
+function onboardingSteps(usage, extra) {
   const D = window.DATA || {};
+  const bookedBefore = !!(extra && extra.bookedBefore);
   const c = window.CLINIC || {};
   const branches = window.BRANCHES || [];
   const active = (b) => String((b && b.status) || "active") !== "inactive";
@@ -869,7 +872,7 @@ function onboardingSteps(usage) {
       action: tt("دعوة الموظفين"), route: "settings", tab: "users", needsUsage: true });
   }
   steps.push({ id: "booking", title: tt("أضف أول مريض واحجز أول موعد"), hint: tt("من صفحة المواعيد: «حجز جديد»."),
-    done: (D.patients || []).length > 0 && (D.appts || []).length > 0,
+    done: (D.patients || []).length > 0 && ((D.appts || []).length > 0 || bookedBefore),
     action: tt("فتح المواعيد"), route: "appointments" });
   return steps;
 }
@@ -896,9 +899,21 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
   }, []);
   const { usage, failed } = useOrgUsage();
   const [later, setLater] = React.useState(() => onboardingFlag("later", scopeKey));
+  // Bookings from before the startup window count too: one head-only count
+  // when the window holds none (docs/06 S9).
+  const D = window.DATA || {};
+  const askBookings = (D.patients || []).length > 0 && (D.appts || []).length === 0;
+  const [bookedBefore, setBookedBefore] = React.useState(false);
+  React.useEffect(() => {
+    if (!askBookings || !window.SB) return;
+    let live = true;
+    window.SB.from("bookings").select("booking_id", { count: "exact", head: true }).then(
+      (r) => { if (live && r && !r.error && r.count > 0) setBookedBefore(true); }, () => {});
+    return () => { live = false; };
+  }, [askBookings]);
   const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
   const waiting = staffOn && !usage && !failed; // the invitation step is still loading
-  const steps = waiting ? [] : onboardingSteps(usage).filter(st => !(st.needsUsage && !usage));
+  const steps = waiting ? [] : onboardingSteps(usage, { bookedBefore }).filter(st => !(st.needsUsage && !usage));
   const doneCount = steps.filter(st => st.done).length;
   const complete = !waiting && steps.length > 0 && doneCount === steps.length;
   // Every step done: the checklist goes away for good (docs/03).
@@ -3046,6 +3061,9 @@ function PatientPortal({ onLogout }) {
   const [route, setRoute] = React.useState("home");
   const [bookingOpen, setBookingOpen] = React.useState(false);
   const [toast, flashToast] = useToast();
+  // The patient's whole history, also from before the startup window (docs/06 S9).
+  const me = getPatientMe();
+  window.useOlderRows({ patientId: me.file && me.file !== "—" ? me.file : null });
 
   function go(r) {
     if (r === "book") { setBookingOpen(true); return; }

@@ -23,7 +23,8 @@ db/
 │   ├── 0011_rate_limits.sql   # rate-limit counters shared by every API process
 │   ├── 0012_error_log.sql     # error_groups / error_events (error tracking, S6)
 │   ├── 0013_jobs.sql          # background jobs and the e-mail log (S7)
-│   └── 0014_usage.sql         # resource snapshots and alert state (S8)
+│   ├── 0014_usage.sql         # resource snapshots and alert state (S8)
+│   └── 0015_indexes.sql       # (organization_id, branch_id, date) for the startup window (S9)
 ├── seed/
 │   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/

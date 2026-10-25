@@ -45,20 +45,30 @@ const PK_SQL = `
    where i.indisprimary and n.nspname = 'public'
    order by tc.relname, k.ord`;
 
+// Tables whose tenant_isolation policy also shows rows with organization_id
+// IS NULL (the global template library, 0003): every other clinic table holds
+// one clinic's rows only (meta.orgScoped, docs/06 S9).
+const SHARED_ROWS_SQL = `
+  select tablename as table_name
+    from pg_policies
+   where schemaname = 'public' and policyname = 'tenant_isolation'
+     and qual ilike '%organization_id is null%'`;
+
 class TableCatalog {
   constructor(db, { minRefreshMs = 5000 } = {}) {
     this.db = db;
     this.minRefreshMs = minRefreshMs;
-    this.tables = null; // Map<name, {name, columns: Map<col, info>, pk: string[]}>
+    this.tables = null; // Map<name, {name, columns: Map<col, info>, pk: string[], orgScoped}>
     this.loadedAt = 0;
     this.loading = null;
   }
 
   async load() {
-    const [tables, columns, pks] = await Promise.all([
+    const [tables, columns, pks, shared] = await Promise.all([
       this.db.query(TABLES_SQL),
       this.db.query(COLUMNS_SQL),
       this.db.query(PK_SQL),
+      this.db.query(SHARED_ROWS_SQL),
     ]);
     const map = new Map();
     for (const { table_name: name } of tables.rows) {
@@ -80,6 +90,8 @@ class TableCatalog {
       const t = map.get(p.table_name);
       if (t) t.pk.push(p.column_name);
     }
+    const sharedRows = new Set(shared.rows.map((r) => r.table_name));
+    for (const t of map.values()) t.orgScoped = t.columns.has('organization_id') && !sharedRows.has(t.name);
     this.tables = map;
     this.loadedAt = Date.now();
   }
