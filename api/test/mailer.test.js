@@ -7,7 +7,6 @@ const os = require('os');
 const net = require('net');
 const path = require('path');
 const { createMailer, isValidEmail, requestLang, bilingualMessage } = require('../src/mailer');
-const { FailureLimiter } = require('../src/auth');
 
 /** Just enough SMTP to accept one plain-text message (no TLS, no auth). */
 function fakeSmtpServer() {
@@ -100,21 +99,6 @@ test('recipients must be one plain address (no lists, quotes or comments)', asyn
     await assert.rejects(mailer.send({ to, subject: 's', text: 't' }), /Invalid recipient/);
   }
   assert.equal(isValidEmail('first.last+tag@sub.clinicsyseg.com'), true);
-});
-
-test('FailureLimiter: sliding window per key, retry-after, reset, bounded memory', () => {
-  const lim = new FailureLimiter({ max: 3, windowMs: 1000, maxKeys: 5 });
-  const t0 = 1_000_000;
-  lim.fail('k', t0);
-  lim.fail('k', t0 + 100);
-  assert.equal(lim.retryAfter('k', t0 + 200), 0);
-  lim.fail('k', t0 + 200);
-  assert.equal(lim.retryAfter('k', t0 + 300), 1, 'blocked until the oldest failure leaves the window');
-  assert.equal(lim.retryAfter('k', t0 + 1001), 0, 'one failure expired');
-  lim.reset('k');
-  assert.equal(lim.retryAfter('k', t0 + 1001), 0);
-  for (let i = 0; i < 20; i++) lim.fail(`key${i}`, t0);
-  assert.ok(lim.hits.size <= 5, 'old keys are dropped');
 });
 
 test('bilingualMessage: Arabic and English in one message, the requested language first (Arabic by default)', () => {

@@ -223,7 +223,14 @@ function newRecordId(prefix) {
  *    asUser(userId, orgId, text, params, branchId), request(method, path, opts),
  *    client(opts), login(email, opts), as(user, opts), outbox(), close()}
  */
+// The rate-limit windows are fixed (src/ratelimit.js): a test that counts
+// ten failures must not straddle a window boundary, so the limits' clock
+// (RATE_LIMIT_NOW, read by src/ratelimit.js only) stands still at 01:00:01
+// UTC today for every API test; a test may move it and put it back.
+const RATE_LIMIT_CLOCK = String(Math.floor(Date.now() / 86400e3) * 86400e3 + 3601e3);
+
 async function setup({ env = {}, dist } = {}) {
+  process.env.RATE_LIMIT_NOW = RATE_LIMIT_CLOCK;
   const lock = new Client({ connectionString: TEST_DB_URL, application_name: 'clinicsys-api-test' });
   await lock.connect();
   try {
@@ -371,4 +378,5 @@ module.exports = {
   USER,
   PASSWORD,
   TEST_SLUG_PREFIX,
+  RATE_LIMIT_CLOCK,
 };

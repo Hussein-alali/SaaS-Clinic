@@ -127,6 +127,8 @@ function loadConfig(env = process.env) {
     // turns it off explicitly), off in development (http://localhost).
     cookieSecure: bool(env.COOKIE_SECURE, production),
     trustProxy: trustProxy(env.TRUST_PROXY),
+    // Requests per session (or IP) a minute, per process; 0 = no cap (docs/06 S5).
+    apiRatePerMin: Math.max(0, Number(str(env.API_RATE_PER_MIN, '600')) || 0),
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,
     distDir: path.resolve(API_ROOT, str(env.DIST_DIR, '../dist')),

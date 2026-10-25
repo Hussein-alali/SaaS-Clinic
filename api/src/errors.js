@@ -3,11 +3,13 @@
 // (docs/02-TRD.md "API contract").
 
 class HttpError extends Error {
-  constructor(status, code, message) {
+  // extra: more fields of the error body, e.g. {retry_after} on a 429.
+  constructor(status, code, message, extra) {
     super(message || code);
     this.status = status;
     this.code = code;
     this.expose = true;
+    if (extra) this.extra = extra;
   }
 }
 
@@ -41,9 +43,9 @@ function mapPgError(err) {
   return [400, { message, code }];
 }
 
-function sendError(res, status, code, message) {
+function sendError(res, status, code, message, extra) {
   if (res.headersSent) return;
-  res.status(status).json({ error: { message, code } });
+  res.status(status).json({ error: { message, code, ...extra } });
 }
 
 module.exports = { HttpError, badRequest, unauthorized, forbidden, notFound, isPgError, mapPgError, sendError };

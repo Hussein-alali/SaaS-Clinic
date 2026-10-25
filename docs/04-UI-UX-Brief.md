@@ -143,7 +143,7 @@
 - **S03:** نسخة «حساب موجود» (كلمة المرور فقط)، وحالات `410` (الدعوة مستخدمة/منتهية/ملغاة) و `403` (العيادة غير نشطة) بنص واضح وزر «اطلب دعوة جديدة».
 - **C06:** شارة حالة لكل دعوة (معلقة/منتهية/مقبولة/ملغاة)، وحالة البريد من `email_status` (✅ 3.15: «لم يُرسل البريد» أحمر عند `failed`، «البريد قيد الإرسال» محايد عند `pending`) مع إعادة الإرسال، وعداد المقاعد.
 - **A02 و A04:** القوائم والسجل مُقسّمة إلى صفحات (`limit/offset` مع `count`).
-- **رسائل الأخطاء ✅:** نصوص عربية لكل رموز الـ API الجديدة (`invalid_credentials`، `too_many_attempts`، `not_a_member`، `org_inactive`، `account_disabled`، `email_exists` كدعوة، `shared_account`، `plan_limit_*`، `weak_password`، `session_revoked`، `file_too_large`، `invalid_path`...)، ولم تعد نصوص Supabase ظاهرة في شاشات الدخول (تبقى في شاشات الموظفين حتى المهمة 3.8).
+- **رسائل الأخطاء ✅:** نصوص عربية لكل رموز الـ API الجديدة (`invalid_credentials`، `too_many_attempts`، `rate_limited` و `slot_taken` في الحفظ (S4، S5)، `not_a_member`، `org_inactive`، `account_disabled`، `email_exists` كدعوة، `shared_account`، `plan_limit_*`، `weak_password`، `session_revoked`، `file_too_large`، `invalid_path`...)، ولم تعد نصوص Supabase ظاهرة في شاشات الدخول (تبقى في شاشات الموظفين حتى المهمة 3.8).
 
 ## قواعد منفذة في Milestone 3
 
@@ -202,3 +202,4 @@
 | 25 أكتوبر 2026 | الـ Toast يمرر النقر لما تحته في تطبيق العيادة ولوحة المنصة (3.33). (هذا الـ commit) |
 | 25 أكتوبر 2026 | Toast واحد في كل مرة بمدة كاملة (`useToast`)؛ كان مؤقت ترحيب الدخول يغلق Toast أحدث (3.34). (هذا الـ commit) |
 | 25 أكتوبر 2026 | Toast «هذا الموعد محجوز بالفعل — اختر وقتًا آخر» يحل محل Toast النجاح (S4). (هذا الـ commit) |
+| 25 أكتوبر 2026 | «طلبات كثيرة متتالية — انتظر قليلًا ثم أعد المحاولة» لأي حفظ يُرفض بـ 429 (S5). (هذا الـ commit) |

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { badRequest, unauthorized } = require('../errors');
 const auth = require('../auth');
+const ratelimit = require('../ratelimit');
 const { isValidEmail, requestLang, bilingualMessage } = require('../mailer');
 
 const router = express.Router();
@@ -15,7 +16,7 @@ const INVALID_LOGIN = 'Invalid login credentials';
 const str = (v) => (typeof v === 'string' ? v : '');
 
 router.post('/login', async (req, res) => {
-  const { config, db, loginLimiter } = req.app.locals;
+  const { config, db } = req.app.locals;
   const body = req.body || {};
   const email = str(body.email).trim();
   const password = str(body.password);
@@ -23,10 +24,9 @@ router.post('/login', async (req, res) => {
     throw badRequest('invalid_request', 'Email and password are required');
   }
   const ip = auth.clientIp(req);
-  const keys = [`email:${email.toLowerCase()}`];
-  if (ip) keys.push(`ip:${ip}`);
-  const wait = Math.max(...keys.map((k) => loginLimiter.retryAfter(k)));
-  if (wait) throw auth.tooManyAttempts(res, wait);
+  const keys = [['login_email', email.toLowerCase()]];
+  if (ip) keys.push(['login_ip', ip]);
+  await auth.refuseBlocked(db, res, keys);
 
   const { rows } = await db.query(
     `select id, email, encrypted_password, status, session_version, raw_user_meta_data
@@ -36,10 +36,10 @@ router.post('/login', async (req, res) => {
   const row = rows[0];
   const ok = await auth.verifyPassword(password, row && row.encrypted_password);
   if (!row || !ok || row.status !== 'active') {
-    keys.forEach((k) => loginLimiter.fail(k));
+    await Promise.all(keys.map(([bucket, key]) => ratelimit.hit(db, bucket, key)));
     throw unauthorized('invalid_credentials', INVALID_LOGIN); // one message for every failure
   }
-  loginLimiter.reset(keys[0]); // the e-mail counter; the IP counter keeps counting
+  await ratelimit.clear(db, ...keys[0]); // the e-mail counter; the IP counter keeps counting
   await db.query('update auth.users set last_sign_in_at = now() where id = $1', [row.id]);
   auth.issueSession(res, config, row, body.remember === true);
   res.json(await auth.sessionPayload(db, auth.publicUser(row)));
@@ -126,14 +126,12 @@ function resetMessage(link, lang) {
 
 // lang: the requester's interface language (X-Lang), first in the e-mail.
 async function sendResetEmail(app, email, lang) {
-  const { config, db, mailer, resetLimiter } = app.locals;
+  const { config, db, mailer } = app.locals;
   const { rows } = await db.query("select id, email from auth.users where lower(email) = lower($1) and status = 'active'", [email]);
   const user = rows[0];
   if (!user) return;
-  // At most 3 reset e-mails per account per 15 minutes (the rest are dropped silently).
-  const key = `reset-email:${user.id}`;
-  if (resetLimiter.email.retryAfter(key)) return;
-  resetLimiter.email.fail(key);
+  // At most 3 reset e-mails per account an hour (the rest are dropped silently).
+  if (!(await ratelimit.hit(db, 'reset_email', user.id)).allowed) return;
 
   const token = crypto.randomBytes(32).toString('base64url');
   await db.query(
@@ -145,14 +143,9 @@ async function sendResetEmail(app, email, lang) {
 }
 
 router.post('/reset/request', async (req, res) => {
-  const { resetLimiter } = req.app.locals;
   const email = str((req.body || {}).email).trim();
   const ip = auth.clientIp(req);
-  if (ip) {
-    const wait = resetLimiter.ip.retryAfter(`reset-ip:${ip}`);
-    if (wait) throw auth.tooManyAttempts(res, wait);
-    resetLimiter.ip.fail(`reset-ip:${ip}`);
-  }
+  if (ip) await ratelimit.enforce(req.app.locals.db, res, 'reset_ip', ip);
   // 204 always (contract), whether or not the address is valid or has an
   // account; the lookup and the e-mail happen after the response, so the
   // timing does not tell either.

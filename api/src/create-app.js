@@ -8,13 +8,12 @@ const cookieParser = require('cookie-parser');
 const { createDb } = require('./db');
 const { createMailer } = require('./mailer');
 const { TableCatalog, FunctionCatalog } = require('./catalog');
-const { FailureLimiter } = require('./auth');
 const { HttpError, isPgError, mapPgError, sendError } = require('./errors');
 const { staticHandlers } = require('./static');
+const { throttle } = require('./ratelimit');
 
 const CSRF_HEADER_VALUE = 'clinicsys';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
 function securityHeaders(config) {
   return (req, res, next) => {
@@ -41,7 +40,7 @@ function errorHandler(err, req, res, next) {
     if (err && err.code !== 'ECONNABORTED' && err.code !== 'ECONNRESET') console.error('[api] error after headers sent:', err.message);
     return;
   }
-  if (err instanceof HttpError) return sendError(res, err.status, err.code, err.message);
+  if (err instanceof HttpError) return sendError(res, err.status, err.code, err.message, err.extra);
   if (isPgError(err)) {
     const [status, body] = mapPgError(err);
     if (status >= 500) console.error(`[api] database error ${err.code}: ${err.message}`);
@@ -60,8 +59,8 @@ function errorHandler(err, req, res, next) {
 
 /**
  * createApp(config, {db, mailer}) → Express app.
- * app.locals: config, db, mailer, catalog, functions, loginLimiter,
- *             resetLimiter, background(fn), drain(), close().
+ * app.locals: config, db, mailer, catalog, functions, background(fn),
+ *             drain(), close(). Rate limits: src/ratelimit.js (PostgreSQL).
  */
 function createApp(config, deps = {}) {
   const app = express();
@@ -79,11 +78,6 @@ function createApp(config, deps = {}) {
     mailer,
     catalog: new TableCatalog(db),
     functions: new FunctionCatalog(db),
-    loginLimiter: new FailureLimiter({ max: 10, windowMs: FIFTEEN_MINUTES }),
-    resetLimiter: {
-      ip: new FailureLimiter({ max: 10, windowMs: FIFTEEN_MINUTES }),
-      email: new FailureLimiter({ max: 3, windowMs: FIFTEEN_MINUTES }),
-    },
     /** Runs fn after the response (e-mails); errors are logged, never thrown. */
     background(fn) {
       const p = Promise.resolve()
@@ -113,6 +107,8 @@ function createApp(config, deps = {}) {
   api.use('/health', require('./routes/health'));
   api.use(requireCsrfHeader);
   api.use(cookieParser());
+  // A runaway screen loop must not flood the database (docs/06 S5).
+  api.use(throttle(config.apiRatePerMin));
   api.use(express.json({ limit: '10mb' }));
   api.use('/auth', require('./routes/auth'));
   api.use('/orgs', require('./routes/orgs'));

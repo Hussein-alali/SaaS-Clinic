@@ -19,7 +19,8 @@ db/
 │   ├── 0007_rpc_role_guards.sql # NULL-safe RPC role guards; billing RPCs admin/receptionist
 │   ├── 0008_invitation_email_status.sql # invitations.email_status / email_status_at
 │   ├── 0009_inactive_branch_guard.sql # no new row on an inactive branch (BR409)
-│   └── 0010_concurrency.sql   # one booking per slot (BK409), receipt counters, new_record_id(), idempotency_keys
+│   ├── 0010_concurrency.sql   # one booking per slot (BK409), receipt counters, new_record_id(), idempotency_keys
+│   └── 0011_rate_limits.sql   # rate-limit counters shared by every API process
 ├── seed/
 │   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/

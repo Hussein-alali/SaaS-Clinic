@@ -319,7 +319,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 8. ✅ `0008_invitation_email_status.sql` — العمودان `invitations.email_status` (check) و `email_status_at`. لا يمس trigger حد المستخدمين.
 9. ✅ `0009_inactive_branch_guard.sql` — trigger `<table>_branch_active` (الدالة `refuse_inactive_branch(pk)`) على الجداول السبعة المرتبطة بفرع: `BEFORE INSERT` و `BEFORE UPDATE OF branch_id` يرفضان فرعًا معطّلًا بـ SQLSTATE `BR409` (`branch_inactive`). مستثنى: سياق النظام، و upsert لمفتاح أساسي موجود (الشاشات تحفظ هكذا)، وفرع لا يراه المستدعي (ترفضه القيود الأخرى). فحص ذاتي: كل جدول فيه `branch_scope` عليه الـ trigger مفعّلًا ومعامله المفتاح الأساسي.
 10. ✅ `0010_concurrency.sql` — (1) trigger `bookings_slot_guard` (`BEFORE INSERT OR UPDATE OF therapist_id, doctor_id, date, time, status`): حجز نشط واحد (الحالة ليست `ملغي`/`ملغى`/`cancelled`/`متاح`) لكل أخصائي ولكل طبيب في (التاريخ، الوقت بعد `btrim`) داخل العيادة، بقفل `pg_advisory_xact_lock` ثم `booking_slot_taken()` (security definer، يرفع `app.system` لاستعلامه فقط ليرى كل الفروع، ومقيد بعيادة المستدعي) → SQLSTATE `BK409` (`slot_taken`). مستثنى: سياق النظام، وصف عيادة أخرى (يرفضه RLS)، وحفظ حجز يملك موعده أصلًا (upsert لمفتاح موجود يُعامل كتعديل)؛ التكرارات القديمة تبقى قابلة للتعديل. (2) `org_counters(organization_id, name, value)` + `next_org_counter(org, name)`؛ عدادات اليوم تبدأ بعد آخر إيصال صادر. (3) `new_record_id(prefix)` (من `gen_random_uuid()`، مدمج في PG13). (4) `idempotency_keys(scope, key, organization_id, user_id, status, response, created_at)` بمفتاح `(scope, key)`. `record_quick_payment` أعيد إنشاؤه بالعداد و `new_record_id('PMT-')`. الجدولان الجديدان تشغيليان بلا RLS (القاعدة 4) ولا يصلهما `/api/data`.
-11. `0011_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+11. ✅ `0011_rate_limits.sql` — `rate_limits(bucket, key_hash, window_start, count)` بمفتاح `(bucket, key_hash, window_start)` وفهرس على `window_start`: عدادات حدود الطلبات المشتركة بين عمليات الـ API (`api/src/ratelimit.js`)؛ المفتاح sha256 فقط. جدول تشغيلي بلا RLS (القاعدة 4).
+12. `0012_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -348,3 +349,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 25 أكتوبر 2026 | سطر «النسخ الاحتياطي» في Retention and deletion (S1). (هذا الـ commit) |
 | 25 أكتوبر 2026 | قاعدة expand/contract للـ migrations من `0010` و `-- contract:` (S3). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0010_concurrency`: حماية الموعد (`BK409`)، `org_counters` وأرقام الإيصالات، `new_record_id()`، `idempotency_keys` (S4). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0011_rate_limits` (S5). (هذا الـ commit) |

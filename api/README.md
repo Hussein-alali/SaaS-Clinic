@@ -20,7 +20,9 @@ app.js                 entry point (cPanel startup file); exports the Express ap
 src/config.js          environment variables (below)
 src/create-app.js      middleware order, route mounting, error handler
 src/db.js              Pool (max 10) + withContext(ctx, fn)
-src/auth.js            bcrypt, JWT cookie, session loading, rate limiter
+src/auth.js            bcrypt, JWT cookie, session loading
+src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every process
+src/idempotency.js     Idempotency-Key for /api/rpc
 src/tenant.js          clinic from Host / X-Org-Slug, membership, branch
 src/catalog.js         table/column/function catalog for /api/data and /api/rpc
 src/data-query.js      SQL builder for /api/data (identifiers validated, values bound)
@@ -163,7 +165,7 @@ Error messages stay English; the frontend shows its own text per `code`.
 
 | Route | Notes |
 |---|---|
-| `POST /api/auth/login` `{email, password, remember}` | `{user, is_super_admin, memberships}` + cookie `cs_session` (JWT `{sub, sv}`, 12 h or 30 days). One message for every failure (401 `invalid_credentials`). 10 failures per e-mail and per IP in 15 min → 429 with `Retry-After` |
+| `POST /api/auth/login` `{email, password, remember}` | `{user, is_super_admin, memberships}` + cookie `cs_session` (JWT `{sub, sv}`, 12 h or 30 days). One message for every failure (401 `invalid_credentials`). 10 failures per e-mail or 50 per IP in 15 min (fixed windows, in PostgreSQL) → 429 `too_many_attempts` with `Retry-After` |
 | `POST /api/auth/logout` | 204, cookie cleared |
 | `GET /api/auth/session` | same body as login, or 401 |
 | `POST /api/auth/password` `{password}` | 204; `session_version + 1` (other sessions end) and the cookie is re-issued |
@@ -408,5 +410,11 @@ in the route. `req.app.locals.background(fn)` runs work after the response.
    server in front of Node connects over TCP from another address, set
    `TRUST_PROXY` to it (or to `1` for one proxy hop). When the client address
    cannot be determined the API applies only the per-e-mail limit.
+   Rate limits (`src/ratelimit.js`, docs/02 «حدود الطلبات»): login/accept
+   failures, reset requests (20/h per IP, 3 e-mails/h per account),
+   invitation sends (5/day per address, 200/day per clinic), unknown
+   invitation tokens (30/10 min per IP), uploads (120/h per user), and
+   `API_RATE_PER_MIN` (600) requests a minute per session in each process.
+   429 `rate_limited` + `Retry-After`.
 7. After every code or environment change: **Restart** (and **Run NPM Install**
    when `package.json` changed).

@@ -304,11 +304,13 @@ function __ensureActiveBranch(list) {
 
 const INACTIVE_BRANCH_BOOKING = tt("هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.");
 
-// The API refuses every write on an inactive branch with 409
-// {code:"branch_inactive"} (e.g. deactivated by another admin meanwhile):
-// the Arabic reason, or null for any other error.
-function __branchInactiveText(error) {
-  return error && error.code === "branch_inactive" ? __AUTH_ERRORS.branch_inactive : null;
+// Writes the API refuses for a reason the person can act on, in the page
+// language: 409 {code:"branch_inactive"} (a branch deactivated meanwhile),
+// 409 {code:"slot_taken"} (another booking took the slot first) and 429
+// {code:"rate_limited"} (docs/06 S4, S5). Null for any other error.
+const __WRITE_REFUSALS = new Set(["branch_inactive", "slot_taken", "rate_limited"]);
+function __refusalText(error) {
+  return error && __WRITE_REFUSALS.has(error.code) ? __AUTH_ERRORS[error.code] : null;
 }
 
 // The reason for a refused branch write (docs/03 «إضافة فرع»), in the page language.
@@ -1369,20 +1371,19 @@ async function upsertRow(name, row) {
         __ok = false;
         // Keep the FULL PostgreSQL error (code + message + details + hint)
         // so callers can show exactly why the write was rejected — e.g.
-        // 42501 is an RLS policy violation. An inactive branch gets its
-        // Arabic reason (and a toast, after the screen's own generic one).
-        const inactive = __branchInactiveText(error);
+        // 42501 is an RLS policy violation. A refusal the person can act on
+        // (inactive branch, taken slot, too many requests) gets its reason
+        // in the page language, and a toast after the screen's own one.
+        const reason = __refusalText(error);
         // Another receptionist took the slot first (BK409, docs/06 S4): the
         // booking does not exist, so it leaves the calendar again.
-        const taken = error.code === "slot_taken" ? __AUTH_ERRORS.slot_taken : null;
-        if (taken) {
+        if (error.code === "slot_taken") {
           if (window.DATA) window.DATA[name] = list;
           writeLS(cfg.ls, list);
           // ...and the calendar catches up with the booking that took it
           // (and its patient, who may be new to this screen).
           hydrateDomainTables().catch(() => {});
         }
-        const reason = inactive || taken;
         if (reason) setTimeout(() => { if (window.showToast) window.showToast(reason, "error"); }, 0);
         __error = reason || [error.code, error.message, error.details, error.hint]
           .filter(Boolean).join(" · ") || String(error);
@@ -1417,7 +1418,7 @@ async function removeRow(name, id) {
     if (error) {
       console.warn(`removeRow ${name} failed`, { table: cfg.key, error });
       throw new Error(
-        __branchInactiveText(error)
+        __refusalText(error)
         || [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ")
         || tt("تعذّر الحذف")
       );
@@ -1809,7 +1810,7 @@ async function recordQuickPayment(input) {
     }, { idempotencyKey });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
-      return { ok: false, error: __branchInactiveText(error) || error.message || tt("تعذّر تسجيل الدفع") };
+      return { ok: false, error: __refusalText(error) || error.message || tt("تعذّر تسجيل الدفع") };
     }
     // Refresh mirrors so tiles/tables update without a page reload.
     await hydrateDomainTables().catch(()=>{});

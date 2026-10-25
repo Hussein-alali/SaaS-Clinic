@@ -399,6 +399,7 @@ router.post('/organizations/:id/invitations', async (req, res) => {
     const r = await invites.createInvitation(client, {
       orgId: org.id, email: input.email, role: input.role, branchIds: input.branchIds, invitedBy: req.user.id,
     });
+    await invites.limitSends(db, res, { orgId: org.id, email: r.invitation.email });
     await audit(client, req, {
       orgId: org.id, action: 'invitation.create', tableName: 'invitations', rowPk: r.invitation.id,
       targetType: 'invitation', targetId: r.invitation.id,
@@ -422,6 +423,7 @@ router.post('/organizations/:id/invitations/:invitationId/resend', async (req, r
   if (!INVITABLE_ORG_STATUSES.includes(org.status)) throw new HttpError(409, 'org_inactive', `This clinic is ${org.status}`);
   const { invitation, token } = await db.withContext({ userId: req.user.id, system: true }, async (client) => {
     const r = await invites.resendInvitation(client, { orgId: org.id, id });
+    await invites.limitSends(db, res, { orgId: org.id, email: r.invitation.email });
     await audit(client, req, {
       orgId: org.id, action: 'invitation.resend', tableName: 'invitations', rowPk: id,
       targetType: 'invitation', targetId: id, payload: { email: r.invitation.email, previous_status: r.previousStatus },

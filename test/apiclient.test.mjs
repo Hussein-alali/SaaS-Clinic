@@ -1442,6 +1442,21 @@ describe("src/supabase.jsx on top of the client", () => {
     await assert.rejects(env.win.KineticData.remove("patients", "P-1"), /42501 · permission denied/);
   });
 
+  test("write refusals get their Arabic reason: slot_taken (the booking leaves DATA again) and rate_limited (docs/06 S4, S5)", async () => {
+    const env = await bootApp({
+      "bookings:upsert": () => json(409, { error: { message: "This time slot is already booked", code: "slot_taken" } }),
+      "patients:upsert": () => json(429, { error: { message: "Too many requests, try again in 1 minute", code: "rate_limited", retry_after: 42 } }),
+    });
+    const texts = vm.runInContext("__AUTH_ERRORS", env.win);
+    const booked = await env.win.KineticData.upsert("appts", { booking_id: "A-race", patient_id: "P-1", therapist_id: "T-1", date: "2099-01-01", time: "10:00" });
+    assert.equal(booked._ok, false);
+    assert.equal(booked._error, texts.slot_taken);
+    const cached = JSON.parse(env.win.localStorage.getItem("kinetic.bookings") || "[]");
+    assert.equal(cached.some((a) => a.booking_id === "A-race"), false, "not left in the calendar's copy");
+    const busy = await env.win.KineticData.upsert("patients", { patient_id: "P-9", name: "Ali" });
+    assert.equal(busy._error, texts.rate_limited);
+  });
+
   test("uploadPatientFile: upload → insert().select().single(); a failed insert removes the file", async () => {
     let insert = (req) => json(200, { data: { ...req.body.values, organization_id: "o1" } });
     const env = await bootApp({

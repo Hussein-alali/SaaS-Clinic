@@ -20,6 +20,7 @@ const { HttpError, badRequest, notFound } = require('./errors');
 const { sha256 } = require('./auth');
 const { isValidEmail, bilingualMessage } = require('./mailer');
 const { MEMBER_ROLES, validateBranchIds, assertUserSeat } = require('./members');
+const ratelimit = require('./ratelimit');
 
 const INVITE_TTL_SQL = "interval '7 days'";
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,200}$/;
@@ -146,6 +147,15 @@ async function lockInvitation(client, orgId, id) {
  * expired one takes a seat again, so the plan limit is checked.
  * Returns {invitation, token}.
  */
+// At most 5 sends (create + resend) to one address a day, and 200 a day
+// per clinic (docs/06 S5, task 2.19). Called inside the invitation's
+// transaction with the pool (db), so a refused send leaves the invitation
+// as it was while the attempt still counts.
+async function limitSends(db, res, { orgId, email }) {
+  await ratelimit.enforce(db, res, 'invite_org', orgId);
+  await ratelimit.enforce(db, res, 'invite_email', String(email).toLowerCase());
+}
+
 async function resendInvitation(client, { orgId, id }) {
   const row = await lockInvitation(client, orgId, id);
   const status = effectiveStatus(row);
@@ -293,6 +303,7 @@ async function deliverInvitation({ mailer, config }, { org, invitation, token, l
 }
 
 module.exports = {
+  limitSends,
   INVITE_TTL_SQL,
   ROLE_LABELS_AR,
   ROLE_LABELS_EN,

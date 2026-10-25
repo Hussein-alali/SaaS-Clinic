@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { HttpError, badRequest, unauthorized, forbidden } = require('./errors');
+const { peek } = require('./ratelimit');
 
 const SESSION_COOKIE = 'cs_session';
 const SHORT_TTL_S = 12 * 60 * 60;
@@ -50,57 +51,6 @@ async function verifyPassword(password, hash) {
 }
 
 const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
-
-// ── Failure rate limiting (in memory, per process) ─────────────────────────
-
-/** Sliding window: `max` failures per key within `windowMs` block the key. */
-class FailureLimiter {
-  constructor({ max = 10, windowMs = 15 * 60 * 1000, maxKeys = 50000 } = {}) {
-    this.max = max;
-    this.windowMs = windowMs;
-    this.maxKeys = maxKeys;
-    this.hits = new Map();
-  }
-
-  recent(key, now) {
-    const list = this.hits.get(key);
-    if (!list) return [];
-    const fresh = list.filter((t) => now - t < this.windowMs);
-    if (fresh.length) this.hits.set(key, fresh);
-    else this.hits.delete(key);
-    return fresh;
-  }
-
-  /** Seconds until the key is allowed again, or 0 when it is not blocked. */
-  retryAfter(key, now = Date.now()) {
-    const list = this.recent(key, now);
-    if (list.length < this.max) return 0;
-    return Math.max(1, Math.ceil((list[list.length - this.max] + this.windowMs - now) / 1000));
-  }
-
-  fail(key, now = Date.now()) {
-    const list = this.recent(key, now);
-    list.push(now);
-    if (list.length > this.max) list.splice(0, list.length - this.max);
-    this.hits.set(key, list);
-    if (this.hits.size > this.maxKeys) this.prune(now);
-  }
-
-  reset(key) {
-    this.hits.delete(key);
-  }
-
-  prune(now = Date.now()) {
-    for (const [key, list] of this.hits) {
-      if (now - list[list.length - 1] >= this.windowMs) this.hits.delete(key);
-    }
-    // Still too many keys: drop the oldest entries (Map keeps insertion order).
-    for (const key of this.hits.keys()) {
-      if (this.hits.size <= this.maxKeys) break;
-      this.hits.delete(key);
-    }
-  }
-}
 
 /** Client address (Express "trust proxy" applied), or null when unknown
  *  (e.g. a proxy talking over a Unix socket): callers then skip per-IP
@@ -231,9 +181,16 @@ async function sessionPayload(db, user) {
   };
 }
 
+/** 429 too_many_attempts when any [bucket, key] failure counter is full (login, accept). */
+async function refuseBlocked(db, res, keys) {
+  const states = await Promise.all(keys.map(([bucket, key]) => peek(db, bucket, key)));
+  const blocked = states.filter((s) => s.blocked);
+  if (blocked.length) throw tooManyAttempts(res, Math.max(...blocked.map((s) => s.retryAfterSec)));
+}
+
 function tooManyAttempts(res, seconds) {
   res.set('Retry-After', String(seconds));
-  return new HttpError(429, 'too_many_attempts', 'Too many attempts, try again later');
+  return new HttpError(429, 'too_many_attempts', 'Too many attempts, try again later', { retry_after: seconds });
 }
 
 module.exports = {
@@ -241,8 +198,8 @@ module.exports = {
   SHORT_TTL_S,
   LONG_TTL_S,
   UUID_RE,
-  FailureLimiter,
   clientIp,
+  refuseBlocked,
   validatePassword,
   hashPassword,
   verifyPassword,
