@@ -161,6 +161,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "تجاوزت مساحة التخزين المسموحة في خطتك": "You've used all the storage your plan allows",
   "هذه الميزة غير متاحة في خطتك": "This feature isn't included in your plan",
   "هذا الفرع معطّل — اختر فرعًا نشطًا لإضافة حجوزات أو مدفوعات جديدة": "This branch is deactivated. Choose an active branch to add new bookings or payments",
+  "هذا الموعد محجوز بالفعل — اختر وقتًا آخر": "This time slot is already booked. Choose another time",
   "كلمة المرور يجب أن تكون من 6 إلى 72 حرفًا": "Password must be 6 to 72 characters",
   "بريد إلكتروني غير صحيح": "Invalid email address",
   "الدور المحدد غير صالح": "The selected role isn't valid",

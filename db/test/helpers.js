@@ -29,6 +29,8 @@ const PLATFORM_TABLES = [
   'organizations', 'platform_admins', 'organization_members', 'member_branches',
   'invitations', 'specialties', 'modules', 'specialty_modules',
   'organization_modules', 'subscription_plans', 'subscriptions', 'reserved_slugs',
+  // ops tables (0010): written by functions and the API only
+  'org_counters', 'idempotency_keys',
 ];
 const BRANCH_TABLES = ['bookings', 'sessions', 'invoices', 'payments', 'payment_receipts',
   'patient_schedules', 'treatments'];

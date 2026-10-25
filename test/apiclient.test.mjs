@@ -424,6 +424,16 @@ describe("rpc(): POST /api/rpc/:fn", () => {
     await client().rpc("weird/name", {});
     assert.equal(requests[0].path, "/api/rpc/weird%2Fname");
   });
+
+  test("{ idempotencyKey } sends Idempotency-Key (docs/06 S4); without it there is none", async () => {
+    const { requests, client } = boot({ handler: () => json(200, { payment_id: "PMT-1" }) });
+    const sb = client();
+    await sb.rpc("record_quick_payment", { p_patient_id: "P-1" }, { idempotencyKey: "qp-abc12345" });
+    await sb.rpc("record_quick_payment", { p_patient_id: "P-1" });
+    assert.equal(requests[0].headers["Idempotency-Key"], "qp-abc12345");
+    assert.deepEqual(requests[0].body, { args: { p_patient_id: "P-1" } });
+    assert.equal(requests[1].headers["Idempotency-Key"], undefined);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════

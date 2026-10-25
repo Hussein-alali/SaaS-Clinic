@@ -154,6 +154,7 @@ window.newRecordId = newRecordId;
     opts = opts || {};
     var hasJson = Object.prototype.hasOwnProperty.call(opts, "json");
     var init = { method: method, credentials: "include", headers: requestHeaders(hasJson) };
+    if (opts.headers) for (var name in opts.headers) init.headers[name] = opts.headers[name];
     if (hasJson) init.body = JSON.stringify(opts.json);
     else if (opts.form) init.body = opts.form;
     var started;
@@ -368,10 +369,15 @@ window.newRecordId = newRecordId;
 
   // ── RPC → POST /api/rpc/:fn ─────────────────────────────────
   // The API returns the function result itself (PostgREST shape): a value,
-  // an object, or an array for set-returning functions.
-  function rpc(fn, args) {
+  // an object, or an array for set-returning functions. options.idempotencyKey
+  // (one per attempt, kept across its retries) makes a repeat return the
+  // first answer instead of running again (docs/06 S4).
+  function rpc(fn, args, options) {
+    var key = options && options.idempotencyKey;
     return thenable(function () {
-      return send("POST", "/rpc/" + encodeURIComponent(fn), { json: { args: args || {} } }).then(function (r) {
+      var opts = { json: { args: args || {} } };
+      if (key) opts.headers = { "Idempotency-Key": String(key) };
+      return send("POST", "/rpc/" + encodeURIComponent(fn), opts).then(function (r) {
         if (!r.ok) return { data: null, error: dataError(r), count: null, status: r.status, statusText: r.statusText };
         return { data: r.body === undefined ? null : r.body, error: null, count: null, status: r.status, statusText: r.statusText };
       });

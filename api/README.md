@@ -173,7 +173,7 @@ Error messages stay English; the frontend shows its own text per `code`.
 | `GET /api/orgs/resolve?slug=` | public. Active or `pending_activation`: `{id, slug, name, status, specialty_code, modules, settings:{display_name, subtitle, logo, primary_color}}`; suspended: `{slug, status}`; closed/draft/unknown: 404 |
 | `GET /api/orgs/current` | `{organization:{…as resolve}, role, branches:[branch rows], current_branch_id}` |
 | `POST /api/data` | PostgREST replacement, `{data, count}`, ≤ 1000 rows per response |
-| `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments |
+| `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments. Optional `Idempotency-Key` (8–100 of `[A-Za-z0-9_-]`, `src/idempotency.js`): claimed in the call's transaction, so a repeat answers the stored result with `Idempotency-Replayed: true`; another user's key → 409 `idempotency_conflict`; malformed → 400 `invalid_idempotency_key`; a failed call stores nothing |
 | `POST /api/files/upload` (multipart `bucket`, `path`, `file`, `upsert`) | `{path, fullPath}`; 409 exists, 413 > 20 MB, 422 plan storage limit |
 | `POST /api/files/sign` `{bucket, path, expiresIn}` | `{signedUrl: "/api/files/signed?token=…"}`; `expiresIn` is capped at 600 s |
 | `GET /api/files/object/:bucket/*path` | session + clinic; `?org=<slug>` may name the clinic for `<img src>` in development |
@@ -230,8 +230,10 @@ by the database with 409 `{code:'branch_inactive', message:'Branch is inactive'}
   `date` as `YYYY-MM-DD`, timestamps as ISO-8601 (`…T…+00:00`, session time zone UTC).
 - PostgreSQL errors: `23505` → 409, `42501`/row-level security → 403,
   `PL422` → 422, `BR409` (new row on an inactive branch) → 409
-  `branch_inactive`, statement timeout → 503, connection/internal classes →
-  500, anything else → 400. `code` is the SQLSTATE (`branch_inactive` for BR409).
+  `branch_inactive`, `BK409` (another active booking holds the therapist's or
+  doctor's slot, 0010) → 409 `slot_taken`, statement timeout → 503,
+  connection/internal classes → 500, anything else → 400. `code` is the
+  SQLSTATE (`branch_inactive` for BR409, `slot_taken` for BK409).
 
 ### Files
 

@@ -44,7 +44,7 @@
 | 2.8 عميل الواجهة ✅ (89 اختبارًا) | AI agent | TRD | `src/apiclient.jsx` (متوافق مع `supabase-js` المستخدم) + حذف CDN supabase-js + `newRecordId()` بدل مولدات المعرّفات | اختبارات وحدة بـ fetch وهمي لكل شكل استدعاء مستخدم في `src/` | — |
 
 | 2.9 إصلاح فحوص الأدوار في دوال RPC (أمان) ✅ | AI agent | `0001` | `0007_rpc_role_guards.sql`: فحص آمن من `NULL` في 21 دالة، و admin/receptionist فقط لـ `record_quick_payment` و `list_invoices_filtered`، وحذف `create_treatment_method` و `update_treatment_method` (غير مستخدمتين)؛ فحص ذاتي في الـ migration | اختبار `todo` صار ناجحًا (الدوال الـ 23 ترفض مستدعيًا بلا دور) + `db/test/role_guards.test.js` | 2.4 |
-| 2.10 مولدات المعرّفات داخل SQL | AI agent | دوال `0001` | `PMT-` و `TPL-` و `TM-` و `TU-` و `TPC-` بنفس صيغة `newRecordId`، و `receipt_no` (`RCT-YYYYMMDD-` + 5 أرقام يتصادم في العيادات المزدحمة) | لا تصادم بين عيادتين في اختبار ضغط | 2.4 |
+| 2.10 مولدات المعرّفات داخل SQL (✅ `PMT-` و `receipt_no` في S4؛ المتبقي القوالب) | AI agent | دوال `0001` | `PMT-` و `TPL-` و `TM-` و `TU-` و `TPC-` بنفس صيغة `newRecordId`، و `receipt_no` (`RCT-YYYYMMDD-` + 5 أرقام يتصادم في العيادات المزدحمة) | لا تصادم بين عيادتين في اختبار ضغط | 2.4 |
 | 2.11 أسماء الملفات ✅ | AI agent | `sanitizeFileName` في `src/supabase.jsx` | دمج النقاط المتكررة (`..`) | رفع `a..b.pdf` ينجح | 2.8 |
 
 | 2.12 مراجعة أمنية هجومية ✅ | AI agent | كل الـ API والقاعدة | `0004_audit_integrity`، وإصلاح الاستيلاء عبر `create-user`، و ReDoS، و `COOKIE_SECURE` افتراضيًا، وحارس أسرار التطوير؛ `api/test/security.test.js` و `db/test/audit.test.js` | 5 ثغرات مؤكدة أُصلحت، لكل منها اختبار يفشل على الكود القديم | 2.7 |
@@ -106,7 +106,7 @@
 | S1 ✅ | النسخ الاحتياطي (10) | `scripts/backup.sh` و `scripts/restore-check.sh` | نسخة يومية بتدوير 7 يومية + 4 أسبوعية، واستعادة تجريبية تطابق الأعداد |
 | S2 ✅ | التراجع (7) | `/api/health`، `scripts/deploy.sh`، `scripts/rollback.sh` | إصدار لا يعمل يُرجع للسابق تلقائيًا |
 | S3 ✅ | القاعدة الحية (8) | `lock_timeout` في `migrate.js`، شرط نسخة حديثة في الإنتاج، فحص expand/contract | migration لا يعلق، ولا يُطبق على الإنتاج بلا نسخة |
-| S4 | التعارض (1) | `0010_concurrency`: حماية الموعد، عدّاد إيصالات لكل عيادة، معرّفات SQL (2.10)، مفاتيح idempotency للدفع | موعد واحد ودفعة واحدة عند النقر المتزامن |
+| S4 ✅ | التعارض (1) | `0010_concurrency`: حماية الموعد، عدّاد إيصالات لكل عيادة، معرّفات SQL (2.10)، مفاتيح idempotency للدفع | موعد واحد ودفعة واحدة عند النقر المتزامن |
 | S5 | حدود الطلبات (4) | `rate_limits` في PostgreSQL مشتركة بين العمليات (2.19 ضمنها) | 429 بنص عربي/إنجليزي |
 | S6 | تتبّع الأخطاء (3) | `error_groups`/`error_events`، تقارير المتصفح، `ErrorBoundary`، صفحة A08 | الأخطاء مجمّعة ومنقّاة من البيانات الشخصية |
 | S7 | المهام الخلفية (5) | جدول `jobs` + cron + إعادة محاولة البريد | لا ضياع لبريد فشل إرساله |
@@ -193,3 +193,4 @@
 | 25 أكتوبر 2026 | S2 ✅: نشر وتراجع مع فحص صحة (`test/deploy.test.mjs` 6 اختبارات، `api/test/health.test.js` اختباران). (هذا الـ commit) |
 | 25 أكتوبر 2026 | S3 ✅: `db/test/migrate-safety.test.js` (6 اختبارات)، واختبار أول نشر في `test/deploy.test.mjs`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | 3.34 ✅ مؤقتات الـ Toast. القاعدة والـ API: 233 نجاحًا و 2 متخطّيان؛ العميل 120/120؛ المتصفح 129 نجاحًا و 2 متخطّيان. (هذا الـ commit) |
+| 25 أكتوبر 2026 | S4 ✅: `0010_concurrency`، `api/src/idempotency.js`؛ `db/test/concurrency.test.js` (7)، `api/test/concurrency.test.js` (3)، اختبار عميل، واختبار e2e بمتصفحين؛ 2.10 جزئيًا. (هذا الـ commit) |

@@ -19,10 +19,10 @@
 | اللغتان | `src/i18n.jsx` + `src/lang/en-*.jsx` | `tt("نص عربي")` (المفتاح هو النص العربي حرفيًا)، `ttx` لجمل فيها عناصر، `ttc("context", ...)` لكلمة بترجمتين؛ `fmtMoney`/`fmtDate`/`fmtNumber`؛ اللغة من `?lang=` ← cookie `clinicsys_lang` ← `localStorage` ← العربية، والتغيير يعيد التحميل؛ `X-Lang` للـ API؛ البريد بلغتين |
 | العميل | `src/apiclient.jsx` | بديل متوافق مع `supabase-js` (`window.supabase.createClient`) يكلّم `/api`؛ ترويسات `X-Requested-With: clinicsys` و `X-Org-Slug` و `X-Branch-Id` و `X-Platform: 1`؛ `newRecordId(prefix)` |
 | شاشات SaaS | `src/tenant.jsx` (حل العيادة، الدخول، الدعوة، الاستعادة)، `src/screens3.jsx` (الإعدادات، الموظفون C06، الفروع C07، واجهة العيادة `ClinicApp`، صفحة «ليست لديك صلاحية»، بوابة المريض)، `src/platform.jsx` (A01–A04)، `src/roles.jsx` (`ROUTE_MODULES`) | `screens2.jsx` قُسّم إلى `screens2.jsx` + `screens3.jsx` |
-| الـ API | `api/` (Express 5، `app.js`) | `/api/auth/*`، `/api/orgs/*`، `/api/data` (قائمة سماح بدل PostgREST، حد 1000 صف)، `/api/rpc` (23 دالة)، `/api/files` (روابط HMAC ≤ 600 ث)، `/api/admin/*`، `/api/org/*` (الدعوات، الأعضاء، الاستخدام)، `/api/invitations/:token`، `/api/platform/*`؛ `403 module_disabled` من `api/src/modules.js` |
+| الـ API | `api/` (Express 5، `app.js`) | `/api/auth/*`، `/api/orgs/*`، `/api/data` (قائمة سماح بدل PostgREST، حد 1000 صف)، `/api/rpc` (23 دالة، `Idempotency-Key` اختياري)، `/api/files` (روابط HMAC ≤ 600 ث)، `/api/admin/*`، `/api/org/*` (الدعوات، الأعضاء، الاستخدام)، `/api/invitations/:token`، `/api/platform/*`؛ `403 module_disabled` من `api/src/modules.js` |
 | الجلسة | cookie `cs_session` | JWT `{sub, sv}` مع `session_version`؛ العيادة من `Host` أو `X-Org-Slug`؛ المنصة من `admin.<base>` أو `X-Platform: 1` (غير الإنتاج) |
-| القاعدة | `db/migrations/0001`–`0009` | `0001_baseline`، `0002_platform`، `0003_tenancy`، `0004_audit_integrity`، `0005_branches_no_delete`، `0006_staff_role`، `0007_rpc_role_guards`، `0008_invitation_email_status`، `0009_inactive_branch_guard`. **التالي `0010`. لا تعدّل migration مطبّقًا.** من `0010`: expand/contract (الحذف/إعادة التسمية/تغيير النوع/`set not null` بسطر `-- contract: <السبب>` قبلها). |
-| العزل | PostgreSQL RLS | `set_config` لـ `app.user_id/org_id/branch_id/system` لكل معاملة؛ FORCE RLS + `tenant_isolation` (RESTRICTIVE) + `branch_scope`؛ `organization_id DEFAULT app_org_id()`؛ triggers حدود الخطة بـ SQLSTATE `PL422` (→ 422)، والفرع المعطّل بـ `BR409` (→ `409 branch_inactive`)؛ الأدوار admin/receptionist/doctor/therapist/staff |
+| القاعدة | `db/migrations/0001`–`0010` | `0001_baseline`، `0002_platform`، `0003_tenancy`، `0004_audit_integrity`، `0005_branches_no_delete`، `0006_staff_role`، `0007_rpc_role_guards`، `0008_invitation_email_status`، `0009_inactive_branch_guard`، `0010_concurrency`. **التالي `0011`. لا تعدّل migration مطبّقًا.** من `0010`: expand/contract (الحذف/إعادة التسمية/تغيير النوع/`set not null` بسطر `-- contract: <السبب>` قبلها). |
+| العزل | PostgreSQL RLS | `set_config` لـ `app.user_id/org_id/branch_id/system` لكل معاملة؛ FORCE RLS + `tenant_isolation` (RESTRICTIVE) + `branch_scope`؛ `organization_id DEFAULT app_org_id()`؛ triggers حدود الخطة بـ SQLSTATE `PL422` (→ 422)، والفرع المعطّل بـ `BR409` (→ `409 branch_inactive`)، والموعد المحجوز بـ `BK409` (→ `409 slot_taken`)؛ الأدوار admin/receptionist/doctor/therapist/staff |
 
 ربط الوحدات (API + واجهة): `core.patients`→patients؛ `core.appointments`→bookings، patient_schedules؛ `core.files`→patient_files وكل `/api/files` (bucket `patient-files`)؛ `core.billing`→invoices، payments، payment_receipts، packages، patient_subscriptions + 3 RPC؛ `physio.sessions`→sessions؛ `physio.treatment_plans`→treatments؛ `physio.templates`→جداول القوالب.
 
@@ -55,20 +55,21 @@ E2E_DB_PORT=56100 E2E_API_PORT=3200 npx playwright test -c e2e/playwright.config
 | 3.10 UX وإمكانية الوصول | لقطات كل الشاشات (1280×800 و 390×844) + axe-core على 77 عرضًا؛ 49 إصلاحًا: `useDialogFocus` لكل النوافذ، لوحة الأوامر combobox، لوحة المفاتيح في التقويم وقائمة «⋯»، رابط التخطي، حلقة تركيز موحدة، التباين (`--blue-700` = `#33709E`، `--ink-500` = `#5B6C7C`)، التسميات و `<h1>`، أهداف لمس ≥ 40px، نماذج الدخول على الجوال، أرقام لاتينية، إزالة الإنجليزية، الجنس `F`/`M` | `ca05334` |
 | S2 النشر والتراجع | `GET /api/health`؛ `scripts/package-release.sh` ← `scripts/deploy.sh` (نسخة، migrations، تبديل `current` ذري، فحص صحة، عودة تلقائية، آخر 5 إصدارات) و `scripts/rollback.sh`؛ في cPanel: Application root = `clinicsys/current/api` | `896198c` |
 | 3.34 | مؤقت Toast قديم كان يغلق Toast أحدث (ترحيب الدخول أغلق «تمت إضافة القسم»): `useToast()` في `src/ui.jsx` | `8ce9a38` |
-| S3 القاعدة الحية | `migrate.js`: `lock_timeout` 5 ث و `statement_timeout` 15 د لكل ملف، رفض الإنتاج بلا نسخة أحدث من ساعتين (خروج 5، `--no-backup-check`)، فحص expand/contract من `0010` (`-- contract:`)؛ `deploy.sh` يأخذ نسخة أول نشر من الإصدار الجديد ويشغّل الـ migrations بـ `NODE_ENV=production`؛ `shared/env` في الـ Runbook | (هذا الـ commit) |
+| S4 التعارض | `0010_concurrency`: حجز نشط واحد لكل أخصائي/طبيب وموعد (trigger + قفل advisory، يرى كل الفروع؛ `BK409` → `409 slot_taken` ورسالة «هذا الموعد محجوز بالفعل» وتحديث التقويم)؛ إيصالات `RCT-<يوم>-00001…` من عدّاد لكل عيادة ويوم (كانت عشوائية وتتصادم)؛ `new_record_id()` لـ `PMT-`؛ `Idempotency-Key` على `/api/rpc` (`api/src/idempotency.js`) ومفتاح لكل محاولة دفع سريعة | (هذا الـ commit) |
+| S3 القاعدة الحية | `migrate.js`: `lock_timeout` 5 ث و `statement_timeout` 15 د لكل ملف، رفض الإنتاج بلا نسخة أحدث من ساعتين (خروج 5، `--no-backup-check`)، فحص expand/contract من `0010` (`-- contract:`)؛ `deploy.sh` يأخذ نسخة أول نشر من الإصدار الجديد ويشغّل الـ migrations بـ `NODE_ENV=production`؛ `shared/env` في الـ Runbook | `9f7a6b0` |
 | S1 النسخ الاحتياطي | `scripts/backup.sh` (dump + ملفات + manifest من لقطة واحدة، تدوير 7+4، رفض المكان غير الآمن والقرص الممتلئ) و `scripts/restore-check.sh` (استرجاع في `<db>_restore` ومطابقة كل جدول)؛ الأوامر في `docs/08` «Runbook» | `0203d80` |
 | 3.33 | الـ Toast في لوحة المنصة يمرر النقر (كان يبتلع النقر على الجزء المغطى من «إنشاء عيادة») | `ad02e1b` |
 | اللغتان + القرارات | واجهة عربي/English كاملة (3.29، 6 وكلاء، 2,314 نصًا)، البريد بلغتين، cookie اللغة بين النطاقات؛ قرارات بتفويض المالك: «ج.م»/«EGP»، 44px، منتقي المتصفح، ترجمة بوابة المريض؛ 3.11 صفحة «ليست لديك صلاحية»، 3.12 لوحة المنصة ملف منفصل، 3.20 `CardTable`، 3.22 ترتيب Tab، 3.23 درج الجوال نافذة، 3.24 `Segmented`؛ إصلاح `SessionTimeline: null` (كان يكسر سجل الجلسات في الإنتاج) | `df01254`…`096ea3f` |
 
-**آخر نتائج تحقق (S3، قواعد جديدة):** القاعدة + الـ API: 239 نجاحًا، 0 فشل، 2 متخطّيان؛ العميل 121/121؛ e2e: 129 نجاحًا و 2 متخطّيان (منها 53 بالإنجليزية في `e2e/i18n-*.spec.cjs`)؛ الحجم gzip مع React: ≈ 247 KB بالعربية و ≈ 282 KB بالإنجليزية لمستخدمي العيادات (الميزانية 300).
+**آخر نتائج تحقق (S4، قواعد جديدة):** القاعدة + الـ API: 249 نجاحًا، 0 فشل، 2 متخطّيان؛ العميل 122/122؛ e2e: 130 نجاحًا و 2 متخطّيان (منها 53 بالإنجليزية في `e2e/i18n-*.spec.cjs`)؛ الحجم gzip مع React: ≈ 247 KB بالعربية و ≈ 282 KB بالإنجليزية لمستخدمي العيادات (الميزانية 300).
 
 ## 5. المفتوح الآن
 
-**قيد التنفيذ:** الجاهزية لنحو 1,000 مستخدم (S1–S10 في `docs/06`، الخطة `docs/superpowers/plans/2026-10-25-scale-readiness.md`)، كلها داخل hosting.com، بالترتيب: ~~S1 النسخ~~ ✅، ~~S2 التراجع~~ ✅، ~~S3 القاعدة الحية~~ ✅، S4 التعارض، S5 حدود الطلبات، S6 الأخطاء، S7 المهام الخلفية، S8 تنبيهات الموارد، S9 N+1 والتحميل، S10 Webhooks.
+**قيد التنفيذ:** الجاهزية لنحو 1,000 مستخدم (S1–S10 في `docs/06`، الخطة `docs/superpowers/plans/2026-10-25-scale-readiness.md`)، كلها داخل hosting.com، بالترتيب: ~~S1 النسخ~~ ✅، ~~S2 التراجع~~ ✅، ~~S3 القاعدة الحية~~ ✅، ~~S4 التعارض~~ ✅، S5 حدود الطلبات، S6 الأخطاء، S7 المهام الخلفية، S8 تنبيهات الموارد، S9 N+1 والتحميل، S10 Webhooks.
 
 **مفتوح من العمل الأخير:** 3.31 مراجعة النص الإنجليزي (المالك)؛ 3.32 ترجمة مكتبة القوالب العامة أم لا (المالك).
 
-**لاحقًا:** 1.2 تنظيف الأسرار (`DEPLOY.md`، `seed-admin.sql` فيهما كلمة مرور المدير)؛ 1.5 Vite؛ 1.14 تحميل البيانات حسب الشاشة؛ 2.1 نسخة Supabase؛ 2.10 مولدات المعرّفات في SQL و `receipt_no`؛ 2.16–2.19؛ 3.13 proxy لـ `npm run dev`؛ 3.14 بحث العيادات في A07؛ Milestones 4–6 (ترحيل بيانات Supabase في 4.7).
+**لاحقًا:** 1.2 تنظيف الأسرار (`DEPLOY.md`، `seed-admin.sql` فيهما كلمة مرور المدير)؛ 1.5 Vite؛ 1.14 تحميل البيانات حسب الشاشة؛ 2.1 نسخة Supabase؛ 2.10 المتبقي: مولدات القوالب في SQL (`TPL-`، `TM-`، `TU-`، `TPC-`)؛ 2.16–2.19؛ 3.13 proxy لـ `npm run dev`؛ 3.14 بحث العيادات في A07؛ Milestones 4–6 (ترحيل بيانات Supabase في 4.7).
 
 **ينتظر المالك:** 1.15 أسئلة hosting.com (إصدار PostgreSQL و Node، صلاحية `CREATE` على `public`، Passenger و `TRUST_PROXY`، عدد العمليات، حدود LVE، wildcard + SSL، حد SMTP)؛ أسئلة PRD 1–5 و 8–14 (الشعار/الألوان، ما بعد 6 أشهر، وحدات الأسنان/الطب العام، أرقام الخطط، تغيير الـ slug، إبطال الجلسة عند الخروج، كلمة المرور الحالية، إغلاق عيادة غير مفعّلة، الحد الأدنى لكلمة المرور 6 أم 8، فرض الوحدات في القاعدة، «اطلب دعوة جديدة»، شاشات `staff`).
 
@@ -87,6 +88,8 @@ E2E_DB_PORT=56100 E2E_API_PORT=3200 npx playwright test -c e2e/playwright.config
 - لا `git stash` أثناء عمل وكيل آخر في نفس الشجرة: يرجّع ملفاته مؤقتًا.
 - فحص الوصول: `npm install --no-save --no-audit --no-fund axe-core` ثم حقن `node_modules/axe-core/axe.min.js` بـ `page.addScriptTag` (ليس في `package.json`).
 - أي نافذة جديدة تستخدم `Modal` أو `useDialogFocus` من `src/ui.jsx`، والأرقام لاتينية دائمًا. الـ Toast عبر `window.showToast` أو `useToast()`، لا `setToast` + `setTimeout`.
+- حجز نشط واحد لكل أخصائي/طبيب وموعد (`0010`): أي اختبار ينسخ حجزًا أو يحجز موعدًا مأخوذًا يأخذ `BK409`؛ استخدم وقتًا أو تاريخًا خاصًا بالاختبار. والمعرّفات `therapist_id`/`doctor_id` مقيدة بـ FK (`ST-PHY-THERAPIST`، `TH-PHY-2`، `DR-PHY-1`...). الجداول التشغيلية (`org_counters`، `idempotency_keys`...) تُضاف إلى `PLATFORM_TABLES` وإلى قائمتي `isolation.test.js` و `baseline.test.js`.
+- لا `SET app.x = ...` على مستوى الدالة (يحتاج superuser على cPanel): `set_config(..., true)` داخل الدالة ثم إرجاع القيمة.
 - اختبارات القاعدة تعمل بالتوازي مع `backup.test.js`: لا تنشئ جدولًا في `public`/`auth` داخل اختبار (يُعدّ ويُقفل في النسخة، وقد يتشابك `DROP` مع `pg_dump`)؛ استخدم view أو transaction تُلغى.
 - لا تربط `git commit` بأمر اختبار بـ `;`: اقرأ نتيجة كل حزمة (exit code والأعداد) أولًا. فشل يظهر في الحزمة الكاملة فقط ← افتح `trace.zip` (توقيت الأحداث) قبل وصفه بـ flake.
 - **كل نص واجهة جديد** يمر عبر `tt("…")` وتُضاف ترجمته إلى قاموس الملف في `src/lang/`؛ لا تغيّر النص العربي (الاختبارات العربية تطابقه)؛ القيم المخزنة/المقارنة (`"مدير"`، الحالات) لا تُترجم إلا عند العرض؛ كلمة بترجمتين ← `ttc("context", "…")`. البناء يفشل عند ترجمتين لنفس النص.
@@ -104,7 +107,8 @@ E2E_DB_PORT=56100 E2E_API_PORT=3200 npx playwright test -c e2e/playwright.config
 | 25 أكتوبر 2026 | اللغتان والقرارات منجزة؛ نتائج الاختبارات والحجم؛ ملاحظات عمل للترجمة | (هذا الـ commit) |
 | 25 أكتوبر 2026 | 3.33 منجزة؛ طريقة العمل بـ Superpowers في الملاحظات؛ نتائج الاختبارات | (هذا الـ commit) |
 | 25 أكتوبر 2026 | 3.34 منجزة (مؤقتات الـ Toast)؛ commits S1 و S2؛ نتائج الاختبارات؛ ملاحظتا عمل | `8ce9a38` |
-| 25 أكتوبر 2026 | S3 منجزة؛ قاعدة expand/contract؛ ملاحظة اختبارات القاعدة المتوازية؛ نتائج الاختبارات | (هذا الـ commit) |
+| 25 أكتوبر 2026 | S3 منجزة؛ قاعدة expand/contract؛ ملاحظة اختبارات القاعدة المتوازية؛ نتائج الاختبارات | `9f7a6b0` |
+| 25 أكتوبر 2026 | S4 منجزة؛ migrations حتى `0010`؛ ملاحظات عمل (الحجوزات في الاختبارات، الجداول التشغيلية)؛ نتائج الاختبارات | (هذا الـ commit) |
 | 25 أكتوبر 2026 | بدء الجاهزية للتوسع (خطة S1–S10) | (هذا الـ commit) |
 | 25 أكتوبر 2026 | S1 النسخ الاحتياطي منجز | (هذا الـ commit) |
 | 25 أكتوبر 2026 | S2 النشر والتراجع منجز | (هذا الـ commit) |

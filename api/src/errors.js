@@ -34,6 +34,8 @@ function mapPgError(err) {
   if (code === 'PL422') return [422, { message, code }];
   // A new row on an inactive branch (0009_inactive_branch_guard).
   if (code === 'BR409') return [409, { message: 'Branch is inactive', code: 'branch_inactive' }];
+  // Another active booking holds the therapist's / doctor's slot (0010_concurrency).
+  if (code === 'BK409') return [409, { message: 'This time slot is already booked', code: 'slot_taken' }];
   if (code === '57014') return [503, { message: 'Query took too long and was cancelled', code }];
   if (SERVER_CLASSES.has(code.slice(0, 2))) return [500, { message: 'Database error', code }];
   return [400, { message, code }];

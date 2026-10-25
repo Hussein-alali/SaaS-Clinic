@@ -18,7 +18,8 @@ db/
 │   ├── 0006_staff_role.sql  # staff.role accepts 'staff'
 │   ├── 0007_rpc_role_guards.sql # NULL-safe RPC role guards; billing RPCs admin/receptionist
 │   ├── 0008_invitation_email_status.sql # invitations.email_status / email_status_at
-│   └── 0009_inactive_branch_guard.sql # no new row on an inactive branch (BR409)
+│   ├── 0009_inactive_branch_guard.sql # no new row on an inactive branch (BR409)
+│   └── 0010_concurrency.sql   # one booking per slot (BK409), receipt counters, new_record_id(), idempotency_keys
 ├── seed/
 │   └── dev.sql              # two demo clinics — development/test ONLY
 └── test/
@@ -27,6 +28,7 @@ db/
     ├── index.js             # `node --test db/test/` on Node 21+
     ├── baseline.test.js     # migrate.js and the 0001 port
     ├── migrate-safety.test.js # lock/statement timeouts, production backup gate, expand/contract lint
+    ├── concurrency.test.js  # 0010: slot guard, receipt counters, new_record_id()
     ├── backup.test.js       # scripts/backup.sh and restore-check.sh
     ├── isolation.test.js    # tenant isolation of every clinic table
     ├── branch.test.js       # branch_scope / member_branches

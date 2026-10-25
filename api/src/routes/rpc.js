@@ -10,6 +10,7 @@ const { requireOrg } = require('../tenant');
 const { RPC_WHITELIST } = require('../rpc-whitelist');
 const { IDENT_RE, isPlainObject } = require('../data-query');
 const { assertModule, rpcModule } = require('../modules');
+const { idempotencyKey, withIdempotency } = require('../idempotency');
 
 const router = express.Router();
 
@@ -77,7 +78,7 @@ router.post('/:fn', requireOrg(), async (req, res) => {
     })
     .join(', ')})`;
 
-  const result = await db.withContext(req.ctx, async (client) => {
+  const run = async (client) => {
     if (def.retset) {
       if (def.composite) return (await client.query(`select * from ${call}`, params)).rows;
       return (await client.query(`select ${call} as value`, params)).rows.map((r) => r.value);
@@ -90,8 +91,17 @@ router.post('/:fn', requireOrg(), async (req, res) => {
     }
     const { rows } = await client.query(`select ${call} as value`, params);
     return def.isVoid ? null : rows[0].value;
-  });
-  res.json(result);
+  };
+
+  // Idempotency-Key (a quick payment retried after a timeout or clicked
+  // twice): one call per key, the repeat gets the stored answer.
+  const key = idempotencyKey(req);
+  const result = await db.withContext(req.ctx, (client) => (key
+    ? withIdempotency(client, { scope: `rpc:${fn}`, key, orgId: req.ctx.orgId, userId: req.ctx.userId },
+      async () => ({ status: 200, body: await run(client) }))
+    : run(client).then((body) => ({ status: 200, body }))));
+  if (result.replayed) res.set('Idempotency-Replayed', 'true');
+  res.status(result.status).json(result.body);
 });
 
 module.exports = router;

@@ -22,6 +22,8 @@ const UNIQUE_TEXT = {
   branches: ['name'], staff: ['email'], custom_sections: ['slug'], payments: ['receipt_no'],
   patients: ['national_id', 'medical_file_no'], patient_files: ['storage_path'],
   treatment_methods: ['name'], template_categories: ['name'],
+  // One active booking per therapist / doctor slot (0010): a copy gets its own time.
+  bookings: ['time'],
 };
 const NULLABLE_ORG = new Set(['audit_events', ...TEMPLATE_TABLES]);
 const ROLES = ['admin', 'receptionist', 'doctor', 'therapist', 'receptionist2'];
@@ -100,7 +102,7 @@ test('catalog: every table with organization_id is a clinic table under FORCE RL
     const cat = await catalog(c);
     // Platform tables that carry organization_id have no RLS (convention 4).
     assert.deepEqual(cat.platform.map((t) => t.table).sort(),
-      ['invitations', 'member_branches', 'organization_members', 'organization_modules', 'subscriptions']);
+      ['idempotency_keys', 'invitations', 'member_branches', 'org_counters', 'organization_members', 'organization_modules', 'subscriptions']);
     for (const t of cat.platform) assert.equal(t.rls, false, `${t.table} must not have RLS`);
 
     // Every other public table (except schema_migrations) is a clinic table.

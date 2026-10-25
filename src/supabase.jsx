@@ -739,6 +739,8 @@ const __AUTH_ERRORS = __i18nValues({
   plan_limit_modules:  "هذه الميزة غير متاحة في خطتك",
   // 409 from the API: a write on a deactivated branch (docs/06 task 3.18).
   branch_inactive:     "هذا الفرع معطّل — اختر فرعًا نشطًا لإضافة حجوزات أو مدفوعات جديدة",
+  // 409 from the API: another booking took this therapist's / doctor's slot (docs/06 S4).
+  slot_taken:          "هذا الموعد محجوز بالفعل — اختر وقتًا آخر",
   weak_password:       "كلمة المرور يجب أن تكون من 6 إلى 72 حرفًا",
   invalid_email:       "بريد إلكتروني غير صحيح",
   invalid_role:        "الدور المحدد غير صالح",
@@ -1370,8 +1372,19 @@ async function upsertRow(name, row) {
         // 42501 is an RLS policy violation. An inactive branch gets its
         // Arabic reason (and a toast, after the screen's own generic one).
         const inactive = __branchInactiveText(error);
-        if (inactive) setTimeout(() => { if (window.showToast) window.showToast(inactive, "error"); }, 0);
-        __error = inactive || [error.code, error.message, error.details, error.hint]
+        // Another receptionist took the slot first (BK409, docs/06 S4): the
+        // booking does not exist, so it leaves the calendar again.
+        const taken = error.code === "slot_taken" ? __AUTH_ERRORS.slot_taken : null;
+        if (taken) {
+          if (window.DATA) window.DATA[name] = list;
+          writeLS(cfg.ls, list);
+          // ...and the calendar catches up with the booking that took it
+          // (and its patient, who may be new to this screen).
+          hydrateDomainTables().catch(() => {});
+        }
+        const reason = inactive || taken;
+        if (reason) setTimeout(() => { if (window.showToast) window.showToast(reason, "error"); }, 0);
+        __error = reason || [error.code, error.message, error.details, error.hint]
           .filter(Boolean).join(" · ") || String(error);
         console.warn(`upsertRow ${name} failed`, { table: cfg.key, op: "UPSERT (INSERT ON CONFLICT UPDATE)", error });
       }
@@ -1777,7 +1790,10 @@ async function recordQuickPayment(input) {
   const ipAddress = await __clientIP();
 
   // ── Transactional path (Supabase RPC) ────────────────────────
+  // One Idempotency-Key per payment attempt (the screen keeps it across a
+  // retry): a second click or a resend after a timeout never pays twice.
   if (sb) {
+    const idempotencyKey = (input && input.idempotency_key) || newRecordId("qp-");
     const { data, error } = await sb.rpc("record_quick_payment", {
       p_patient_id: patientId,
       p_allocations: allocs.map(a => ({
@@ -1790,7 +1806,7 @@ async function recordQuickPayment(input) {
       p_cashier_id: cashierId,
       p_cashier_name: cashierName,
       p_ip_address: ipAddress,
-    });
+    }, { idempotencyKey });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
       return { ok: false, error: __branchInactiveText(error) || error.message || tt("تعذّر تسجيل الدفع") };
