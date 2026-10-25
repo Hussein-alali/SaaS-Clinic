@@ -225,6 +225,25 @@ test("clinic login: branded before sign-in, data on screen right after it withou
   expect(await sessionStatus(page)).toBe(401);
 });
 
+test("a newer toast keeps its full time: an older toast's timer never closes it", async ({ page }) => {
+  await page.goto("/?org=demo-physio");
+  await clinicLogin(page, "admin@demo-physio.test");
+  const toasts = page.locator("[role=status], [role=alert]");
+  await expect(toasts.filter({ hasText: "أهلاً بعودتك" })).toBeVisible();
+  const t0 = Date.now();
+  const at = (ms) => page.waitForTimeout(Math.max(0, t0 + ms - Date.now()));
+  // The welcome toast ends 2.4 s after sign-in, a showToast one 4 s after it shows.
+  await at(1500);
+  await page.evaluate(() => window.showToast("رسالة ثانية"));
+  await at(3000);
+  expect(await toasts.filter({ hasText: "رسالة ثانية" }).isVisible(), "after the welcome toast's end").toBe(true);
+  await page.evaluate(() => window.showToast("رسالة ثالثة"));
+  await at(6000);
+  expect(await toasts.filter({ hasText: "رسالة ثالثة" }).isVisible(), "after the second toast's end").toBe(true);
+  await at(7500);
+  expect(await toasts.count(), "the last toast still ends on time").toBe(0);
+});
+
 test("clinic login: an account of another clinic is refused and signed out (AT-05)", async ({ page }) => {
   await page.goto("/?org=demo-dental");
   await clinicLogin(page, "admin@demo-physio.test");

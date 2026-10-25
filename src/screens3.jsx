@@ -2589,7 +2589,7 @@ function ClinicApp({ ctx }) {
   // resolving | status | open (login screen or shell)
   const [gate, setGate] = React.useState(() => (gated ? { phase: "resolving" } : { phase: "open" }));
   const [publicBooking, setPublicBooking] = React.useState(false);
-  const [toast, setToast] = React.useState(null);
+  const [toast, flashToast] = useToast();
   const [notifsOpen, setNotifsOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
@@ -2663,10 +2663,7 @@ function ClinicApp({ ctx }) {
   }, []);
 
   React.useEffect(()=>{
-    window.showToast = (msg, kind="success") => {
-      setToast({msg, kind});
-      setTimeout(()=>setToast(null), 4000);
-    };
+    window.showToast = (msg, kind="success") => flashToast(msg, kind);
   },[]);
 
   React.useEffect(()=>{
@@ -2803,14 +2800,12 @@ function ClinicApp({ ctx }) {
       const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
       setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
     }
-    setToast({ msg: tt("أهلاً بعودتك، {name}", { name: u.name.split(" ")[0] }), kind:"success" });
-    setTimeout(()=>setToast(null), 2400);
+    flashToast(tt("أهلاً بعودتك، {name}", { name: u.name.split(" ")[0] }), "success", 2400);
   }
 
   if (publicBooking) return <PublicBookingScreen onBack={()=>setPublicBooking(false)} onDone={()=>{
     setPublicBooking(false);
-    setToast({ msg:tt("تم تأكيد الحجز — أُرسل التأكيد عبر واتساب."), kind:"success" });
-    setTimeout(()=>setToast(null), 3500);
+    flashToast(tt("تم تأكيد الحجز — أُرسل التأكيد عبر واتساب."), "success", 3500);
   }}/>;
 
   // Historical import page (?import=1) — handled BEFORE the localStorage
@@ -3049,7 +3044,7 @@ const PATIENT_ME = new Proxy({}, {
 function PatientPortal({ onLogout }) {
   const [route, setRoute] = React.useState("home");
   const [bookingOpen, setBookingOpen] = React.useState(false);
-  const [toast, setToast] = React.useState(null);
+  const [toast, flashToast] = useToast();
 
   function go(r) {
     if (r === "book") { setBookingOpen(true); return; }
@@ -3060,8 +3055,7 @@ function PatientPortal({ onLogout }) {
 
   function handleBookingComplete(slot) {
     setBookingOpen(false);
-    setToast({ msg: tt("تم حجز موعدك يوم {date} الساعة {time}", { date: ptDate(slot.date), time: slot.time }), kind:"success" });
-    setTimeout(()=>setToast(null), 3000);
+    flashToast(tt("تم حجز موعدك يوم {date} الساعة {time}", { date: ptDate(slot.date), time: slot.time }), "success", 3000);
     setRoute("appointments");
   }
 
