@@ -303,6 +303,9 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "لا أهداف محددة — تُضاف الأهداف من خطة العلاج.": "No goals set — goals are added in the treatment plan.",
   "إنهاء الجلسة وتسجيلها": "End and record session",
   "الإنهاء يسجّل الجلسة على الخطة ويُحدّث عدد الجلسات المكتملة والمتبقية تلقائيًا.": "Ending records the session on the plan and updates the completed and remaining sessions automatically.",
+  // ── A page that throws (src/errors.jsx, docs/06 S6) ──
+  "حدث خطأ في هذه الصفحة": "Something went wrong on this page",
+  "وصل الخطأ إلى فريق المنصة. أعد المحاولة، أو انتقل إلى صفحة أخرى من القائمة.": "The platform team has been told. Try again, or open another page from the menu.",
   // Context keys (ttc): the same Arabic, another English.
   "session|إنهاء": "End",
   "nav|المالية": "Finance",

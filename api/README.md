@@ -22,6 +22,7 @@ src/create-app.js      middleware order, route mounting, error handler
 src/db.js              Pool (max 10) + withContext(ctx, fn)
 src/auth.js            bcrypt, JWT cookie, session loading
 src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every process
+src/errorlog.js        error tracking: 5xx, process errors and browser reports → error_groups/error_events (scrubbed)
 src/idempotency.js     Idempotency-Key for /api/rpc
 src/tenant.js          clinic from Host / X-Org-Slug, membership, branch
 src/catalog.js         table/column/function catalog for /api/data and /api/rpc
@@ -175,6 +176,7 @@ Error messages stay English; the frontend shows its own text per `code`.
 | `GET /api/orgs/resolve?slug=` | public. Active or `pending_activation`: `{id, slug, name, status, specialty_code, modules, settings:{display_name, subtitle, logo, primary_color}}`; suspended: `{slug, status}`; closed/draft/unknown: 404 |
 | `GET /api/orgs/current` | `{organization:{…as resolve}, role, branches:[branch rows], current_branch_id}` |
 | `POST /api/data` | PostgREST replacement, `{data, count}`, ≤ 1000 rows per response |
+| `POST /api/client-errors` `{message, stack, route, kind, component}` | 204; a browser error (src/errors.jsx), no session needed (account and clinic attached when present), ≤ 8 KB, 30/min per IP |
 | `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments. Optional `Idempotency-Key` (8–100 of `[A-Za-z0-9_-]`, `src/idempotency.js`): claimed in the call's transaction, so a repeat answers the stored result with `Idempotency-Replayed: true`; another user's key → 409 `idempotency_conflict`; malformed → 400 `invalid_idempotency_key`; a failed call stores nothing |
 | `POST /api/files/upload` (multipart `bucket`, `path`, `file`, `upsert`) | `{path, fullPath}`; 409 exists, 413 > 20 MB, 422 plan storage limit |
 | `POST /api/files/sign` `{bucket, path, expiresIn}` | `{signedUrl: "/api/files/signed?token=…"}`; `expiresIn` is capped at 600 s |

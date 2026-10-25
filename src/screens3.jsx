@@ -2950,7 +2950,8 @@ function ClinicApp({ ctx }) {
           {!demo && <InactiveBranchBanner/>}
           {forbidden && <ClinicNoPermission go={go} role={acct.role}/>}
           {moduleOff && <TenantModuleDisabled go={go}/>}
-          {!forbidden && !moduleOff && <>
+          {/* A page that throws shows its own error card, not a blank app (docs/06 S6). */}
+          {!forbidden && !moduleOff && <ErrorBoundary resetKey={route} route={"#/" + route}>
           {route==="dashboard" && <RoleHome role={acct.role} go={go} user={acct}/>}
           {route==="patients" && <Patients go={go}/>}
           {route==="appointments" && <Appointments go={go}/>}
@@ -2964,7 +2965,7 @@ function ClinicApp({ ctx }) {
           {route==="settings" && <SettingsPage go={go}/>}
           {typeof route === "string" && route.startsWith("custom:") && <CustomSectionPage id={route.slice(7)}/>}
           {!titles[route] && !(typeof route === "string" && route.startsWith("custom:")) && <NotFound go={go}/>}
-          </>}
+          </ErrorBoundary>}
         </main>
       </div>
       {toast && <Toast msg={toast.msg} kind={toast.kind}/>}

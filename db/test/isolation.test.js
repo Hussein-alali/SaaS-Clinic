@@ -102,7 +102,7 @@ test('catalog: every table with organization_id is a clinic table under FORCE RL
     const cat = await catalog(c);
     // Platform tables that carry organization_id have no RLS (convention 4).
     assert.deepEqual(cat.platform.map((t) => t.table).sort(),
-      ['idempotency_keys', 'invitations', 'member_branches', 'org_counters', 'organization_members', 'organization_modules', 'subscriptions']);
+      ['error_events', 'idempotency_keys', 'invitations', 'member_branches', 'org_counters', 'organization_members', 'organization_modules', 'subscriptions']);
     for (const t of cat.platform) assert.equal(t.rls, false, `${t.table} must not have RLS`);
 
     // Every other public table (except schema_migrations) is a clinic table.

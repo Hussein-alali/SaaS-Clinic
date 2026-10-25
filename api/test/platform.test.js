@@ -113,6 +113,7 @@ test('stats, catalogs (specialties, modules) and slug-available', async () => {
     organizations: { draft: 1, pending_activation: 1, active: 2, suspended: 1, closed: 1, total: 6 },
     pending_invitations: 0,
     retention_overdue: 0,
+    open_errors: 0,
   });
   const specialties = await sa.get('/api/platform/specialties');
   assert.deepEqual(specialties.body.map((s) => s.code), ['dental', 'general', 'physio']);

@@ -57,7 +57,13 @@ function replaceOnce(html, re, replacement, what) {
   return html.replace(re, replacement);
 }
 
-async function compile(files, name) {
+// own: a chunk loaded on demand after the app bundle (import, platform).
+// Minified on its own, its top-level names (esbuild's helpers among them)
+// would land in the shared global scope and overwrite the app bundle's
+// (the platform panel crashed that way): it becomes one function scope and
+// exports through window.* only. The app bundle stays a plain script, as
+// the chunks read its globals (test/build.test.mjs).
+async function compile(files, name, { own = false } = {}) {
   const source = files.map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n;\n");
   const { code } = await transform(source, {
     loader: "jsx",
@@ -65,6 +71,7 @@ async function compile(files, name) {
     target: "es2017",
     legalComments: "none",
     sourcefile: name,
+    ...(own ? { format: "iife" } : {}),
   });
   const hash = createHash("sha256").update(code).digest("hex").slice(0, 10);
   const out = `${name}.${hash}.js`;
@@ -124,8 +131,8 @@ fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
 const app = await compile(appFiles, "app");
-const importPage = await compile([IMPORT_PAGE], "import");
-const platformPage = await compile([PLATFORM_PAGE], "platform");
+const importPage = await compile([IMPORT_PAGE], "import", { own: true });
+const platformPage = await compile([PLATFORM_PAGE], "platform", { own: true });
 const langEn = await compileDictionary(langEnFiles, "lang-en");
 
 for (const [dev, prod] of Object.entries(REACT_PROD)) {

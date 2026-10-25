@@ -6,6 +6,7 @@
 
 const { loadConfig } = require('./src/config');
 const { createApp } = require('./src/create-app');
+const { recordError } = require('./src/errorlog');
 
 /* global PhusionPassenger */
 const underPassenger =
@@ -41,4 +42,21 @@ if (runDirectly) {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // Errors outside a request (a timer, a background task) reach the
+  // platform's error list too (docs/06 S6). After an uncaught exception the
+  // process is in an unknown state: record it, then exit (Passenger starts
+  // a new one).
+  const record = (err, route) => recordError(app.locals.db, {
+    source: 'api', message: (err && err.message) || String(err), stack: err && err.stack, route, release: config.release,
+  });
+  process.on('unhandledRejection', (err) => {
+    console.error('[api] unhandled rejection:', err && (err.stack || err));
+    record(err, 'process:unhandledRejection');
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[api] uncaught exception:', err && (err.stack || err));
+    setTimeout(() => process.exit(1), 3000).unref();
+    record(err, 'process:uncaughtException').finally(() => process.exit(1));
+  });
 }
