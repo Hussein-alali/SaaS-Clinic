@@ -630,8 +630,13 @@ test("workspace pages have links: reload keeps the page, Back returns, sign-out 
   await expect(nav.locator('[data-route="patients"]')).toHaveAttribute("aria-current", "page");
   await page.reload();
   await expect(nav.locator('[data-route="patients"]')).toHaveAttribute("aria-current", "page");
-  // A page this role may not open (receptionist → settings) falls back home.
+  // A page this role may not open (receptionist → settings) says so and
+  // keeps the address it was asked for (task 3.11; it used to fall back to
+  // the dashboard silently); its button goes home.
   await page.goto("/?org=demo-physio#/settings");
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page.locator("[data-no-permission]")).toContainText("ليست لديك صلاحية لهذه الصفحة");
+  await page.locator("[data-no-permission] button").click();
   await expect(page).toHaveURL(/#\/dashboard$/);
   await expect(nav.locator('[data-route="dashboard"]')).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "تسجيل الخروج" }).click();

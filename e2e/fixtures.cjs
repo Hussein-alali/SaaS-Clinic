@@ -63,6 +63,17 @@ function seedCorpus() {
   const files = [path.join(root, "db", "seed", "dev.sql"), path.join(root, "api", "test", "fixtures", "extras.sql")]
     .concat(fs.readdirSync(path.join(root, "db", "migrations")).map((f) => path.join(root, "db", "migrations", f)));
   seedArabic = files.filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, "utf8")).join("\n");
+  // ... and what the Arabic specs type in (names, addresses): .fill("…")
+  // arguments and `const x = \`…\`` templates, with ${…} parts removed.
+  // They run before the English specs on the same data. (Not getByRole
+  // names: those are interface text and must stay detectable.)
+  const specs = fs.readdirSync(__dirname).filter((f) => f.endsWith(".spec.cjs") && !f.startsWith("i18n-"));
+  const LIT = /(?:\.fill\(|\bconst \w+ = )(["'`])((?:(?!\1)[^\\\n]|\\.)*)\1/g;
+  for (const f of specs) {
+    for (const m of fs.readFileSync(path.join(__dirname, f), "utf8").matchAll(LIT)) {
+      if (/[\u0600-\u06FF]/.test(m[2])) seedArabic += "\n" + m[2].replace(/\$\{[^}]*\}/g, "\n");
+    }
+  }
   return seedArabic;
 }
 
@@ -79,7 +90,17 @@ async function untranslatedUi(page, allow = []) {
     for (const el of document.querySelectorAll(SEL)) {
       if (!visible(el) && el.tagName !== "OPTION") continue;
       if (el.closest("[data-lang-switch]")) continue;
-      for (const m of (el.innerText || el.textContent || "").match(AR) || []) out.add(m.trim());
+      // Avatars (.av) and other decorative parts (aria-hidden) show the
+      // initials of a name: data, not interface.
+      const DECOR = ".av, [aria-hidden=true]";
+      if (el.closest(DECOR)) continue;
+      let text = el.innerText || el.textContent || "";
+      if (el.querySelector(DECOR)) {
+        const copy = el.cloneNode(true);
+        copy.querySelectorAll(DECOR).forEach((a) => a.remove());
+        text = copy.textContent || "";
+      }
+      for (const m of text.match(AR) || []) out.add(m.trim());
     }
     for (const el of document.querySelectorAll("[placeholder], [aria-label], [title]")) {
       if (el.closest("[data-lang-switch]")) continue;

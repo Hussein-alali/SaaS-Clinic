@@ -142,13 +142,16 @@ test("A01 overview and the panel shell", async ({ page }) => {
   await expect(page.locator("[data-stat=active]")).toHaveAttribute("aria-label", `Active clinics: ${stats.data.organizations.active}`);
   await expect(page.locator("table[data-audit] tbody tr[data-action]").first()).toBeVisible();
   const nav = page.getByRole("navigation", { name: "Platform sections" });
+  if (page.viewportSize().width <= 768) await page.getByRole("button", { name: "Menu" }).click(); // phone drawer
   for (const name of ["Overview", "Clinics", "Specialties and modules", "Plans", "Audit log"]) {
     await expect(nav.getByRole("link", { name })).toBeVisible();
   }
-  // LTR: the sidebar is on the left of the content.
+  // LTR: the sidebar (or the phone drawer) is on the left edge.
   const side = await page.locator("aside.pa-sidebar").boundingBox();
   const main = await page.locator("#pa-main").boundingBox();
-  expect(side.x).toBeLessThan(main.x);
+  expect(side.x).toBeLessThanOrEqual(main.x);
+  expect(side.x).toBeLessThan(1);
+  if (page.viewportSize().width <= 768) await page.keyboard.press("Escape").then(() => page.locator(".sidebar-backdrop.open").click({ force: true }));
   await expectEnglish(page, "a01");
   // Unknown route.
   await openPanel(page, "#/nowhere");

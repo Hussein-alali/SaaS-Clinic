@@ -441,7 +441,7 @@ function Sidebar({ active, onNav, role, user, isOpen, onClose }) {
       { id:"treatments",  label:tt("خطط العلاج"), icon: <I.Clipboard size={17}/> },
       { id:"sessions",    label:tt("جلسات العلاج"),icon: <I.Activity size={17}/> },
     ]},
-    { title: tt("المالية"), items: [
+    { title: ttc("nav", "المالية"), items: [
       { id:"payments", label:tt("المدفوعات والفواتير"), icon: <I.CreditCard size={17}/> },
       { id:"packages", label:tt("الباقات"),            icon: <I.Package size={17}/> },
     ]},

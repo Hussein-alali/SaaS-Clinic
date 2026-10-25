@@ -370,7 +370,7 @@ function DeptModal({ row, onClose }) {
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?tt("قسم جديد"):tt("تعديل قسم")} onClose={onClose} width={520}
+    <Modal title={isNew?ttc("department", "قسم جديد"):ttc("department", "تعديل قسم")} onClose={onClose} width={520}
       footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
@@ -1287,7 +1287,7 @@ const CA_INVITE_STATUS = {
   pending:  { label:tt("معلّقة"),  cls:"b-amber" },
   expired:  { label:tt("منتهية"), cls:"b-grey" },
   accepted: { label:tt("مقبولة"), cls:"b-green" },
-  revoked:  { label:tt("ملغاة"),  cls:"b-red" },
+  revoked:  { label:ttc("invitation", "ملغاة"),  cls:"b-red" },
 };
 const CA_MEMBER_STATUS = {
   active:   { label:tt("نشط"),   cls:"b-green" },
@@ -1999,7 +1999,7 @@ function EditUserModal({ row, onClose, nameOnly }) {
   }
   const roleChanged = !nameOnly && role !== (row.role || "receptionist");
   return (
-    <Modal title={tt("تعديل {name}", { name: row.name || tt("المستخدم") })} onClose={onClose}
+    <Modal title={tt("تعديل {name}", { name: row.name || ttc("fallback", "المستخدم") })} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>

@@ -13,7 +13,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "معلقة": "Pending",
   "منتهية": "Expired",
   "مقبولة": "Accepted",
-  "ملغاة": "Revoked",
+  "ملغاة": "Cancelled",
   "مدعو": "Invited",
   "نشط": "Active",
   "معطّل": "Inactive",
@@ -23,7 +23,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "غير متاح": "Not available",
   "تجريبي": "Trial",
   "متأخر السداد": "Past due",
-  "ملغى": "Canceled",
+  "ملغى": "Cancelled",
   "سُجّل تلقائيًا عند إنشاء العيادة": "Recorded automatically when the clinic was created",
   "مدير العيادة": "Clinic admin",
   "موظف استقبال": "Receptionist",
@@ -478,4 +478,6 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "تعمل لوحة المنصة من العنوان {host} فقط.": "The platform panel works only at {host}.",
   "تعذّر التحقق من الجلسة": "Couldn't check your session",
   "تعذّر الوصول إلى خادم المنصة — حاول مرة أخرى بعد قليل.": "Can't reach the platform server — try again in a moment.",
+  // Context keys (ttc): the same Arabic, another English.
+  "invitation|ملغاة": "Revoked",
 });

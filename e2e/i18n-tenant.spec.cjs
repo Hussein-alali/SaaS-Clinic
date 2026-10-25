@@ -234,13 +234,13 @@ test("S02 in English: language corner, Tab order (3.22), validation and wrong-pa
 
   // Local checks, then the API's answer (src/supabase.jsx __AUTH_ERRORS).
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator(".tenant-notice")).toHaveText("Enter a valid e-mail address");
+  await expect(page.locator(".tenant-notice")).toHaveText("Enter a valid email address");
   await page.locator("#login-email").fill("admin@demo-physio.test");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.locator(".tenant-notice")).toHaveText("Enter your password");
   await page.locator("#login-password").fill("not-the-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator(".tenant-notice")).toHaveText("Wrong e-mail or password");
+  await expect(page.locator(".tenant-notice")).toHaveText("Wrong email or password");
   await expectNoAreaArabic(page, DATA);
 
   // An account of another clinic: the membership refusal (tenantLoginVerdict).
@@ -266,10 +266,10 @@ test("S01 + S04 in English: main-site sign-in, its errors, the picker of a membe
   await expectNoArabic(page);
 
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator("#root-email-error")).toHaveText("Enter a valid e-mail address");
+  await expect(page.locator("#root-email-error")).toHaveText("Enter a valid email address");
   await expect(page.locator("#root-password-error")).toHaveText("Enter your password");
   await rootLogin(page, email, "not-the-password");
-  await expect(page.locator(".tenant-notice")).toHaveText("Wrong e-mail or password");
+  await expect(page.locator(".tenant-notice")).toHaveText("Wrong email or password");
   await expectNoArabic(page);
 
   await rootLogin(page, email);
@@ -351,7 +351,9 @@ test("S03 in English: a new account accepts an invitation; the e-mail is bilingu
   await page.goto(firstLink(mail));
   await expect(page.getByRole("heading", { name: "This invitation has already been used" })).toBeVisible();
   await expectNoArabic(page);
-  await page.goto("/?invite=" + "x".repeat(43));
+  // Same address as the e-mail's link (demo-physio.localhost in development:
+  // another origin than localhost, with its own saved language).
+  await page.goto(new URL(firstLink(mail)).origin + "/?invite=" + "x".repeat(43));
   await expect(page.getByRole("heading", { name: "Invalid invitation link" })).toBeVisible();
   await expectNoArabic(page);
 });
@@ -364,7 +366,7 @@ test("S03 in English: an existing account joins with its own password", async ({
   expect(inv.status(), await inv.text()).toBe(201);
   await page.goto(firstLink(await waitForMail(email, /\?invite=/, before)) + "&lang=en");
   await expect(page.locator("form[data-mode=existing]")).toBeVisible();
-  await expect(page.getByText("You already have an account with this e-mail.")).toBeVisible();
+  await expect(page.getByText("You already have an account with this email.")).toBeVisible();
   await expect(page.locator("label[for=invite-password]")).toContainText("Your account password");
   await page.locator("#invite-password").fill("wrong-password");
   await page.getByRole("button", { name: "Accept and sign in" }).click();
@@ -380,7 +382,7 @@ test("password reset in English: request, bilingual e-mail (English first), new 
   await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
   await page.locator("#forgot-email").fill("not an e-mail");
   await page.getByRole("button", { name: "Send reset link" }).click();
-  await expect(page.locator("#forgot-email-error")).toHaveText("Enter a valid e-mail address");
+  await expect(page.locator("#forgot-email-error")).toHaveText("Enter a valid email address");
   // «Back» points back: ← in English.
   await expect(page.getByRole("button", { name: "Back to sign in" }).locator("svg path").last()).toHaveAttribute("d", /^M19 12H5/);
   await expectNoArabic(page);
@@ -388,7 +390,7 @@ test("password reset in English: request, bilingual e-mail (English first), new 
   const before = readOutbox().length;
   await page.locator("#forgot-email").fill(email);
   await page.getByRole("button", { name: "Send reset link" }).click();
-  await expect(page.locator(".tenant-notice")).toContainText("If this e-mail address is registered");
+  await expect(page.locator(".tenant-notice")).toContainText("If this email address is registered");
   await expectNoArabic(page);
   const mail = await waitForMail(email, /\?reset=/, before);
   expectBilingual(mail, "en");
@@ -421,7 +423,7 @@ test("password reset in English: request, bilingual e-mail (English first), new 
 
 // ── ?import=1 ───────────────────────────────────────────────────────────
 test("?import=1 in English after its own sign-in", async ({ page }) => {
-  await page.goto("/?import=1&lang=en");
+  await page.goto("/?org=demo-physio&import=1&lang=en");
   await page.locator("#login-email").fill("receptionist@demo-physio.test");
   await page.locator("#login-password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

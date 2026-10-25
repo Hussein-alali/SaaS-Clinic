@@ -65,7 +65,7 @@
     pending: [tt("معلقة"), "b-amber"],
     expired: [tt("منتهية"), "b-grey"],
     accepted: [tt("مقبولة"), "b-green"],
-    revoked: [tt("ملغاة"), "pa-b-dark"],
+    revoked: [ttc("invitation", "ملغاة"), "pa-b-dark"],
   };
   const MEMBER_STATUS = { invited: [tt("مدعو"), "b-amber"], active: [tt("نشط"), "b-green"], disabled: [tt("معطّل"), "b-red"] };
   const BRANCH_STATUS = { active: [tt("نشط"), "b-green"], inactive: [tt("معطّل"), "b-grey"] };

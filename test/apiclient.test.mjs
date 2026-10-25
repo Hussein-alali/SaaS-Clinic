@@ -1532,7 +1532,7 @@ describe("src/supabase.jsx on top of the client", () => {
       { code, search: "?lang=en" });
     const res = await env.win.signInEmail("a@b.co", "bad");
     assert.equal(res.code, "invalid_credentials");
-    assert.equal(res.error, "Wrong e-mail or password");
+    assert.equal(res.error, "Wrong email or password");
     const maps = vm.runInContext("[__AUTH_ERRORS, __ADMIN_ACTION_ERRORS]", env.win);
     for (const map of maps) for (const [k, v] of Object.entries(map)) assert.doesNotMatch(v, /[؀-ۿ]/, k);
     assert.equal(env.win.friendlyAuthError(null, "plan_limit:branches"), maps[0]["plan_limit:branches"]);

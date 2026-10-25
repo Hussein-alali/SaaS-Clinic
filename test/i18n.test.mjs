@@ -12,6 +12,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { transformSync } from "esbuild";
+import { i18nHash } from "../scripts/i18n-hash.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const I18N_JS = transformSync(fs.readFileSync(path.join(ROOT, "src/i18n.jsx"), "utf8"), {
@@ -25,11 +26,13 @@ const FakeReact = {
   cloneElement: (el, extra) => ({ ...el, props: { ...el.props, ...extra } }),
 };
 
-function load({ lang, search = "", saved = null, dict = {} } = {}) {
+function load({ lang, search = "", saved = null, dict = {}, hashed = null, cookie = "" } = {}) {
   const store = new Map(saved ? [["clinicsys.lang", saved]] : []);
   const window = {
     CLINICSYS_LANG: lang,
     I18N_EN: dict,
+    I18N_EN_H: hashed,
+    document: { cookie },
     location: { search, href: "http://demo.localhost/" + search },
     localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
   };
@@ -53,6 +56,9 @@ test("the language comes from the boot script, else ?lang=, else the saved choic
   assert.equal(load({ saved: "en" }).LANG, "en");
   assert.equal(load({ saved: "fr" }).LANG, "ar");
   assert.equal(load({ lang: "en", search: "?lang=ar" }).LANG, "en", "the boot script decided already");
+  assert.equal(load({ cookie: "a=1; clinicsys_lang=en" }).LANG, "en", "the cookie shared by the subdomains");
+  assert.equal(load({ cookie: "clinicsys_lang=en", saved: "ar" }).LANG, "en", "the cookie wins over this address's saved choice");
+  assert.equal(load({ cookie: "clinicsys_lang=en", search: "?lang=ar" }).LANG, "ar", "?lang= wins over the cookie");
 });
 
 test("English: dictionary lookup, placeholders, fallback to Arabic recorded as missing", () => {
@@ -104,4 +110,17 @@ test("dates: Arabic and English month names, Latin digits, no timezone shift for
   assert.equal(ar.weekdayNames("long")[0], "الأحد");
   assert.equal(en.monthNames("long")[9], "October");
   assert.ok(!/[٠-٩]/.test(ar.fmtDate("2026-10-22", "dateTime")), "no Arabic-Indic digits");
+});
+
+test("the shipped chunk is keyed by a hash of the Arabic text; src/i18n.jsx and the build agree", () => {
+  const w = load({ lang: "en" });
+  for (const s of ["المرضى", "المقاعد: {n} من {max}", "x", "", "تخطَّ إلى المحتوى"]) assert.equal(w.__i18nHash(s), i18nHash(s), s);
+  const hashed = { [i18nHash("المرضى")]: "Patients", [i18nHash("المقاعد: {n} من {max}")]: "Seats: {n} of {max}" };
+  const h = load({ lang: "en", hashed, dict: { "المرضى": "ignored when the hashed chunk is there" } });
+  assert.equal(h.tt("المرضى"), "Patients");
+  assert.equal(h.tt("المرضى"), "Patients", "cached lookup");
+  assert.equal(h.tt("المقاعد: {n} من {max}", { n: 1, max: 2 }), "Seats: 1 of 2");
+  assert.equal(h.tt("غير موجود"), "غير موجود");
+  assert.deepEqual([...h.I18N_MISSING], ["غير موجود"]);
+  assert.equal(load({ hashed }).tt("المرضى"), "المرضى", "Arabic ignores the dictionary");
 });

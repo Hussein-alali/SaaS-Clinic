@@ -2247,8 +2247,10 @@ function FormReview({ form }) {
   );
 }
 
-Object.assign(window, { Patients, PatientDetail, SessionTimeline: null });
-// SessionTimeline gets defined in treatments.jsx
+// SessionTimeline is defined in screens2.jsx (no placeholder here: in the
+// precompiled bundle all files are one script, so `SessionTimeline: null`
+// overwrote the hoisted function and the session history tabs crashed).
+Object.assign(window, { Patients, PatientDetail });
 
 
 // ===== src/appointments.jsx =====
@@ -3049,7 +3051,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       />
       <Segmented label={tt("طريقة عرض التقويم")} value={viewMode} onChange={setViewMode} style={{marginInlineEnd:12}}
         options={[["day","اليوم"],["therapist","الأخصائي"],["doctor","الدكتور"],["week","الأسبوع"]]
-          .filter(([m]) => canSeeTab(m)).map(([m, l]) => ({ value: m, label: tt(l) }))}/>
+          .filter(([m]) => canSeeTab(m)).map(([m, l]) => ({ value: m, label: ttc("calendar-view", l) }))}/>
       <div style={{flex:1}}/>
       {unroutedCount > 0 && (
         <span style={{fontSize:12,color:"#A8443A"}} title={tt("مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة")}>

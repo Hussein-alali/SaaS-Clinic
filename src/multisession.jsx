@@ -311,7 +311,7 @@ function ConcurrentSessions(){
                     {s.total ? tt("جلسة {n} من {total}", { n: s.num, total: s.total }) : tt("جلسة {n}", { n: s.num })}{s.room ? ` · ${s.room}` : ""}
                   </div>
                 </div>
-                <button className="btn btn-ghost btn-icon" title={tt("إنهاء")} aria-label={tt("إنهاء جلسة {name}", { name: (s.p && s.p.name) || "" })} style={{padding:4,color:"var(--ink-400)"}}
+                <button className="btn btn-ghost btn-icon" title={ttc("session", "إنهاء")} aria-label={tt("إنهاء جلسة {name}", { name: (s.p && s.p.name) || "" })} style={{padding:4,color:"var(--ink-400)"}}
                   onClick={(e)=>{e.stopPropagation(); endSession(s.id);}}><I.X size={13}/></button>
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
