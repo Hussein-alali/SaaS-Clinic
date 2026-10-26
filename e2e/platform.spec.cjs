@@ -233,14 +233,16 @@ test("A03 wizard: slug checks (taken, reserved, invalid), modules, plan, invitat
   await expect(page.getByRole("heading", { name: /الخطوة 2 من 4/ })).toBeVisible();
   await expect(page.getByRole("radio", { name: /العلاج الطبيعي/ })).toHaveAttribute("aria-checked", "true");
   await expect(sw(page, "جلسات العلاج الطبيعي")).toHaveAttribute("aria-checked", "true");
-  await expect(sw(page, "مخطط الأسنان")).toBeDisabled(); // planned module
+  await expect(sw(page, "إجراءات الأسنان")).toBeDisabled(); // planned module (dental.chart is active since 0018)
   // Dependency hint: a base module other modules need cannot be turned off.
   await sw(page, "المرضى").click();
   await expect(page.getByRole("alert").filter({ hasText: "لا يمكن تعطيل «المرضى»" })).toBeVisible();
   await expect(sw(page, "المرضى")).toHaveAttribute("aria-checked", "true");
-  // Another specialty preselects its own defaults (dental modules are planned → core only).
+  // Another specialty preselects its own defaults: dentistry → the tooth chart and prescriptions.
   await page.getByRole("radio", { name: /طب الأسنان/ }).click();
   await expect(sw(page, "جلسات العلاج الطبيعي")).toHaveAttribute("aria-checked", "false");
+  await expect(sw(page, "مخطط الأسنان")).toHaveAttribute("aria-checked", "true");
+  await expect(sw(page, "الوصفات الطبية")).toHaveAttribute("aria-checked", "true");
   await page.getByRole("radio", { name: /العلاج الطبيعي/ }).click();
   await expect(sw(page, "جلسات العلاج الطبيعي")).toHaveAttribute("aria-checked", "true");
   // Enabling a module whose dependency is off → error with a fix.

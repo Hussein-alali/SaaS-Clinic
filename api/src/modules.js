@@ -26,6 +26,11 @@ const TABLE_MODULES = Object.freeze({
   treatment_templates: 'physio.templates',
   template_categories: 'physio.templates',
   template_usage: 'physio.templates',
+  // Clinical records (0018): the diagnosis is part of every patient file;
+  // the tooth chart and prescriptions are their own modules.
+  assessments: 'core.patients',
+  dental_findings: 'dental.chart',
+  prescriptions: 'general.prescriptions',
 });
 
 const RPC_MODULES = Object.freeze({

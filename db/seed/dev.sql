@@ -290,6 +290,46 @@ insert into public.template_usage (use_id, organization_id, template_id, patient
 insert into public.audit_events (organization_id, actor_uid, actor_role, action, table_name, row_pk, target_type, target_id, result, payload) values
   ('de000000-0000-4000-8000-0000000a0002', 'de000000-0000-4000-8000-000000000001', 'super_admin', 'organization_seeded', 'organizations', 'de000000-0000-4000-8000-0000000a0002', 'organization', 'de000000-0000-4000-8000-0000000a0002', 'success', '{"source":"db/seed/dev.sql"}');
 
+-- ---------------------------------------------------------------------
+-- Clinical records (0018): one diagnosis, finding and prescription per
+-- clinic at least (db/test/isolation.test.js copies them); the dental
+-- patient's chart is the owner's reference picture (26 Oct 2026).
+-- markers: [[x, y], ...] in percent of assets/body-diagram.jpeg.
+-- ---------------------------------------------------------------------
+insert into public.assessments (assessment_id, organization_id, branch_id, patient_id, kind, visit_date, clinician_id, clinician_name,
+                                complaint, diagnosis, notes, data, markers, author_uid, author_name) values
+  ('ASM-PHY-1', 'de000000-0000-4000-8000-0000000a0001', 'br-demo-physio-1', 'P-PHY-01', 'physio', current_date - 7,
+   'ST-PHY-THERAPIST', 'الأخصائي — PHY', 'ألم أسفل الظهر يمتد للساق اليسرى', 'انزلاق غضروفي L4–L5', null,
+   '{"modalities":["TENS","Hot pack"],"cervical":{"on":false,"mode":null},"thll":{"on":true,"mode":"Bilat"},"thpl":{"on":false,"mode":null}}',
+   '[[37.2,44.6],[38.4,47.1],[62.7,46.0]]', 'de000000-0000-4000-8000-000000000114', 'الأخصائي — PHY'),
+  ('ASM-DEN-1', 'de000000-0000-4000-8000-0000000a0002', 'br-demo-dental-1', 'P-DEN-01', 'dental', current_date - 3,
+   'DR-DEN-1', 'الطبيب — DEN', 'ألم في الضرس العلوي الأيسر مع الأكل البارد', 'التهاب لب الضرس 26', 'علاج عصب 26 ثم تاج',
+   '{"examination":"تسوس عميق في 26، حساسية للبارد","treatment_done":"علاج عصب 26 — الجلسة الأولى","next_visit":"تركيب التاج"}',
+   '[]', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN');
+
+insert into public.dental_findings (finding_id, organization_id, patient_id, tooth, surfaces, condition, status, recorded_on, assessment_id, author_uid, author_name) values
+  ('DF-PHY-1',  'de000000-0000-4000-8000-0000000a0001', 'P-PHY-01', 36, '{O}',     'filling',    'existing', current_date - 30, null,        'de000000-0000-4000-8000-000000000113', 'الطبيب — PHY'),
+  ('DF-DEN-1',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 16, '{O}',     'filling',    'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-2',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 14, '{D}',     'caries',     'existing', current_date - 3,  'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-3',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 11, '{B}',     'veneer',     'planned',  current_date - 3,  'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-4',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 21, '{}',      'crown',      'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-5',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 24, '{O}',     'filling',    'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-6',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 26, '{}',      'root_canal', 'done',     current_date - 7,  null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-7',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 26, '{}',      'crown',      'planned',  current_date - 3,  'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-8',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 36, '{M,O}',   'caries',     'existing', current_date - 3,  'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-9',  'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 37, '{O}',     'filling',    'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-10', 'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 45, '{B}',     'watch',      'existing', current_date - 3,  'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-11', 'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 46, '{}',      'implant',    'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN'),
+  ('DF-DEN-12', 'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', 48, '{}',      'missing',    'existing', current_date - 60, null,        'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN');
+
+insert into public.prescriptions (prescription_id, organization_id, patient_id, prescribed_on, items, notes, assessment_id, author_uid, author_name) values
+  ('RX-PHY-1', 'de000000-0000-4000-8000-0000000a0001', 'P-PHY-01', current_date - 7,
+   '[{"name":"Ibuprofen","dose":"400 mg","frequency":"3 مرات يوميًا","duration":"5 أيام","notes":"بعد الأكل"}]', null, null,
+   'de000000-0000-4000-8000-000000000113', 'الطبيب — PHY'),
+  ('RX-DEN-1', 'de000000-0000-4000-8000-0000000a0002', 'P-DEN-01', current_date - 3,
+   '[{"name":"Amoxicillin","dose":"500 mg","frequency":"كل 8 ساعات","duration":"7 أيام"},{"name":"Paracetamol","dose":"500 mg","frequency":"عند الألم","duration":"3 أيام"}]',
+   'الحضور لتركيب التاج بعد أسبوعين', 'ASM-DEN-1', 'de000000-0000-4000-8000-000000000123', 'الطبيب — DEN');
+
 -- A platform event (organization_id NULL): only the system context sees it.
 insert into public.audit_events (organization_id, actor_uid, actor_role, action, table_name, target_type, result, payload)
 values (null, 'de000000-0000-4000-8000-000000000001', 'super_admin', 'dev_seed_applied', 'organizations', 'platform', 'success', '{"source":"db/seed/dev.sql"}');

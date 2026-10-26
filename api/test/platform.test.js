@@ -203,7 +203,7 @@ test('create organization: validation errors leave nothing behind', async () => 
     [{ ...NEW_ORG, slug: 'demo-dental' }, 409, 'slug_taken'],
     [{ ...NEW_ORG, specialty_code: 'cardio' }, 400, 'invalid_specialty'],
     [{ ...NEW_ORG, modules: ['core.patients', 'physio.sessions'] }, 400, 'module_dependency'],
-    [{ ...NEW_ORG, modules: ['core.patients', 'dental.chart'] }, 400, 'module_unavailable'],
+    [{ ...NEW_ORG, modules: ['core.patients', 'core.appointments', 'core.billing', 'core.branches', 'dental.chart', 'dental.procedures'] }, 400, 'module_unavailable'],
     [{ ...NEW_ORG, modules: ['core.nope'] }, 400, 'unknown_module'],
     [{ ...NEW_ORG, plan_id: 'nope' }, 400, 'invalid_plan'],
     [{ ...NEW_ORG, plan_id: archived }, 400, 'invalid_plan'],
@@ -426,7 +426,8 @@ test('modules: dependency validation; disabling keeps rows; audited diff', async
   assert.equal(dep.body.error.code, 'module_dependency');
   assert.match(dep.body.error.message, /physio\.sessions needs core\.appointments/);
   assert.equal((await sa.put(url, { codes: 'core.patients' })).status, 400);
-  assert.equal((await sa.put(url, { codes: [...PHYSIO_ACTIVE, 'dental.chart'] })).body.error.code, 'module_unavailable');
+  // dental.procedures is still 'planned' (dental.chart is active since 0018).
+  assert.equal((await sa.put(url, { codes: [...PHYSIO_ACTIVE, 'dental.chart', 'dental.procedures'] })).body.error.code, 'module_unavailable');
 
   const fewer = PHYSIO_ACTIVE.filter((c) => !c.startsWith('physio.') && c !== 'core.reports');
   const res = await sa.put(url, { codes: fewer });

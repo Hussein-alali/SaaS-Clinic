@@ -464,7 +464,7 @@ router.get('/slug-available', async (req, res) => {
 
 router.get('/specialties', async (req, res) => {
   const { rows } = await req.app.locals.db.query(
-    `select s.id, s.code, s.name_ar, s.name_en, s.status,
+    `select s.id, s.code, s.name_ar, s.name_en, s.status, s.diagnosis_form,
             coalesce(array_agg(m.code order by m.code) filter (where m.code is not null), '{}') as default_modules
        from public.specialties s
        left join public.specialty_modules sm on sm.specialty_id = s.id
@@ -473,6 +473,31 @@ router.get('/specialties', async (req, res) => {
       order by s.code`,
   );
   res.json(rows);
+});
+
+// PATCH {diagnosis_form}: which diagnosis and patient file the clinics of
+// this specialty use (physio | dental | general; 0018). Audited.
+const DIAGNOSIS_FORMS = ['physio', 'dental', 'general'];
+router.patch('/specialties/:code', async (req, res) => {
+  const { db } = req.app.locals;
+  const body = bodyOf(req);
+  const { rows: [spec] } = await db.query(
+    'select id, code, name_ar, name_en, status, diagnosis_form from public.specialties where code = $1', [req.params.code]);
+  if (!spec) throw notFound('specialty_not_found', 'Specialty not found');
+  const form = body.diagnosis_form;
+  if (!DIAGNOSIS_FORMS.includes(form)) {
+    throw badRequest('invalid_diagnosis_form', `diagnosis_form must be one of ${DIAGNOSIS_FORMS.join(', ')}`);
+  }
+  if (form !== spec.diagnosis_form) {
+    await db.withContext({ userId: req.user.id, system: true }, async (client) => {
+      await client.query('update public.specialties set diagnosis_form = $2 where id = $1', [spec.id, form]);
+      await audit(client, req, {
+        action: 'specialty.update', tableName: 'specialties', rowPk: spec.id, targetType: 'specialty', targetId: spec.code,
+        payload: { code: spec.code, changes: { diagnosis_form: { from: spec.diagnosis_form, to: form } } },
+      });
+    });
+  }
+  res.json({ ...spec, diagnosis_form: form });
 });
 
 router.get('/modules', async (req, res) => {

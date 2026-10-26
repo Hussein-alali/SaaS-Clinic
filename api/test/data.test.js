@@ -519,10 +519,11 @@ test('the whitelist is exactly the clinic tables of 0003 (FORCE RLS), never a pl
     return h.app.locals.catalog.tables.keys();
   })())].sort();
   assert.deepEqual(tables, [
-    'audit_events', 'bookings', 'branches', 'campaigns', 'clinic_settings', 'custom_sections', 'departments',
-    'doctors', 'invoices', 'packages', 'patient_files', 'patient_schedules', 'patient_subscriptions', 'patients',
-    'payment_receipts', 'payments', 'receptionists', 'sessions', 'staff', 'template_categories', 'template_usage',
-    'therapists', 'treatment_methods', 'treatment_templates', 'treatments',
+    'assessments', 'audit_events', 'bookings', 'branches', 'campaigns', 'clinic_settings', 'custom_sections',
+    'dental_findings', 'departments', 'doctors', 'invoices', 'packages', 'patient_files', 'patient_schedules',
+    'patient_subscriptions', 'patients', 'payment_receipts', 'payments', 'prescriptions', 'receptionists',
+    'sessions', 'staff', 'template_categories', 'template_usage', 'therapists', 'treatment_methods',
+    'treatment_templates', 'treatments',
   ]);
 });
 

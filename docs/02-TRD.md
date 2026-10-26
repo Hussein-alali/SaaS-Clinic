@@ -174,7 +174,7 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 
 | Method & path | الوصف |
 |---|---|
-| `GET /api/orgs/resolve?slug=` | عام. `200 {id, slug, name, status, specialty_code, modules:[code], settings:{display_name, subtitle, logo, primary_color}}`. العيادة الموقوفة تعيد `{slug, status:"suspended"}` فقط، والمغلقة أو غير الموجودة تعيد `404` |
+| `GET /api/orgs/resolve?slug=` | عام. `200 {id, slug, name, status, specialty_code, diagnosis_form, modules:[code], settings:{display_name, subtitle, logo, primary_color}}` (`diagnosis_form` ∈ `physio`/`dental`/`general`: نموذج التشخيص وملف المريض، `0018`). العيادة الموقوفة تعيد `{slug, status:"suspended"}` فقط، والمغلقة أو غير الموجودة تعيد `404` |
 | `GET /api/orgs/current` | عضو العيادة: العيادة + `role` + `branches` المسموحة + `current_branch_id` |
 
 ### البيانات (بديل PostgREST)
@@ -248,7 +248,8 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | `PUT /api/platform/organizations/:id/subscription` | `{plan_id, status, period_start, period_end, notes}` (يدوي) |
 | `POST /api/platform/organizations/:id/invitations` | دعوة مدير/موظف لأي عيادة |
 | `GET /api/platform/slug-available?slug=` | `{available, reason}` |
-| `GET /api/platform/specialties`، `GET /api/platform/modules`، `GET/POST/PATCH /api/platform/plans` | الكتالوجات |
+| `GET /api/platform/specialties`، `GET /api/platform/modules`، `GET/POST/PATCH /api/platform/plans` | الكتالوجات (التخصص مع `diagnosis_form`) |
+| `PATCH /api/platform/specialties/:code` | `{diagnosis_form: physio\|dental\|general}` → التخصص؛ `400 invalid_diagnosis_form`، `404 specialty_not_found`؛ مُدقَّق `specialty.update` بالتغيير (`0018`) |
 | `GET /api/platform/audit?organization_id=&actor=&action=&from=&to=` | سجل التدقيق مع صفحات |
 | `GET /api/platform/errors?status=open\|resolved\|all` | مجموعات الأخطاء، الأحدث أولًا (`{data, count}`) |
 | `GET /api/platform/errors/:fingerprint` | المجموعة + آخر 20 عينة |
@@ -318,6 +319,7 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | الملفات (تفصيل) | صلاحيات مأخوذة من سياسات Storage القديمة: القراءة والرفع لـ admin و receptionist و doctor و therapist؛ الاستبدال لـ admin و receptionist؛ الحذف لـ admin و receptionist، ولغيرهم ملفاتهم فقط. العرض المباشر للصور و PDF والنص و MP4 فقط، وغيرها كمرفق مع CSP sandbox. الروابط الموقّعة تتوقف عند إيقاف العيادة |
 | الترويسات | `X-Content-Type-Options`، `Referrer-Policy`، `X-Frame-Options: DENY`، و HSTS عند `COOKIE_SECURE=true`؛ لا تُخدم ملفات dotfiles؛ **Content-Security-Policy** ✅ (المراجعة الأمنية 25 أكتوبر): يكتبها البناء (`scripts/build.mjs`) في `<meta>` أول `dist/index.html`، ويرسلها الـ API ترويسةً لصفحات الواجهة مع `frame-ancestors 'none'` (`api/src/static.js`). `script-src 'self'` + hash كل سكربت مضمَّن (يُحسب عند البناء بعد تحويل CRLF إلى LF) + ملفات الـ CDN بعينها (React من unpkg، ومكتبة Excel من jsDelivr)، بلا `'unsafe-inline'` ولا `'unsafe-eval'`؛ `connect-src 'self'`، `object-src 'none'`، `base-uri`/`form-action 'self'`؛ الأنماط `'unsafe-inline'` (React و `<style>` نافذة الطباعة). **لا معالجات أحداث مضمَّنة** (`onclick=""`) ولا روابط `javascript:` (تُمنع)، وأي سكربت CDN جديد له SRI ويُكتب عنوانه نصًّا في المصدر فيدخل السياسة. كل اختبار e2e يفشل عند أي مخالفة (`e2e/fixtures.cjs`) |
 | سلامة سجل التدقيق | `0004_audit_integrity`: خارج سياق النظام يضبط trigger قيم `id` و `actor_uid` و `actor_role` و `created_at` بنفسه، فلا يستطيع عضو عيادة تزوير صفوف أو حجز معرّفات تكسر تدقيق العيادات الأخرى (ثغرة اكتشفتها المراجعة الأمنية وأُصلحت) |
+| السجلات السريرية (`0018`) | `assessments` و `dental_findings` و `prescriptions`: admin و doctor و therapist فقط (الاستقبال يرى البيانات الشخصية والمواعيد والفواتير لا السجل السريري، قرار المالك 26 أكتوبر)؛ الوصفات يكتبها admin و doctor؛ المؤلف من الجلسة لا من العميل؛ نقاط الألم إحداثيات فقط لا صور؛ غير مقيدة بالفرع (سجل المريض واحد)؛ `dental_findings` و `prescriptions` تُرفض بـ `403 module_disabled` في عيادة بلا وحدتها |
 | الحسابات المشتركة | `create-user` يربط فقط عضوًا سابقًا في نفس العيادة؛ `reset-password` لا يمس حسابًا مشتركًا مع عيادة أخرى أو المنصة؛ `staff.auth_uid` لا يُوثق به في عمليات الحسابات؛ قبول الدعوة لا يستبدل كلمة مرور حساب موجود |
 | الإعدادات الآمنة | `COOKIE_SECURE` افتراضيًا `true` عند `NODE_ENV=production` (cookie آمن + HSTS)؛ أسرار التطوير المدمجة مقبولة فقط على النطاقات المحلية (`localhost`، `*.localhost`، `*.test`، `127.x`)؛ فحص الطول قبل كل regex للبريد (حماية من ReDoS) |
 | التدقيق (NFR-007) ✅ | كل عملية ناجحة في `/api/admin` و `/api/org` و `/api/invitations` و `/api/platform` تكتب `audit_events` في نفس الـ transaction. المحاولات المرفوضة لا تُسجل بعد |
@@ -443,3 +445,4 @@ scripts/pw-cdn.cjs          Playwright: يخدم سكربتات CDN (React، Bab
 | 25 أكتوبر 2026 | S10: أساس الـ Webhooks (`webhooks.js`، `POST /api/webhooks/:provider`، التوقيع ونافذة 5 دقائق ومنع التكرار والمعالجة الخلفية). (هذا الـ commit) |
 | 25 أكتوبر 2026 | قسم «الجاهزية للتوسع» (10 متطلبات دائمة)؛ إصلاحات مراجعة S1–S10: مهلة المهام وحدود SMTP، `mail_log` من Cron، توقيع معرّف الحدث، إعادة قراءة السجل الأقدم عند التحديث، تدوير النسخ، فحص صحة النشر بالإصدار، الحد بلا IP، مفتاح الدفع، `FILES_DIR` في الإنتاج، تنبيه «انتهى الخطر»، فحص migrations من `0016`، `0016_invoices_rpc_org`. (هذا الـ commit) |
 | 25 أكتوبر 2026 | المراجعة الأمنية: CSP (البناء + ترويسة الـ API)، `safeUrl` و `0017_safe_file_urls` (XSS)، SRI لمكتبة Excel، IP الدفع من الخادم، `PGPASSWORD` في أدوات النسخ، صلاحيات النسخ، `server.js --dev`، `multer`/`body-parser`. (هذا الـ commit) |
+| 26 أكتوبر 2026 | السجلات السريرية حسب التخصص (الأساس): `diagnosis_form` في `resolve`/`current`، `PATCH /api/platform/specialties/:code`، صلاحيات الجداول الثلاثة وربطها بالوحدات. (هذا الـ commit) |

@@ -78,6 +78,9 @@
 | `treatment_templates`, `template_categories`, `template_versions`, `template_usage`, `treatment_methods` | قوالب العلاج الطبيعي | ✓ (`null` = قالب عام للمنصة، للقراءة فقط) | — |
 | `campaigns`, `custom_sections` | حملات واتساب وأقسام مخصصة | ✓ | — |
 | `audit_events` | سجل التدقيق | ✓ (`null` لعمليات المنصة) | — |
+| `assessments` (`0018`) | التشخيص حسب التخصص (`kind`: `physio` / `dental` / `general`)؛ نقاط الألم إحداثيات فقط | ✓ | اختياري للتقارير؛ **غير مقيد بالفرع** (سجل المريض واحد في كل الفروع، مثل `patients`) |
+| `dental_findings` (`0018`) | مخطط الأسنان: حدث لكل سن (FDI)، والمخطط وتاريخ كل سن محسوبان منه | ✓ | اختياري، غير مقيد |
+| `prescriptions` (`0018`) | الوصفات الطبية (الأسنان والعام) | ✓ | اختياري، غير مقيد |
 
 ## Tables
 
@@ -184,6 +187,37 @@
 
 الجدول الحالي + `organization_id`. `storage_path` نسبي (مثل `patients/P-.../file.pdf`)، والملف الفعلي في `FILES_DIR/<organization_id>/patient-files/<storage_path>`. `unique (organization_id, storage_path)`. الملفات تبقى خاصة ولا تُخدم إلا عبر `/api/files/*`. `file_url` (و `payment_receipts.file_url`) يقبل `null` أو `''` أو `http(s)://…` أو مسارًا في الموقع (`/…`، لا `//host`) فقط: CHECK `patient_files_file_url_safe` / `payment_receipts_file_url_safe` (`0017`، NOT VALID)، لأن العضو يكتبه وعضو آخر يفتحه.
 
+### `specialties.diagnosis_form` (`0018`)
+
+`text not null default 'general'` ∈ `physio` | `dental` | `general`: نموذج التشخيص وملف المريض لعيادات هذا التخصص. يختاره Super Admin (`PATCH /api/platform/specialties/:code`، مُدقَّق `specialty.update`)؛ تخصص جديد عام حتى يُغيَّر. `/api/orgs/resolve` و `/api/orgs/current` يعيدانه في `diagnosis_form`.
+
+### `assessments` (جديد — `0018`)
+
+| الحقل | النوع | ملاحظات |
+|---|---|---|
+| `assessment_id` | text PK | `new_record_id('ASM-')` |
+| `organization_id` | uuid | `app_org_id()`؛ FK مركب `(organization_id, patient_id)` → `patients` on delete cascade |
+| `branch_id` | text | `app_branch_id()`، للتقارير فقط |
+| `patient_id` | text | إلزامي |
+| `kind` | text | `physio` / `dental` / `general` (يُعرض كل سجل بنموذجه ولو تغيّر نموذج التخصص لاحقًا) |
+| `visit_date` | date | `current_date` |
+| `clinician_id`, `clinician_name` | text | الأخصائي/الطبيب المسؤول المختار في النموذج |
+| `complaint`, `diagnosis`, `notes` | text | ≤ 4000 / 4000 / 8000 |
+| `data` | jsonb | باقي حقول النموذج (العلاج الطبيعي: الشد والأجهزة والتقنيات اليدوية؛ الأسنان: الفحص والإجراء والزيارة القادمة؛ العام: الفحص والخطة والمتابعة)؛ كائن ≤ 32 KB |
+| `markers` | jsonb | **نقاط الألم إحداثيات فقط:** `[[x, y], …]` نسبة مئوية (0–100، رقم عشري واحد) من `assets/body-diagram.jpeg`؛ ≤ 200 نقطة؛ `valid_body_markers()`. الصورة لا تُخزن، والمنظر (أمام/خلف/جانب) يُحسب من `x` |
+| `author_uid`, `author_name` | | من الجلسة (trigger `clinical_author_stamp`) ولا يتغيران |
+| `created_at`, `updated_at` | timestamptz | |
+
+فهرس `(patient_id, visit_date desc, created_at desc)` (معرّف المريض فريد على المنصة) و `(organization_id, created_at desc)`.
+
+### `dental_findings` (جديد — `0018`)
+
+`finding_id` (`DF-`)، `patient_id`، `tooth smallint` FDI: دائمة `11–48` (الربع 1–4، السن 1–8) ولبنية `51–85` (الربع 5–8، السن 1–5)؛ `surfaces text[]` ⊆ `M O D B L`؛ `condition` ∈ `caries`, `fracture`, `watch`, `filling`, `crown`, `root_canal`, `implant`, `veneer`, `bridge`, `sealant`, `extraction`, `missing`؛ `status` ∈ `existing` (موجود عند الفحص) / `planned` (مخطط) / `done` (أُنجز)؛ `notes` ≤ 1000؛ `assessment_id` (زيارة اختيارية، `on delete set null`)؛ `recorded_on`؛ المؤلف من الجلسة. **المخطط محسوب:** آخر حالة لكل (سن، حالة)، ولون السن: مفقود ← يحتاج انتباهًا (تسوس، كسر، مراقبة) ← مخطط ← مُرمَّم. فهرس `(patient_id, tooth, recorded_on desc, created_at desc)`.
+
+### `prescriptions` (جديد — `0018`)
+
+`prescription_id` (`RX-`)، `patient_id`، `prescribed_on`، `items jsonb` = 1–30 دواء `{name, dose, frequency, duration, notes}` (الاسم إلزامي، نصوص ≤ 200، لا مفاتيح أخرى؛ `valid_rx_items()`)، `notes` ≤ 2000، `assessment_id` اختياري، المؤلف من الجلسة.
+
 ### `audit_events` (معدل)
 
 الحقول الحالية + `organization_id uuid null` + `target_type text` + `target_id text` + `result text` (`success` / `denied` / `error`). **Index:** `(organization_id, created_at desc)`، `(actor_uid, created_at desc)`.
@@ -257,6 +291,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | `invoices`, `payments` | admin, receptionist (فرعه) | admin, receptionist | admin | admin (مع سجل تدقيق) |
 | `sessions`, `treatments` | admin, doctor, therapist (فرعه/مرضاه) + `org_module_enabled('physio.sessions')` | doctor, therapist | doctor, therapist | admin |
 | `patient_files` + الملفات | أعضاء العيادة حسب الدور؛ الملف في مجلد العيادة على القرص | admin, receptionist, doctor, therapist | — | المرفوع أو admin |
+| `assessments`, `dental_findings` (`0018`) | admin, doctor, therapist (**لا الاستقبال**، قرار المالك) | admin, doctor, therapist | admin, doctor, therapist | admin, doctor، أو كاتب الصف |
+| `prescriptions` (`0018`) | admin, doctor, therapist | admin, doctor | admin, doctor | admin, doctor، أو كاتبها |
 | `audit_events` | Super Admin (`/api/platform/audit`)؛ `admin` لعيادته | الـ API والدوال، وأعضاء العيادة عبر `/api/data` لعيادتهم (مثل `patient.edit` من الواجهة)؛ trigger `0004` يفرض `id` و `actor_uid` و `actor_role` و `created_at` خارج سياق النظام | لا أحد | لا أحد |
 
 **قاعدة عامة لكل جدول عيادة:** سياسة `tenant_isolation` RESTRICTIVE (القاعدة 6 في الأعلى)، و `branch_scope` للجداول المرتبطة بفرع، فوق سياسات الأدوار الحالية المبنية على `app_role()`. Super Admin **لا يرى بيانات المرضى**: سياق العيادة لا يُضبط له إلا إن كان عضوًا فيها (BR-008).
@@ -327,7 +363,8 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 15. ✅ `0015_indexes.sql` — `(organization_id, branch_id, date)` على `bookings` و `sessions`، و `(organization_id, branch_id, created_at)` على `invoices` و `payments` (نافذة البدء، S9). لا فهارس `(organization_id, patient_id)`: `patient_id` فريد على المنصة (`patients_pkey`) وفهارسه الحالية تكفي.
 16. ✅ `0016_invoices_rpc_org.sql` — `list_invoices_filtered` (نفس التوقيع والنتيجة) يذكر `i.organization_id = app_org_id()` في قراءاته الست للفواتير، فيستعمل فهرس `0015` بدل مسح فواتير كل العيادات (صيغة `OR` في `tenant_isolation`). قاعدة لكل دالة جديدة: اذكر العيادة صراحة بجانب RLS.
 17. ✅ `0017_safe_file_urls.sql` — CHECK (NOT VALID) على `patient_files.file_url` و `payment_receipts.file_url`: http(s) أو مسار في الموقع فقط (XSS مخزَّن عبر `javascript:`، المراجعة الأمنية 25 أكتوبر؛ `db/test/safe_urls.test.js`).
-18. `0018_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**. فحص expand/contract في `migrate.js` يشمل من `0016` أيضًا حذف الدوال والإجراءات والـ views والقيود والقيم الافتراضية، وتغيير النوع المكتوب على سطرين.
+18. ✅ `0018_clinical_records.sql` — `specialties.diagnosis_form`؛ `dental.chart` و `general.visits` و `general.prescriptions` نشطة (الوصفات تعتمد على المرضى فقط وضمن افتراضيات الأسنان) وتُفعّل لعيادات تخصصها؛ `assessments` و `dental_findings` و `prescriptions` مع RLS والتحقق والمؤلف من الجلسة (`db/test/clinical.test.js`، `api/test/clinical.test.js`). ربط الجداول بالوحدات في الـ API: `assessments` ← `core.patients`، `dental_findings` ← `dental.chart`، `prescriptions` ← `general.prescriptions`.
+19. `0019_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**. فحص expand/contract في `migrate.js` يشمل من `0016` أيضًا حذف الدوال والإجراءات والـ views والقيود والقيم الافتراضية، وتغيير النوع المكتوب على سطرين.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -364,3 +401,4 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 25 أكتوبر 2026 | `idempotency_keys` لمعرّفات أحداث الـ Webhooks (نطاق `webhook:<name>`، 30 يومًا) (S10). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0016_invoices_rpc_org`؛ أنماط فحص expand/contract الإضافية من `0016` (مراجعة S1–S10). (هذا الـ commit) |
 | 25 أكتوبر 2026 | `0017_safe_file_urls` (روابط الملفات http(s) أو مسار الموقع فقط)؛ عنوان IP في `payments` يملؤه الخادم (المراجعة الأمنية). (هذا الـ commit) |
+| 26 أكتوبر 2026 | `0018_clinical_records`: نموذج التشخيص لكل تخصص، جداول `assessments` (نقاط الألم إحداثيات) و `dental_findings` (FDI) و `prescriptions`، صلاحياتها والوحدات. (هذا الـ commit) |

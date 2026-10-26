@@ -43,7 +43,7 @@ const isValidSlug = (slug) => typeof slug === 'string' && SLUG_RE.test(slug);
 async function findOrganization(db, slug) {
   if (!isValidSlug(slug)) return null;
   const { rows } = await db.query(
-    `select o.id, o.slug, o.name, o.status, o.plan_id, s.code as specialty_code
+    `select o.id, o.slug, o.name, o.status, o.plan_id, s.code as specialty_code, s.diagnosis_form
        from organizations o
        left join specialties s on s.id = o.primary_specialty_id
       where lower(o.slug) = $1`,
@@ -164,6 +164,8 @@ async function organizationPublicInfo(db, org) {
     name: org.name,
     status: org.status,
     specialty_code: org.specialty_code || null,
+    // Which diagnosis and patient file the clinic uses (0018): physio | dental | general.
+    diagnosis_form: org.diagnosis_form || 'general',
     modules: modules.rows.map((r) => r.code),
     settings: {
       display_name: s.name ?? null,

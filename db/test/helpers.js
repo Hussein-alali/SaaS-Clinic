@@ -174,7 +174,10 @@ async function catalog(c) {
               from pg_index i
               cross join lateral unnest(i.indkey::int2[]) with ordinality k(attnum, ord)
               join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
-             where i.indrelid = c.oid and i.indisprimary) as pk
+             where i.indrelid = c.oid and i.indisprimary) as pk,
+           (select coalesce(array_agg(a.attname::text order by a.attnum), '{}')
+              from pg_attribute a join pg_type t on t.oid = a.atttypid
+             where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped and t.typcategory = 'A') as array_cols
       from pg_class c
       join pg_attribute oa on oa.attrelid = c.oid and oa.attname = 'organization_id' and not oa.attisdropped
      where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
@@ -194,10 +197,17 @@ async function insertCopy(c, table, row, overrides = {}) {
   const values = { ...row, ...overrides };
   for (const k of Object.keys(values)) if (values[k] === undefined) delete values[k];
   const cols = Object.keys(values);
+  // A PostgreSQL array column (dental_findings.surfaces text[]) takes the JS
+  // array as is; json/jsonb columns take JSON text.
+  const { rows: arrays } = await c.query(
+    `select column_name from information_schema.columns
+      where table_schema = 'public' and table_name = $1 and data_type = 'ARRAY'`, [table]);
+  const arrayCols = new Set(arrays.map((r) => r.column_name));
   const sql = `insert into public.${ident(table)} (${cols.map(ident).join(', ')})
                values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`;
   return c.query(sql, cols.map((k) => {
     const v = values[k];
+    if (arrayCols.has(k)) return v;
     return v !== null && typeof v === 'object' && !(v instanceof Date) ? JSON.stringify(v) : v;
   }));
 }

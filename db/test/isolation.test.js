@@ -112,7 +112,7 @@ test('catalog: every table with organization_id is a clinic table under FORCE RL
     const unclassified = all.map((r) => r.relname)
       .filter((n) => !clinic.has(n) && !PLATFORM_TABLES.includes(n) && n !== 'schema_migrations');
     assert.deepEqual(unclassified, [], 'public tables without organization_id that are not platform tables');
-    assert.equal(cat.clinic.length, 25);
+    assert.equal(cat.clinic.length, 28, '25 + assessments, dental_findings, prescriptions (0018)');
 
     for (const t of cat.clinic) {
       assert.ok(t.rls && t.forced, `${t.table}: RLS must be enabled and FORCED`);
@@ -260,10 +260,12 @@ test('demo-physio admin: INSERT into demo-dental is refused; UPDATE/DELETE of de
   });
 });
 
+// json/jsonb values as JSON text; a PostgreSQL array column (text[]) as is.
 function insertSql(table, row) {
   const cols = Object.keys(row);
+  const arrays = new Set(tables.find((t) => t.table === table).array_cols || []);
   return [`insert into public.${ident(table)} (${cols.map(ident).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
-    cols.map((k) => (row[k] !== null && typeof row[k] === 'object' && !(row[k] instanceof Date) ? JSON.stringify(row[k]) : row[k]))];
+    cols.map((k) => (!arrays.has(k) && row[k] !== null && typeof row[k] === 'object' && !(row[k] instanceof Date) ? JSON.stringify(row[k]) : row[k]))];
 }
 
 test('app.org_id of a clinic the user is not a member of: no rows (except public branding) and no writes', async () => {

@@ -17,6 +17,8 @@ const PHYSIO_MODULES = [
   'core.settings', 'core.staff', 'physio.sessions', 'physio.templates', 'physio.treatment_plans',
 ];
 const CORE_MODULES = PHYSIO_MODULES.filter((m) => m.startsWith('core.'));
+// The tooth chart and prescriptions are active since 0018; dental.procedures is still 'planned'.
+const DENTAL_MODULES = [...CORE_MODULES, 'dental.chart', 'general.prescriptions'];
 
 test('resolve: active clinic → id, status, specialty, enabled modules, public settings', async () => {
   const res = await h.client().get('/api/orgs/resolve?slug=demo-physio');
@@ -27,6 +29,7 @@ test('resolve: active clinic → id, status, specialty, enabled modules, public 
     name: 'عيادة العلاج الطبيعي التجريبية',
     status: 'active',
     specialty_code: 'physio',
+    diagnosis_form: 'physio',
     modules: PHYSIO_MODULES,
     settings: { display_name: 'عيادة العلاج الطبيعي التجريبية', subtitle: 'بيانات تجريبية', logo: null, primary_color: '#7BBDE8' },
   });
@@ -34,10 +37,11 @@ test('resolve: active clinic → id, status, specialty, enabled modules, public 
   const plain = await h.request('GET', '/api/orgs/resolve?slug=DEMO-PHYSIO');
   assert.equal(plain.status, 200);
   assert.equal(plain.body.id, ORG.physio);
-  // dental: its specialty modules are 'planned' in the catalog, so only core.* is listed
+  // dental: core.* + the tooth chart and prescriptions (dental.procedures is 'planned', so not listed)
   const dental = await h.client().get('/api/orgs/resolve?slug=demo-dental');
   assert.equal(dental.body.specialty_code, 'dental');
-  assert.deepEqual(dental.body.modules, CORE_MODULES);
+  assert.equal(dental.body.diagnosis_form, 'dental');
+  assert.deepEqual(dental.body.modules, DENTAL_MODULES);
 });
 
 test('resolve: disabled modules and modules that are not active in the catalog are left out', async () => {
@@ -49,19 +53,19 @@ test('resolve: disabled modules and modules that are not active in the catalog a
   // enabled for the clinic, but 'planned' in the catalog
   await h.sql(
     `update organization_modules set enabled = true
-      where organization_id = $1 and module_id = (select id from modules where code = 'dental.chart')`,
+      where organization_id = $1 and module_id = (select id from modules where code = 'dental.procedures')`,
     [ORG.dental],
   );
   try {
     const physio = await h.client().get('/api/orgs/resolve?slug=demo-physio');
     assert.deepEqual(physio.body.modules, PHYSIO_MODULES.filter((m) => m !== 'core.reports'));
     const dental = await h.client().get('/api/orgs/resolve?slug=demo-dental');
-    assert.deepEqual(dental.body.modules, CORE_MODULES);
+    assert.deepEqual(dental.body.modules, DENTAL_MODULES);
   } finally {
     await h.sql(
-      `update organization_modules set enabled = (m.code <> 'dental.chart')
+      `update organization_modules set enabled = (m.code <> 'dental.procedures')
          from modules m
-        where m.id = organization_modules.module_id and m.code in ('core.reports', 'dental.chart')`,
+        where m.id = organization_modules.module_id and m.code in ('core.reports', 'dental.procedures')`,
     );
   }
 });
