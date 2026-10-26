@@ -339,11 +339,14 @@ function TreatmentPlanDetail({ plan, onBack, canDelete, onDelete }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// PhysioSessionForm — self-contained physiotherapy session form added
-// inside خطط العلاج. Captures therapist/patient, diagnosis, traction
-// toggles, modalities, manual techniques, and interactive body
-// locations. Markers + form state are persisted per patient in
-// localStorage so reopening the form restores the last session.
+// PhysioSessionForm — the physiotherapy diagnosis (تشخيص), opened from
+// خطط العلاج or from the patient file. Captures therapist/patient,
+// diagnosis, traction toggles, modalities, manual techniques, and the pain
+// points on the body picture. Saved in the database (assessments, kind
+// physio; 0018): each save of a new diagnosis is a dated record, the pain
+// points as coordinates only. The form starts from the patient's latest
+// diagnosis. It used to live in this device's localStorage only: such a
+// draft is offered once and moved to the database on save.
 // ═══════════════════════════════════════════════════════════════════
 const PHYSIO_MODALITIES = [
   "TENS / FS / IF",
@@ -356,24 +359,8 @@ const PHYSIO_MODALITIES = [
   "Laser",
 ];
 
-const PHYSIO_EMPTY = {
-  diagnosis: "",
-  cervical:  { on: false, mode: null },  // supine | sitting
-  thll:      { on: false, mode: null },  // unilat | Bilat
-  thpl:      { on: false, mode: null },  // flat   | 90/90
-  shortWave: false,
-  tractionNotes: "",
-  modalities: {},                        // { [name]: true }
-  modalitiesNotes: "",
-  nGlide: false,
-  nGlideNotes: "",
-  msRelease: "",
-  positioning: "",
-  exercises: "",
-  manualNotes: "",
-  markers: [],                           // [{ view, x, y }]
-};
-
+// The old per-device storage of the form (before 0018): read to move a
+// draft into the database, then removed.
 function physioStoreKey(patientId) {
   return `physio-session:${patientId || "_draft"}`;
 }
@@ -442,7 +429,7 @@ const PhysioTA = (props) => (
     }}/>
 );
 
-function PhysioSessionForm({ onBack }) {
+function PhysioSessionForm({ onBack, initialPatientId = "", backLabel }) {
   window.useDataVersion && window.useDataVersion();
 
   const patients   = React.useMemo(
@@ -451,22 +438,39 @@ function PhysioSessionForm({ onBack }) {
   );
   const therapists = React.useMemo(() => DATA.therapists || [], [DATA.therapists]);
 
-  const [patientId, setPatientId]     = React.useState("");
+  const [patientId, setPatientId]     = React.useState(initialPatientId);
   const [therapistId, setTherapistId] = React.useState("");
   const [form, setForm] = React.useState(PHYSIO_EMPTY);
+  // The record this form writes: null = a new diagnosis (a dated record);
+  // after the first save, the same record (no duplicate on a second click).
+  const [savedId, setSavedId] = React.useState(null);
+  const [startedFrom, setStartedFrom] = React.useState(null); // {kind: "latest"|"device", date}
+  const [saving, setSaving] = React.useState(false);
 
-  // Load any previously-saved session for this patient (markers +
-  // everything else). Blank patient falls back to a shared draft slot.
+  // The patient's latest diagnosis is the starting point; an old draft of
+  // this device (before 0018) comes first, to be moved to the database.
   React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(physioStoreKey(patientId));
-      if (raw) {
-        const saved = JSON.parse(raw);
-        setForm({ ...PHYSIO_EMPTY, ...saved });
-        return;
-      }
-    } catch (_) {}
+    let alive = true;
+    setSavedId(null);
+    setStartedFrom(null);
     setForm(PHYSIO_EMPTY);
+    if (!patientId) return;
+    let device = null;
+    try { const raw = localStorage.getItem(physioStoreKey(patientId)); if (raw) device = JSON.parse(raw); } catch (_) {}
+    if (device) {
+      setForm({ ...PHYSIO_EMPTY, ...device, markers: decodeMarkers(device.markers) });
+      setStartedFrom({ kind: "device" });
+      return;
+    }
+    ClinicalAPI.list("assessments", patientId).then(rows => {
+      if (!alive) return;
+      const latest = rows.find(r => r.kind === "physio");
+      if (!latest) return;
+      setForm(physioFormFromRow(latest));
+      if (latest.clinician_id) setTherapistId(id => id || latest.clinician_id);
+      setStartedFrom({ kind: "latest", date: latest.visit_date });
+    }).catch(() => {});
+    return () => { alive = false; };
   }, [patientId]);
 
   const update = (patch) => setForm(f => ({ ...f, ...patch }));
@@ -483,14 +487,26 @@ function PhysioSessionForm({ onBack }) {
     setForm(f => ({ ...f, [key]: { ...f[key], ...patch } }));
   }
 
-  function save() {
+  async function save() {
     if (!therapistId) { window.showToast && window.showToast(tt("اختر الأخصائي المسؤول"), "error"); return; }
     if (!patientId)   { window.showToast && window.showToast(tt("اختر المريض"), "error"); return; }
+    if (saving) return;
+    const therapist = therapists.find(t => (t.staff_id || t.id || t.name) === therapistId); // TherapistCombobox's id
+    setSaving(true);
     try {
-      localStorage.setItem(physioStoreKey(patientId), JSON.stringify(form));
-      window.showToast && window.showToast(tt("تم حفظ نموذج الجلسة"), "success");
-    } catch (_) {
-      window.showToast && window.showToast(tt("تعذّر الحفظ محليًا"), "error");
+      const row = await ClinicalAPI.save("assessments", physioRowFromForm(form, {
+        patientId, therapistId, therapistName: therapist ? therapist.name : null, id: savedId,
+      }));
+      setSavedId(row.assessment_id);
+      if (startedFrom && startedFrom.kind === "device") {
+        try { localStorage.removeItem(physioStoreKey(patientId)); } catch (_) {}
+        setStartedFrom(null);
+      }
+      window.showToast && window.showToast(tt("تم حفظ التشخيص في ملف المريض"), "success");
+    } catch (e) {
+      window.showToast && window.showToast(e.message || tt("تعذّر الحفظ"), "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -512,18 +528,30 @@ function PhysioSessionForm({ onBack }) {
   return (
     <Page>
       <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}>
-        <span>{tt("خطط العلاج")}</span><I.Chevron size={11}/>
+        <span>{backLabel || tt("خطط العلاج")}</span><I.Chevron size={11}/>
         <span style={{color:"var(--ink-700)"}}>{tt("تشخيص")}</span>
       </div>
       <div className="page-head">
         <h1 className="h1">{tt("تشخيص")}</h1>
         <div className="page-actions">
           <button className="btn btn-ghost" onClick={onBack}>{tt("رجوع")}</button>
-          <button className="btn btn-blue" onClick={save}><I.Check size={13}/> {tt("حفظ الجلسة")}</button>
+          <button className="btn btn-blue" onClick={save} disabled={saving} aria-busy={saving ? "true" : undefined}>
+            <I.Check size={13}/> {savedId ? tt("حفظ التعديلات") : tt("حفظ التشخيص")}
+          </button>
         </div>
       </div>
 
       <div style={{maxWidth: 980, margin: "0 auto"}}>
+        {startedFrom && startedFrom.kind === "device" && (
+          <div role="status" data-physio-start="device" style={{padding:"10px 14px",marginBottom:14,borderRadius:12,background:"#FBF3E6",border:"1px solid #F0D9A8",color:"#8A5A00",fontSize:13}}>
+            {tt("مسودة محفوظة على هذا الجهاز فقط لهذا المريض — احفظها لنقلها إلى ملفه فيراها الطاقم كله.")}
+          </div>
+        )}
+        {startedFrom && startedFrom.kind === "latest" && !savedId && (
+          <div role="status" data-physio-start="latest" style={{padding:"10px 14px",marginBottom:14,borderRadius:12,background:"var(--blue-50)",border:"1px solid var(--blue-100)",color:"var(--ink-700)",fontSize:13}}>
+            {tt("بدأ النموذج من آخر تشخيص ({date}). الحفظ يضيف تشخيصًا جديدًا بتاريخ اليوم ويبقى السابق في ملف المريض.", { date: fmtDate(startedFrom.date) })}
+          </div>
+        )}
 
         {/* 1. Patient & Therapist */}
         <PhysioCard title={tt("المريض والأخصائي")}>
@@ -631,83 +659,6 @@ function PhysioSessionForm({ onBack }) {
 
       </div>
     </Page>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// BodyDiagram — single-image overlay with percentage-based markers.
-// The image contains 4 figures in a horizontal row; the x% band
-// determines `view`. Click/tap adds a marker; clicking near an
-// existing one (within HIT_RADIUS %) removes it. Positions are physical
-// (left/top of the picture) on purpose: the picture is never mirrored.
-// ═══════════════════════════════════════════════════════════════════
-function BodyDiagram({ markers, onChange }) {
-  const wrapRef = React.useRef(null);
-  const HIT_RADIUS = 3; // percent of image dimension
-
-  function pointFromEvent(e) {
-    const el = wrapRef.current;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    const pt = (e.changedTouches && e.changedTouches[0])
-            || (e.touches && e.touches[0])
-            || e;
-    if (pt.clientX == null) return null;
-    const x = ((pt.clientX - rect.left) / rect.width)  * 100;
-    const y = ((pt.clientY - rect.top)  / rect.height) * 100;
-    if (x < 0 || x > 100 || y < 0 || y > 100) return null;
-    return { x, y };
-  }
-
-  function handleTap(e) {
-    const p = pointFromEvent(e);
-    if (!p) return;
-    const hitIdx = markers.findIndex(m =>
-      Math.hypot((m.x - p.x), (m.y - p.y)) < HIT_RADIUS
-    );
-    if (hitIdx >= 0) {
-      onChange(markers.filter((_, i) => i !== hitIdx));
-      return;
-    }
-    const view = p.x < 25 ? "left"
-               : p.x < 50 ? "back"
-               : p.x < 75 ? "front"
-               : "right";
-    onChange([...markers, { view, x: p.x, y: p.y }]);
-  }
-
-  return (
-    <div ref={wrapRef}
-      onClick={handleTap}
-      onTouchEnd={(e)=>{ e.preventDefault(); handleTap(e); }}
-      style={{
-        position: "relative",
-        width: "100%",
-        background: "#fff",
-        border: "1px solid var(--ink-200)",
-        borderRadius: 12,
-        overflow: "hidden",
-        userSelect: "none",
-        touchAction: "manipulation",
-        cursor: "crosshair",
-      }}>
-      <img src="/assets/body-diagram.jpeg" alt="Human body diagram"
-        draggable={false}
-        style={{width:"100%", display:"block", pointerEvents:"none"}}/>
-      {markers.map((m, i) => (
-        <div key={i} style={{
-          position: "absolute",
-          left: `${m.x}%`, top: `${m.y}%`,
-          width: 14, height: 14,
-          marginLeft: -7, marginTop: -7,
-          borderRadius: "50%",
-          background: "var(--red)",
-          border: "2px solid #fff",
-          boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
-          pointerEvents: "none",
-        }}/>
-      ))}
-    </div>
   );
 }
 

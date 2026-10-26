@@ -538,7 +538,8 @@ function Patients({ go }) {
   }, [myPatients, statusFilter, search]);
 
   if (view === "add") return <PatientAdd onCancel={()=>setView("list")} onSave={()=>setView("list")}/>;
-  if (view === "detail" && selected) return <PatientDetail p={selected} onBack={()=>setView("list")} go={go}/>;
+  // The patient file of the clinic's department (src/clinical.jsx PatientFile).
+  if (view === "detail" && selected) return <PatientFile p={selected} onBack={()=>setView("list")} go={go}/>;
 
   return (
     <Page>
@@ -1110,6 +1111,8 @@ function canEditPatient(role) {
 function PatientDetail({ p: pIn, onBack, go }) {
   const [tab, setTab] = React.useState("نظرة عامة");
   const [schedOpen, setSchedOpen] = React.useState(false);
+  // «تشخيص جديد» from the «التشخيص» tab: the physio diagnosis form, for this patient.
+  const [diagOpen, setDiagOpen] = React.useState(false);
   // The edit modal is owned here so it renders over the profile page (the
   // Patients-list copy at line ~668 is unreachable from the detail view).
   const [editOpen, setEditOpen] = React.useState(false);
@@ -1130,6 +1133,11 @@ function PatientDetail({ p: pIn, onBack, go }) {
   const avgPain = mySessions.length
     ? (mySessions.reduce((s, x) => s + (x.pain ?? x.pain_score ?? 0), 0) / mySessions.length).toFixed(1)
     : null;
+  if (diagOpen) {
+    return <PhysioSessionForm initialPatientId={pid} backLabel={p.name}
+      onBack={()=>{ setDiagOpen(false); setTab("التشخيص"); }}/>;
+  }
+  const tabs = ["نظرة عامة", ...(canReadClinical() ? ["التشخيص"] : []), "السجل", "خطة العلاج", "الجلسات", "الملفات", "الفواتير"];
   return (
     <Page>
       <div className="crumb" style={{cursor:"pointer"}} onClick={onBack}>
@@ -1200,7 +1208,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
           {/* tabs */}
           <div className="card" style={{padding:0,overflow:"hidden"}}>
             <div className="stepper" style={{borderBottom:"1px solid var(--ink-200)",padding:"0 18px",gap:4}}>
-              {["نظرة عامة","السجل","خطة العلاج","الجلسات","الملفات","الفواتير"].map(t=>(
+              {tabs.map(t=>(
                 <button key={t} onClick={()=>setTab(t)} style={{
                   border:"none",background:"transparent",padding:"14px 12px",
                   fontSize:13,fontWeight:500,whiteSpace:"nowrap",flexShrink:0,
@@ -1213,6 +1221,7 @@ function PatientDetail({ p: pIn, onBack, go }) {
 
             <div style={{padding:22}}>
               {tab==="نظرة عامة" && <PatientOverview p={p}/>}
+              {tab==="التشخيص" && <PhysioDiagnosisTab p={p} onNew={()=>setDiagOpen(true)}/>}
               {tab==="السجل" && <PatientHistory p={p}/>}
               {tab==="خطة العلاج" && <PatientTreatmentPlan p={p}/>}
               {tab==="الجلسات" && <SessionTimeline mini p={p}/>}

@@ -86,7 +86,7 @@ test("treatment plans, a plan, and the physio «Diagnosis» form in English", as
   await expect(main(page)).toContainText("Responsible therapist");
   await expect(main(page)).toContainText("Tap any spot to add a marker.");
   await expect(main(page)).toContainText("Marked spots: 0");
-  await main(page).getByRole("button", { name: "Save session" }).click();
+  await main(page).getByRole("button", { name: "Save diagnosis" }).click();
   await expect(page.getByRole("alert")).toHaveText("Choose the responsible therapist");
   // Labels sit at the start (left) of their row in English.
   const card = main(page).getByText("Patient and therapist", { exact: true });
