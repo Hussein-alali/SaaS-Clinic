@@ -441,7 +441,7 @@ function Sidebar({ active, onNav, role, user, isOpen, onClose }) {
       { id:"treatments",  label:tt("خطط العلاج"), icon: <I.Clipboard size={17}/> },
       { id:"sessions",    label:tt("جلسات العلاج"),icon: <I.Activity size={17}/> },
     ]},
-    { title: tt("المالية"), items: [
+    { title: ttc("nav", "المالية"), items: [
       { id:"payments", label:tt("المدفوعات والفواتير"), icon: <I.CreditCard size={17}/> },
       { id:"packages", label:tt("الباقات"),            icon: <I.Package size={17}/> },
     ]},
@@ -767,6 +767,21 @@ function Toast({ msg, kind="success" }) {
       <span style={{fontSize:13.5}}>{msg}</span>
     </div>
   );
+}
+
+// One toast at a time: a new one replaces the shown one and restarts the
+// clock, so an older toast's timer never closes a newer one.
+//   const [toast, showToast] = useToast();  showToast(msg, kind, ms = 4000)
+function useToast() {
+  const [toast, setToast] = React.useState(null);
+  const timer = React.useRef(null);
+  React.useEffect(() => () => clearTimeout(timer.current), []);
+  const show = React.useCallback((msg, kind = "success", ms = 4000) => {
+    clearTimeout(timer.current);
+    setToast({ msg, kind });
+    timer.current = setTimeout(() => setToast(null), ms);
+  }, []);
+  return [toast, show];
 }
 
 // ── Page container ─────────────────────────────────────────────
@@ -1776,6 +1791,7 @@ window.EmptyState = EmptyState;
 window.SkeletonRow = SkeletonRow;
 window.Modal = Modal;
 window.Toast = Toast;
+window.useToast = useToast;
 window.Page = Page;
 window.StatCard = StatCard;
 

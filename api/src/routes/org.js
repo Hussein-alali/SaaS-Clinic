@@ -59,6 +59,7 @@ router.post('/invitations', async (req, res) => {
     const r = await invites.createInvitation(client, {
       orgId: ctx.orgId, email: input.email, role: input.role, branchIds: input.branchIds, invitedBy: ctx.userId,
     });
+    await invites.limitSends(db, res, { orgId: ctx.orgId, email: r.invitation.email });
     await writeAudit(client, {
       orgId: ctx.orgId,
       actorUid: ctx.userId,
@@ -84,6 +85,7 @@ router.post('/invitations/:id/resend', async (req, res) => {
   const ctx = req.ctx;
   const { invitation, token } = await db.withContext(ctx, async (client) => {
     const r = await invites.resendInvitation(client, { orgId: ctx.orgId, id });
+    await invites.limitSends(db, res, { orgId: ctx.orgId, email: r.invitation.email });
     await writeAudit(client, {
       orgId: ctx.orgId,
       actorUid: ctx.userId,

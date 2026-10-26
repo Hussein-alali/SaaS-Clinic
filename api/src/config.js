@@ -4,7 +4,16 @@
 // `cd api && npm start` works against scripts/dev-db.sh; in production
 // (NODE_ENV=production) the API refuses to start without its secrets.
 
+const os = require('os');
 const path = require('path');
+
+function readReleaseFile() {
+  try {
+    return require('fs').readFileSync(path.resolve(__dirname, '..', '..', 'RELEASE'), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 const API_ROOT = path.resolve(__dirname, '..');
 
@@ -69,6 +78,10 @@ function loadConfig(env = process.env) {
   const filesSigningSecret = secret('FILES_SIGNING_SECRET', DEV_FILES_SECRET);
   const databaseUrl = str(env.DATABASE_URL, production ? '' : 'postgres://clinic_owner:clinic_owner_dev@127.0.0.1:54329/clinicsys');
   if (!databaseUrl) problems.push('DATABASE_URL is required in production');
+  // The default (api/uploads) sits inside releases/<name>/ on the server
+  // (scripts/deploy.sh): the clinic files would be gone after the next
+  // deploys. Production names the folder: APP_HOME/shared/files.
+  if (production && !str(env.FILES_DIR, '')) problems.push('FILES_DIR is required in production (a folder outside the releases, e.g. ~/clinicsys/shared/files)');
   if (production && jwtSecret && jwtSecret === filesSigningSecret) {
     problems.push('JWT_SECRET and FILES_SIGNING_SECRET must be different');
   }
@@ -76,6 +89,17 @@ function loadConfig(env = process.env) {
   const mailTransport = str(env.MAIL_TRANSPORT, production ? 'smtp' : 'file').toLowerCase();
   if (!['smtp', 'file'].includes(mailTransport)) problems.push('MAIL_TRANSPORT must be "smtp" or "file"');
   const smtpPort = int(env.SMTP_PORT, 587);
+
+  // Incoming webhooks (docs/06 S10): WEBHOOK_<NAME>_SECRET turns on
+  // POST /api/webhooks/<name> (lower case, "_" → "-"). None is set today.
+  const webhooks = {};
+  for (const [key, raw] of Object.entries(env)) {
+    const m = /^WEBHOOK_([A-Z0-9][A-Z0-9_]{0,38})_SECRET$/.exec(key);
+    const value = str(raw, '');
+    if (!m || !value) continue;
+    if (value.length < MIN_SECRET_LENGTH) problems.push(`${key} must be at least ${MIN_SECRET_LENGTH} characters`);
+    webhooks[m[1].toLowerCase().replace(/_/g, '-')] = value;
+  }
 
   if (problems.length) {
     const err = new Error(`Invalid API configuration:\n  - ${problems.join('\n  - ')}`);
@@ -119,9 +143,23 @@ function loadConfig(env = process.env) {
     // turns it off explicitly), off in development (http://localhost).
     cookieSecure: bool(env.COOKIE_SECURE, production),
     trustProxy: trustProxy(env.TRUST_PROXY),
+    // Requests per session (or IP) a minute, per process; 0 = no cap (docs/06 S5).
+    apiRatePerMin: Math.max(0, Number(str(env.API_RATE_PER_MIN, '600')) || 0),
+    // Resource alerts (docs/06 S8): the account's disk quota, the SMTP budget,
+    // and where scripts/backup.sh writes (its size counts against the quota).
+    diskQuotaMb: Math.max(1, Number(str(env.DISK_QUOTA_MB, '30720')) || 30720),
+    smtpHourlyLimit: Math.max(1, Number(str(env.SMTP_HOURLY_LIMIT, '100')) || 100),
+    smtpDailyLimit: Math.max(1, Number(str(env.SMTP_DAILY_LIMIT, '1000')) || 1000),
+    backupDir: path.resolve(str(env.BACKUP_DIR, path.join(os.homedir(), 'clinicsys-backups'))),
     filesDir: path.resolve(API_ROOT, str(env.FILES_DIR, 'uploads')),
     filesSigningSecret,
     distDir: path.resolve(API_ROOT, str(env.DIST_DIR, '../dist')),
+    // The deployed release name (/api/health shows it): the RELEASE file
+    // scripts/deploy.sh writes at the release root, else RELEASE. The file
+    // wins: the deploy's health check compares it, and a RELEASE left in the
+    // cPanel variables must not hide it.
+    release: readReleaseFile() || str(env.RELEASE, '') || null,
+    webhooks: Object.freeze(webhooks),
     mailTransport,
     mailOutboxDir: path.resolve(API_ROOT, str(env.MAIL_OUTBOX_DIR, '.outbox')),
     mailFrom: str(env.MAIL_FROM, 'ClinicSystem EG <no-reply@localhost>'),

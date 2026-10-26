@@ -130,9 +130,9 @@ test('rate limit: 10 failures per e-mail in 15 minutes → 429, even from other 
   assert.equal(other.status, 200);
 });
 
-test('rate limit: 10 failures per IP in 15 minutes → 429 for any e-mail from that IP', async () => {
+test('rate limit: 50 failures per IP in 15 minutes → 429 for any e-mail from that IP', async () => {
   const ip = '10.2.0.1';
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 50; i++) {
     const r = await h.client({ ip }).post('/api/auth/login', { email: `ghost${i}@clinicsys.test`, password: 'x-wrong' });
     assert.equal(r.status, 401);
   }

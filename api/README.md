@@ -19,8 +19,16 @@ Edge Functions) on hosting.com. The binding design is in
 app.js                 entry point (cPanel startup file); exports the Express app
 src/config.js          environment variables (below)
 src/create-app.js      middleware order, route mounting, error handler
-src/db.js              Pool (max 10) + withContext(ctx, fn)
-src/auth.js            bcrypt, JWT cookie, session loading, rate limiter
+src/db.js              Pool (max 10) + withContext(ctx, fn) + queryCount() (statements sent; the N+1 test hook)
+src/auth.js            bcrypt, JWT cookie, session loading
+src/ratelimit.js       rate limits in PostgreSQL (rate_limits), shared by every process
+src/jobs.js            background jobs in PostgreSQL (SKIP LOCKED, retries, dead jobs); kinds in src/job-handlers.js
+src/password-reset.js  the reset e-mail (route and retry job)
+scripts/run-jobs.js    cron runner: due jobs for up to 55 s
+src/usage.js           resource snapshot and alerts (disk quota, SMTP budget), hourly
+src/webhooks.js        incoming webhooks: signature, replay window, dedupe, queued as jobs (S10)
+src/errorlog.js        error tracking: 5xx, process errors and browser reports → error_groups/error_events (scrubbed)
+src/idempotency.js     Idempotency-Key for /api/rpc
 src/tenant.js          clinic from Host / X-Org-Slug, membership, branch
 src/catalog.js         table/column/function catalog for /api/data and /api/rpc
 src/data-query.js      SQL builder for /api/data (identifiers validated, values bound)
@@ -50,7 +58,7 @@ test/                  node:test against the real migrations + db/seed/dev.sql (
 | `COOKIE_DOMAIN` | empty (host-only cookie) | `.clinicsyseg.com` |
 | `COOKIE_SECURE` | `false` | `true` by default (also sends HSTS); `false` turns it off |
 | `TRUST_PROXY` | `loopback` | hops or addresses of the web server in front of Node (see deployment) |
-| `FILES_DIR` | `api/uploads` | a folder **outside** `public_html`, e.g. `/home/<user>/clinicsys-files` |
+| `FILES_DIR` | `api/uploads` | **required** (the default would sit inside a release folder): outside `public_html` and the releases, e.g. `/home/<user>/clinicsys/shared/files` |
 | `DIST_DIR` | `../dist` (relative to `api/`) | where `dist/` was uploaded |
 | `MAIL_TRANSPORT` | `file` | `smtp` |
 | `MAIL_OUTBOX_DIR` | `api/.outbox` | — |
@@ -59,6 +67,11 @@ test/                  node:test against the real migrations + db/seed/dev.sql (
 | `SMTP_SECURE` | `true` when `SMTP_PORT=465` | — |
 | `DB_POOL_MAX` | `10` | keep ≤ 10 on shared hosting |
 | `DB_STATEMENT_TIMEOUT_MS` | `15000` | — |
+| `API_RATE_PER_MIN` | `600` | requests per session (or IP) a minute, per process; `0` = no cap (S5) |
+| `JOBS_POLL_MS` | `10000` | the in-process job poller; `0` turns it off (the cron runner `scripts/run-jobs.js` stays, S7) |
+| `DISK_QUOTA_MB`, `SMTP_HOURLY_LIMIT`, `SMTP_DAILY_LIMIT` | `30720`, `100`, `1000` | the hosting plan's figures (resource alerts, S8) |
+| `BACKUP_DIR` | `~/clinicsys-backups` | where `scripts/backup.sh` writes (counted against the quota, S8) |
+| `WEBHOOK_<NAME>_SECRET` | none | turns on `POST /api/webhooks/<name>` (lower case, `_` → `-`), ≥ 32 characters; none today (S10) |
 
 With `NODE_ENV=production` the API refuses to start (exit code 1) when
 `DATABASE_URL`, `JWT_SECRET` or `FILES_SIGNING_SECRET` is missing or weak.
@@ -153,7 +166,8 @@ composite row, int8, overloads).
 ## API summary
 
 All errors: `{"error": {"message", "code"}}`. Every non-GET `/api` request
-needs the header `X-Requested-With: clinicsys` (403 `csrf_header_required`).
+needs the header `X-Requested-With: clinicsys` (403 `csrf_header_required`),
+except `/api/webhooks/*` (signed by the provider instead).
 The browser client also sends `X-Lang: ar|en`, the interface language:
 the e-mails a request sends (invitations, password reset) are bilingual,
 Arabic and English in one message (subject `<Arabic> / <English> — ClinicSystem EG`,
@@ -163,7 +177,7 @@ Error messages stay English; the frontend shows its own text per `code`.
 
 | Route | Notes |
 |---|---|
-| `POST /api/auth/login` `{email, password, remember}` | `{user, is_super_admin, memberships}` + cookie `cs_session` (JWT `{sub, sv}`, 12 h or 30 days). One message for every failure (401 `invalid_credentials`). 10 failures per e-mail and per IP in 15 min → 429 with `Retry-After` |
+| `POST /api/auth/login` `{email, password, remember}` | `{user, is_super_admin, memberships}` + cookie `cs_session` (JWT `{sub, sv}`, 12 h or 30 days). One message for every failure (401 `invalid_credentials`). 10 failures per e-mail or 50 per IP in 15 min (fixed windows, in PostgreSQL) → 429 `too_many_attempts` with `Retry-After` |
 | `POST /api/auth/logout` | 204, cookie cleared |
 | `GET /api/auth/session` | same body as login, or 401 |
 | `POST /api/auth/password` `{password}` | 204; `session_version + 1` (other sessions end) and the cookie is re-issued |
@@ -173,7 +187,9 @@ Error messages stay English; the frontend shows its own text per `code`.
 | `GET /api/orgs/resolve?slug=` | public. Active or `pending_activation`: `{id, slug, name, status, specialty_code, modules, settings:{display_name, subtitle, logo, primary_color}}`; suspended: `{slug, status}`; closed/draft/unknown: 404 |
 | `GET /api/orgs/current` | `{organization:{…as resolve}, role, branches:[branch rows], current_branch_id}` |
 | `POST /api/data` | PostgREST replacement, `{data, count}`, ≤ 1000 rows per response |
-| `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments |
+| `POST /api/webhooks/:provider` | a provider's signed event (`src/webhooks.js`), only for a provider with `WEBHOOK_<NAME>_SECRET` (else 404); no session, no CSRF header, raw body ≤ 1 MB. Headers `X-Webhook-Id`, `X-Webhook-Timestamp` (Unix seconds, ±5 min), `X-Webhook-Signature` (hex HMAC-SHA256 of `<id>.<timestamp>.<raw body>`, `sha256=` allowed); body `{type, data}`. → 200 `{received:true}` and a job `webhook.<name>.<type>`; the same event id again → 200 `{received:true, duplicate:true}` (ids kept 30 days); 400 `invalid_signature` / `invalid_webhook` |
+| `POST /api/client-errors` `{message, stack, route, kind, component}` | 204; a browser error (src/errors.jsx), no session needed (account and clinic attached when present), ≤ 8 KB, 30/min per IP |
+| `POST /api/rpc/:fn` `{args}` | whitelisted functions, named arguments. Optional `Idempotency-Key` (8–100 of `[A-Za-z0-9_-]`, `src/idempotency.js`): claimed in the call's transaction, so a repeat answers the stored result with `Idempotency-Replayed: true`; another user's key → 409 `idempotency_conflict`; malformed → 400 `invalid_idempotency_key`; a failed call stores nothing |
 | `POST /api/files/upload` (multipart `bucket`, `path`, `file`, `upsert`) | `{path, fullPath}`; 409 exists, 413 > 20 MB, 422 plan storage limit |
 | `POST /api/files/sign` `{bucket, path, expiresIn}` | `{signedUrl: "/api/files/signed?token=…"}`; `expiresIn` is capped at 600 s |
 | `GET /api/files/object/:bucket/*path` | session + clinic; `?org=<slug>` may name the clinic for `<img src>` in development |
@@ -211,6 +227,13 @@ by the database with 409 `{code:'branch_inactive', message:'Branch is inactive'}
   "head": false, "ignoreDuplicates": false }
 ```
 
+- Every select, count, update and delete on a table holding one clinic's rows
+  (`meta.orgScoped`: it has `organization_id` and its `tenant_isolation`
+  policy shows no `organization_id IS NULL` rows, i.e. not the template
+  tables) also says `organization_id = <current clinic>`. RLS still decides
+  what is visible; the policy reaches the planner as `app_is_system() OR
+  organization_id = …`, which is no index condition, so without it every
+  read would scan all clinics' rows (docs/06 S9, `0015_indexes`).
 - `table`: public tables with RLS **and** FORCE RLS, minus the platform and
   identity tables. Columns (in `columns`, filters, order, values, `onConflict`)
   must exist in `information_schema.columns`; the catalog is cached and
@@ -230,8 +253,10 @@ by the database with 409 `{code:'branch_inactive', message:'Branch is inactive'}
   `date` as `YYYY-MM-DD`, timestamps as ISO-8601 (`…T…+00:00`, session time zone UTC).
 - PostgreSQL errors: `23505` → 409, `42501`/row-level security → 403,
   `PL422` → 422, `BR409` (new row on an inactive branch) → 409
-  `branch_inactive`, statement timeout → 503, connection/internal classes →
-  500, anything else → 400. `code` is the SQLSTATE (`branch_inactive` for BR409).
+  `branch_inactive`, `BK409` (another active booking holds the therapist's or
+  doctor's slot, 0010) → 409 `slot_taken`, statement timeout → 503,
+  connection/internal classes → 500, anything else → 400. `code` is the
+  SQLSTATE (`branch_inactive` for BR409, `slot_taken` for BK409).
 
 ### Files
 
@@ -406,5 +431,11 @@ in the route. `req.app.locals.background(fn)` runs work after the response.
    server in front of Node connects over TCP from another address, set
    `TRUST_PROXY` to it (or to `1` for one proxy hop). When the client address
    cannot be determined the API applies only the per-e-mail limit.
+   Rate limits (`src/ratelimit.js`, docs/02 «حدود الطلبات»): login/accept
+   failures, reset requests (20/h per IP, 3 e-mails/h per account),
+   invitation sends (5/day per address, 200/day per clinic), unknown
+   invitation tokens (30/10 min per IP), uploads (120/h per user), and
+   `API_RATE_PER_MIN` (600) requests a minute per session in each process.
+   429 `rate_limited` + `Retry-After`.
 7. After every code or environment change: **Restart** (and **Run NPM Install**
    when `package.json` changed).

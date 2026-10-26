@@ -76,7 +76,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "المواعيد": "Appointments",
   "خطط العلاج": "Treatment plans",
   "جلسات العلاج": "Therapy sessions",
-  "المالية": "Finance",
+  "المالية": "Financial",
   "المدفوعات والفواتير": "Payments and invoices",
   "الباقات": "Packages",
   "النمو": "Growth",
@@ -122,7 +122,7 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "جارٍ التحميل…": "Loading…",
   "{n} من {total}": "{n} of {total}",
   "↑↓ للتنقل · Enter للاختيار · Esc للإغلاق": "↑↓ to move · Enter to choose · Esc to close",
-  "{n} سنة": "Age {n}",
+  "{n} سنة": "{n} yrs",
   "ابحث عن مريض بالاسم أو الرقم…": "Search for a patient by name or number…",
   "لا يوجد مرضى مطابقون": "No matching patients",
   "جرّب اسمًا آخر أو رقم ملف": "Try another name or a file number",
@@ -139,9 +139,9 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "قائمة الفئات": "Categories",
 
   // ── Clinic sign-in (S02) ──
-  "أدخل بريدًا إلكترونيًا صحيحًا": "Enter a valid e-mail address",
+  "أدخل بريدًا إلكترونيًا صحيحًا": "Enter a valid email address",
   "أدخل كلمة المرور": "Enter your password",
-  "البريد الإلكتروني أو كلمة المرور غير صحيحة": "Wrong e-mail or password",
+  "البريد الإلكتروني أو كلمة المرور غير صحيحة": "Wrong email or password",
   "تعذّر التحقق من العضوية": "Could not check your membership",
   "تعذّر تسجيل الدخول": "Couldn't sign in",
   "العيادة التي {em} مع مرضاك.": "The clinic that {em} with your patients.",
@@ -244,13 +244,13 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "مرضاي المسندون": "My assigned patients",
 
   // ── Concurrent sessions (src/multisession.jsx) ──
-  "جلسة علاج طبيعي": "Physical therapy session",
+  "جلسة علاج طبيعي": "Physiotherapy session",
   "{n} جلسات نشطة في نفس الوقت": "Sessions running at the same time: {n}",
   "{n} مؤقّت يعمل الآن بالتوازي · كل جلسة تُحمَّل تلقائيًا من خطة علاج المريض.": "Timers running in parallel: {n} · each session loads from the patient's treatment plan.",
   "بدء جلسة": "Start session",
   "جلسة {n} من {total}": "Session {n} of {total}",
   "جلسة {n}": "Session {n}",
-  "إنهاء": "End",
+  "إنهاء": "Complete",
   "إنهاء جلسة {name}": "End the session of {name}",
   "ألم —": "Pain —",
   "ألم {n}": "Pain {n}",
@@ -303,4 +303,10 @@ Object.assign((window.I18N_EN = window.I18N_EN || {}), {
   "لا أهداف محددة — تُضاف الأهداف من خطة العلاج.": "No goals set — goals are added in the treatment plan.",
   "إنهاء الجلسة وتسجيلها": "End and record session",
   "الإنهاء يسجّل الجلسة على الخطة ويُحدّث عدد الجلسات المكتملة والمتبقية تلقائيًا.": "Ending records the session on the plan and updates the completed and remaining sessions automatically.",
+  // ── A page that throws (src/errors.jsx, docs/06 S6) ──
+  "حدث خطأ في هذه الصفحة": "Something went wrong on this page",
+  "وصل الخطأ إلى فريق المنصة. أعد المحاولة، أو انتقل إلى صفحة أخرى من القائمة.": "The platform team has been told. Try again, or open another page from the menu.",
+  // Context keys (ttc): the same Arabic, another English.
+  "session|إنهاء": "End",
+  "nav|المالية": "Finance",
 });

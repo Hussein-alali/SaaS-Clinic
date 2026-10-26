@@ -3,8 +3,9 @@
 // (docs/02-TRD.md "اللغات"; docs/04 "اللغتان"). The first script of the app.
 //
 // The page language is fixed for the page's lifetime. index.html picks it
-// before anything renders (?lang=ar|en, else the saved choice
-// localStorage "clinicsys.lang", else Arabic), sets <html lang dir> and, for
+// before anything renders (?lang=ar|en, else the cookie clinicsys_lang that
+// the main site, admin. and every clinic subdomain share, else the saved
+// choice localStorage "clinicsys.lang", else Arabic), sets <html lang dir> and, for
 // English, loads the dictionary chunk (dist/lang-en.<hash>.js, built from
 // src/lang/en-*.jsx) ahead of the app. Switching language saves the choice
 // and reloads, so every label, date and number is rendered once, in one
@@ -29,6 +30,8 @@ const LANG = (function () {
   try {
     const q = /[?&]lang=(ar|en)\b/.exec(window.location.search);
     if (q) return q[1];
+    const c = /(?:^|;\s*)clinicsys_lang=(ar|en)\b/.exec(window.document ? window.document.cookie : "");
+    if (c) return c[1];
     const saved = window.localStorage.getItem(I18N_STORAGE_KEY);
     if (I18N_LANGS.includes(saved)) return saved;
   } catch (_) {}
@@ -38,13 +41,32 @@ const IS_RTL = LANG === "ar";
 // BCP 47 tags for Intl: Latin digits in both languages (docs/04 «الأرقام»).
 const LANG_LOCALE = IS_RTL ? "ar-EG-u-nu-latn" : "en-GB";
 
-// Dictionaries register themselves on window.I18N_EN (src/lang/en-*.jsx).
-const I18N_DICT = LANG === "en" ? ((typeof window !== "undefined" && window.I18N_EN) || {}) : null;
+// Dictionaries register themselves on window.I18N_EN (src/lang/en-*.jsx,
+// keyed by the Arabic text: `npm run dev`). The build ships them as
+// window.I18N_EN_H, keyed by __i18nHash(Arabic text) instead, which is
+// much smaller (scripts/build.mjs; same hash in scripts/i18n-hash.mjs).
+const I18N_DICT_H = LANG === "en" && typeof window !== "undefined" && window.I18N_EN_H ? window.I18N_EN_H : null;
+const I18N_DICT = LANG === "en" && !I18N_DICT_H ? ((typeof window !== "undefined" && window.I18N_EN) || {}) : null;
 if (typeof window !== "undefined") window.I18N_MISSING = window.I18N_MISSING || new Set();
 
+// FNV-1a 32-bit over UTF-16 code units, base 36 (= scripts/i18n-hash.mjs).
+function __i18nHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+const __i18nCache = new Map();
+
 function __i18nLookup(ar) {
-  if (!I18N_DICT || typeof ar !== "string") return ar;
-  const hit = I18N_DICT[ar];
+  if ((!I18N_DICT && !I18N_DICT_H) || typeof ar !== "string") return ar;
+  let hit;
+  if (I18N_DICT_H) {
+    hit = __i18nCache.get(ar);
+    if (hit === undefined) { hit = I18N_DICT_H[__i18nHash(ar)]; __i18nCache.set(ar, hit === undefined ? null : hit); }
+  } else hit = I18N_DICT[ar];
   if (typeof hit === "string") return hit;
   if (ar.trim() && /[؀-ۿ]/.test(ar)) window.I18N_MISSING.add(ar);
   return ar;
@@ -59,6 +81,18 @@ function __i18nFill(s, vars) {
 function tt(ar, vars) {
   if (ar === undefined || ar === null) return ar;
   return __i18nFill(__i18nLookup(String(ar)), vars);
+}
+
+// The same Arabic word can need two English words («ملغاة»: a cancelled
+// appointment, a revoked invitation). ttc("invitation", "ملغاة") looks up
+// the key "invitation|ملغاة" first, then "ملغاة"; Arabic shows "ملغاة".
+function ttc(context, ar, vars) {
+  if (ar === undefined || ar === null) return ar;
+  const key = context + "|" + String(ar);
+  const hit = __i18nLookup(key);
+  if (hit !== key) return __i18nFill(hit, vars);
+  if (window.I18N_MISSING) window.I18N_MISSING.delete(key);
+  return tt(ar, vars);
 }
 
 // Translate a text whose placeholders are React nodes; returns an array of
@@ -83,9 +117,13 @@ function ttx(ar, parts) {
 function setLang(lang) {
   if (!I18N_LANGS.includes(lang) || lang === LANG) return;
   try { window.localStorage.setItem(I18N_STORAGE_KEY, lang); } catch (_) {}
+  // The cookie carries the choice to the other subdomains (index.html).
+  try { if (window.clinicsysLangCookie) window.clinicsysLangCookie(lang); } catch (_) {}
   const url = new URL(window.location.href);
   url.searchParams.delete("lang");
-  window.location.replace(url.toString());
+  // Same address (only a #hash): replace() would just scroll, not reload.
+  if (url.toString() === window.location.href) window.location.reload();
+  else window.location.replace(url.toString());
 }
 
 // ── Formatting (one place for numbers, money and dates) ───────────
@@ -164,6 +202,6 @@ function LangSwitch({ className, style, compact }) {
 }
 
 Object.assign(window, {
-  LANG, IS_RTL, LANG_LOCALE, tt, ttx, setLang, LangSwitch,
+  LANG, IS_RTL, LANG_LOCALE, tt, ttc, ttx, setLang, LangSwitch, __i18nHash,
   fmtNumber, fmtMoney, fmtMoneyShort, fmtDate, weekdayNames, monthNames,
 });

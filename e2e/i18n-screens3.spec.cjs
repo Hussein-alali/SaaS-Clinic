@@ -120,7 +120,7 @@ test("the first-use checklist and branches C07 in English (weekday names, deacti
   await expect(box).toHaveAttribute("data-onboarding", "open");
   await expect(box.getByRole("heading", { name: "Get started" })).toBeVisible();
   await expect(box.locator("[data-onboarding-progress]")).toContainText(/\d of \d done/);
-  await expect(box.locator('[data-step="branch"]')).toContainText("Complete the first branch’s details");
+  await expect(box.locator('[data-step="branch"]')).toContainText("Complete the first branch's details");
   await expectEnglish(page, "onboarding");
   await box.getByRole("button", { name: "Later" }).click();
   await expect(box).toHaveAttribute("data-onboarding", "folded");
@@ -336,9 +336,9 @@ test("3.11 a receptionist opening #/settings or #/branches gets «no permission�
 
 test("3.11 in English: a therapist opening #/payments", async ({ page }) => {
   await signIn(page, "therapist@demo-physio.test", "/?org=demo-physio&lang=en#/payments");
-  await expect(page.getByRole("heading", { name: "You don’t have permission for this page" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "You don't have permission for this page" })).toBeVisible();
   await expect(page.locator("[data-no-permission]")).toHaveAttribute("role", "alert");
-  await expect(page.locator("[data-no-permission]")).toContainText("isn’t available to your role");
+  await expect(page.locator("[data-no-permission]")).toContainText("isn't available to your role");
   await expect(page).toHaveURL(/#\/payments$/);
   await expectEnglish(page, "no-permission");
   await page.getByRole("button", { name: /^Back to / }).click();
@@ -423,7 +423,7 @@ test("the demo patient portal in Arabic has no English copy left", async ({ page
 test("the guest booking from the demo sign-in, in English", async ({ page }) => {
   await page.goto("/?demo=1&lang=en");
   await page.getByRole("button", { name: /Are you a patient\? Book a visit/ }).click();
-  await expect(page.getByText("Let’s get you moving again.")).toBeVisible();
+  await expect(page.getByText("Let's get you moving again.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Are you a current patient?" })).toBeVisible();
   await expectEnglish(page, "guest-1");
   await page.getByRole("button", { name: /Sports injury/ }).click();

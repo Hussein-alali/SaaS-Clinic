@@ -88,7 +88,7 @@ test('create-user rejects an oversized e-mail at once (no regex backtracking on 
 
 test('config: the session cookie is Secure by default in production (TRD), and can be turned off explicitly', () => {
   const strong = 'x'.repeat(40);
-  const base = { NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: `y${strong}`, DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'clinicsyseg.com' };
+  const base = { NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: `y${strong}`, DATABASE_URL: TEST_DB_URL, APP_BASE_DOMAIN: 'clinicsyseg.com', FILES_DIR: '/srv/files' };
   assert.equal(loadConfig(base).cookieSecure, true);
   assert.equal(loadConfig({ ...base, COOKIE_SECURE: 'false' }).cookieSecure, false);
   assert.equal(loadConfig({}).cookieSecure, false, 'development (http://localhost) stays without Secure');
@@ -107,4 +107,18 @@ test('config: the public development secrets are refused outside local domains',
   for (const domain of ['localhost', 'demo.localhost', 'clinicsys.test', '127.0.0.1']) {
     assert.equal(loadConfig({ APP_BASE_DOMAIN: domain }).appBaseDomain, domain);
   }
+});
+
+// ── Security audit of 25 Oct 2026 ────────────────────────────────────────
+
+// npm audit: multer <= 2.4.0 (GHSA-q7qp-rjg7-q26m) and body-parser <= 2.3.0
+// (GHSA-27r3-jxmh-p828, via express) are denials of service reachable from
+// any upload or JSON request. deploy.sh installs from the lockfile (npm ci):
+// this keeps a lockfile change from bringing them back.
+test('dependencies: the installed multer and body-parser carry the denial-of-service fixes', () => {
+  const version = (name) => require(`${name}/package.json`).version.split('.').map(Number);
+  const atLeast = (v, min) => v[0] > min[0] || (v[0] === min[0] && (v[1] > min[1] || (v[1] === min[1] && v[2] >= min[2])));
+  assert.ok(atLeast(version('multer'), [2, 5, 0]), `multer ${version('multer').join('.')}`);
+  const bodyParser = require(require.resolve('body-parser/package.json', { paths: [require.resolve('express')] })).version.split('.').map(Number);
+  assert.ok(atLeast(bodyParser, [2, 4, 0]), `body-parser ${bodyParser.join('.')}`);
 });

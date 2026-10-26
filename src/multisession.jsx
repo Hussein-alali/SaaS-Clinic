@@ -170,6 +170,11 @@ function ConcurrentSessions(){
     try {
       if (window.TreatmentsAPI) plan = await window.TreatmentsAPI.activeFor(pid);
     } catch (e) { console.warn("activeTreatmentFor failed", e); }
+    // Without a plan the number counts the patient's sessions: all of them,
+    // also those from before the startup window (docs/06 S9).
+    if (!plan && window.KineticData && window.KineticData.loadOlder) {
+      try { await window.KineticData.loadOlder({ patientId: pid }); } catch (e) { console.warn("loadOlder failed", e); }
+    }
     const completedBefore = plan ? (Number(plan.completed_sessions) || 0)
       : (DATA.sessions || []).filter(s => s.patient_id === pid && s.status !== "in_progress").length;
     const total = plan ? (Number(plan.estimated_sessions) || 0) : 0;
@@ -311,7 +316,7 @@ function ConcurrentSessions(){
                     {s.total ? tt("جلسة {n} من {total}", { n: s.num, total: s.total }) : tt("جلسة {n}", { n: s.num })}{s.room ? ` · ${s.room}` : ""}
                   </div>
                 </div>
-                <button className="btn btn-ghost btn-icon" title={tt("إنهاء")} aria-label={tt("إنهاء جلسة {name}", { name: (s.p && s.p.name) || "" })} style={{padding:4,color:"var(--ink-400)"}}
+                <button className="btn btn-ghost btn-icon" title={ttc("session", "إنهاء")} aria-label={tt("إنهاء جلسة {name}", { name: (s.p && s.p.name) || "" })} style={{padding:4,color:"var(--ink-400)"}}
                   onClick={(e)=>{e.stopPropagation(); endSession(s.id);}}><I.X size={13}/></button>
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>

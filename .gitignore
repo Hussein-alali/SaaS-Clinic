@@ -6,3 +6,7 @@ dist/
 # Python
 __pycache__/
 *.pyc
+
+# scripts/package-release.sh output
+release-*.tar.gz
+/RELEASE

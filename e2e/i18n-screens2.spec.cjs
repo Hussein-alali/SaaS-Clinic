@@ -128,7 +128,7 @@ test("payments and invoices in English: filters, invoice, new invoice, methods, 
   await signIn(page, "admin@demo-physio.test", "#/payments");
   await expect(main(page).locator("h1")).toHaveText("Payments and invoices");
   for (const label of ["Total revenue", "Pending", "Overdue", "Average invoice", "Total invoiced", "Paid", "Invoices", "Total due"]) {
-    await expect(main(page).locator(".grid-stats")).toContainText(label);
+    await expect(main(page).locator(".grid-stats").filter({ hasText: label }).first()).toBeVisible();
   }
   await expect(main(page).locator(".grid-stats").first()).toContainText("EGP ");
   const sections = main(page).getByRole("group", { name: "Payments sections" });
@@ -212,7 +212,7 @@ test("quick payment and its receipt in English", async ({ page }) => {
   await expect(dialog(page)).toContainText("Total EGP 250 · paid EGP 0");
   await dialog(page).getByLabel(`Invoice ${inv}`).check();
   await expect(dialog(page)).toContainText("Amount to pay");
-  await dialog(page).getByRole("button", { name: "Cash" }).click();
+  await dialog(page).getByRole("button", { name: "Cash", exact: true }).click();
   await expect(dialog(page)).toContainText("1 item(s) selected");
   await shot(page, "quick-payment");
   await expectClean(page, [name]);

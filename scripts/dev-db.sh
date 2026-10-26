@@ -37,6 +37,10 @@ create_db() {
   psql_super -d postgres -c "CREATE DATABASE $DB OWNER $OWNER" >/dev/null
   # cPanel databases have the public schema owned by the account user.
   psql_super -d "$DB" -c "ALTER SCHEMA public OWNER TO $OWNER" >/dev/null
+  # An empty second database for scripts/restore-check.sh (docs/06 S1).
+  psql_super -d postgres -c "DROP DATABASE IF EXISTS ${DB}_restore" >/dev/null
+  psql_super -d postgres -c "CREATE DATABASE ${DB}_restore OWNER $OWNER" >/dev/null
+  psql_super -d "${DB}_restore" -c "ALTER SCHEMA public OWNER TO $OWNER" >/dev/null
 }
 
 case "$CMD" in

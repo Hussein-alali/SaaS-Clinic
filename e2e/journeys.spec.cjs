@@ -414,3 +414,59 @@ test("J4 — a receptionist books an appointment in their branch: new patient, s
   await expect(other.page.locator(".topbar")).toContainText("الفرع الرئيسي");
   await other.close();
 });
+
+// ── S4: the same slot from two browsers ─────────────────────────────────
+test("two receptionists confirm the same specialist slot at once: one booking; the second is told «هذا الموعد محجوز بالفعل» (docs/06 S4)", async ({ page, browser, baseURL }) => {
+  // Both reach the summary of the same free slot before either confirms:
+  // each screen still shows it free, so only the server can tell.
+  const toSummary = async (p, patient, phone, time) => {
+    await p.getByRole("button", { name: "حجز جديد" }).click();
+    await p.getByRole("button", { name: "مريض جديد" }).click();
+    await p.getByPlaceholder("الاسم الكامل").fill(patient);
+    await p.getByPlaceholder("+20 1xx xxx xxxx").fill(phone);
+    await p.getByRole("button", { name: "متابعة" }).click();
+    await p.getByRole("button", { name: /الأخصائي — PHY/ }).click();
+    await p.getByRole("button", { name: "متابعة بدون طبيب" }).click();
+    await p.getByRole("button", { name: "غدًا" }).click();
+    const slot = time
+      ? p.locator("button.mono:not([disabled])").filter({ hasText: new RegExp(`^${time}$`) })
+      : p.locator("button.mono:not([disabled])").filter({ hasText: /^1[2-7]:[0-5]\d$/ }).first();
+    const chosen = (await slot.textContent()).trim();
+    await slot.click();
+    await expect(p.getByText("ملخّص الحجز")).toBeVisible();
+    return chosen;
+  };
+  const a = `مريض السباق أ ${RUN}`, b = `مريض السباق ب ${RUN}`;
+  await page.goto("/?org=demo-physio#/appointments");
+  await clinicLogin(page, "receptionist@demo-physio.test");
+  await expect(sidebar(page)).toBeVisible();
+  const other = await otherBrowser(browser, baseURL);
+  await other.page.goto("/?org=demo-physio#/appointments");
+  await clinicLogin(other.page, "receptionist2@demo-physio.test");
+  await expect(sidebar(other.page)).toBeVisible();
+  const picker = other.page.locator("button.branch-switcher");
+  if (!/الفرع الرئيسي/.test(await picker.textContent())) {
+    await picker.click();
+    await other.page.getByRole("option").filter({ hasText: "الفرع الرئيسي" }).click();
+  }
+
+  const time = await toSummary(page, a, "012" + String(Date.now()).slice(-8));
+  await toSummary(other.page, b, "015" + String(Date.now()).slice(-8), time);
+  await page.getByRole("button", { name: "تأكيد الحجز" }).click();
+  await expect(page.getByText("تم تأكيد الحجز")).toBeVisible();
+  await other.page.getByRole("button", { name: "تأكيد الحجز" }).click();
+  await expect(other.page.getByRole("alert").filter({ hasText: "هذا الموعد محجوز بالفعل — اختر وقتًا آخر" })).toBeVisible();
+
+  // One booking at that time, the first; the refused one is not on the second calendar.
+  const tomorrow = await page.evaluate(() => new Date(Date.now() + 864e5).toISOString().slice(0, 10));
+  const atSlot = await page.evaluate(async ({ date, time }) => {
+    const { data } = await window.SB.from("bookings").select("booking_id, patient_id, status, time").eq("date", date).eq("therapist_id", "ST-PHY-THERAPIST");
+    return (data || []).filter((r) => String(r.time).trim() === time && !["ملغي", "ملغى", "cancelled", "متاح"].includes(r.status)).length;
+  }, { date: tomorrow, time });
+  expect(atSlot).toBe(1);
+  await other.page.keyboard.press("Escape").catch(() => {});
+  await other.page.locator('input[type="date"]').first().fill(tomorrow);
+  await expect(other.page.locator("div[draggable=true]").filter({ hasText: a })).toBeVisible();
+  await expect(other.page.locator("div[draggable=true]").filter({ hasText: b })).toHaveCount(0);
+  await other.close();
+});

@@ -286,3 +286,32 @@ test('files need the CSRF header for writes, a session and a clinic', async () =
   const noFile = await admin.upload({ bucket: 'patient-files', path: 'P-PHY-01/c.pdf' });
   assert.equal(noFile.status, 400);
 });
+
+test('patient_files.file_url: a script URL is refused through /api/data (0017, CWE-79)', async () => {
+  // The therapist may add a patient file and the receptionist edit it; an
+  // admin who opens it would run the link in the admin's session.
+  const therapist = await h.as('physioTherapist', { slug: 'demo-physio' });
+  const recep = await h.as('physioReception', { slug: 'demo-physio' });
+  const fileId = newRecordId('pf_');
+  const planted = await therapist.data({
+    table: 'patient_files',
+    action: 'insert',
+    values: { file_id: fileId, patient_id: 'P-PHY-02', file_name: 'تقرير.pdf', file_url: 'javascript:fetch("/api/org/invitations")' },
+  });
+  assert.equal(planted.status, 400, JSON.stringify(planted.body));
+  assert.equal(planted.body.error.code, '23514');
+  const ok = await therapist.data({
+    table: 'patient_files',
+    action: 'insert',
+    values: { file_id: fileId, patient_id: 'P-PHY-02', file_name: 'تقرير.pdf', file_url: '/api/files/object/patient-files/P-PHY-02/x.pdf' },
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const edited = await recep.data({
+    table: 'patient_files',
+    action: 'update',
+    values: { file_url: ' data:text/html,<script>alert(1)</script>' },
+    filters: [{ column: 'file_id', op: 'eq', value: fileId }],
+  });
+  assert.equal(edited.status, 400, JSON.stringify(edited.body));
+  assert.equal(edited.body.error.code, '23514');
+});

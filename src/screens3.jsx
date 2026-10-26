@@ -370,7 +370,7 @@ function DeptModal({ row, onClose }) {
     finally { setBusy(false); }
   }
   return (
-    <Modal title={isNew?tt("قسم جديد"):tt("تعديل قسم")} onClose={onClose} width={520}
+    <Modal title={isNew?ttc("department", "قسم جديد"):ttc("department", "تعديل قسم")} onClose={onClose} width={520}
       footer={<><button className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button className="btn btn-blue" disabled={busy} onClick={save}><I.Check size={13}/> {tt("حفظ")}</button></>}>
       <div className="rgrid c-sm" style={{"--gtc":"1fr 1fr",gap:12}}>
@@ -846,8 +846,11 @@ function setOnboardingFlag(kind, key, on) {
     store.setItem(ONBOARDING_KEYS[kind], JSON.stringify(map));
   } catch (_) {}
 }
-function onboardingSteps(usage) {
+// extra.bookedBefore: the clinic has bookings older than the startup window
+// (window.DATA holds the last 180 days, docs/06 S9).
+function onboardingSteps(usage, extra) {
   const D = window.DATA || {};
+  const bookedBefore = !!(extra && extra.bookedBefore);
   const c = window.CLINIC || {};
   const branches = window.BRANCHES || [];
   const active = (b) => String((b && b.status) || "active") !== "inactive";
@@ -869,7 +872,7 @@ function onboardingSteps(usage) {
       action: tt("دعوة الموظفين"), route: "settings", tab: "users", needsUsage: true });
   }
   steps.push({ id: "booking", title: tt("أضف أول مريض واحجز أول موعد"), hint: tt("من صفحة المواعيد: «حجز جديد»."),
-    done: (D.patients || []).length > 0 && (D.appts || []).length > 0,
+    done: (D.patients || []).length > 0 && ((D.appts || []).length > 0 || bookedBefore),
     action: tt("فتح المواعيد"), route: "appointments" });
   return steps;
 }
@@ -896,9 +899,21 @@ function OnboardingChecklistBody({ go, scopeKey, onHide }) {
   }, []);
   const { usage, failed } = useOrgUsage();
   const [later, setLater] = React.useState(() => onboardingFlag("later", scopeKey));
+  // Bookings from before the startup window count too: one head-only count
+  // when the window holds none (docs/06 S9).
+  const D = window.DATA || {};
+  const askBookings = (D.patients || []).length > 0 && (D.appts || []).length === 0;
+  const [bookedBefore, setBookedBefore] = React.useState(false);
+  React.useEffect(() => {
+    if (!askBookings || !window.SB) return;
+    let live = true;
+    window.SB.from("bookings").select("booking_id", { count: "exact", head: true }).then(
+      (r) => { if (live && r && !r.error && r.count > 0) setBookedBefore(true); }, () => {});
+    return () => { live = false; };
+  }, [askBookings]);
   const staffOn = !window.orgModuleOn || window.orgModuleOn("core.staff");
   const waiting = staffOn && !usage && !failed; // the invitation step is still loading
-  const steps = waiting ? [] : onboardingSteps(usage).filter(st => !(st.needsUsage && !usage));
+  const steps = waiting ? [] : onboardingSteps(usage, { bookedBefore }).filter(st => !(st.needsUsage && !usage));
   const doneCount = steps.filter(st => st.done).length;
   const complete = !waiting && steps.length > 0 && doneCount === steps.length;
   // Every step done: the checklist goes away for good (docs/03).
@@ -1287,7 +1302,7 @@ const CA_INVITE_STATUS = {
   pending:  { label:tt("معلّقة"),  cls:"b-amber" },
   expired:  { label:tt("منتهية"), cls:"b-grey" },
   accepted: { label:tt("مقبولة"), cls:"b-green" },
-  revoked:  { label:tt("ملغاة"),  cls:"b-red" },
+  revoked:  { label:ttc("invitation", "ملغاة"),  cls:"b-red" },
 };
 const CA_MEMBER_STATUS = {
   active:   { label:tt("نشط"),   cls:"b-green" },
@@ -1999,7 +2014,7 @@ function EditUserModal({ row, onClose, nameOnly }) {
   }
   const roleChanged = !nameOnly && role !== (row.role || "receptionist");
   return (
-    <Modal title={tt("تعديل {name}", { name: row.name || tt("المستخدم") })} onClose={onClose}
+    <Modal title={tt("تعديل {name}", { name: row.name || ttc("fallback", "المستخدم") })} onClose={onClose}
       footer={<>
         <button type="button" className="btn btn-ghost" onClick={onClose}>{tt("إلغاء")}</button>
         <button type="button" className="btn btn-blue" disabled={busy} onClick={submit}><I.Check size={13}/> {tt("حفظ")}</button>
@@ -2589,7 +2604,7 @@ function ClinicApp({ ctx }) {
   // resolving | status | open (login screen or shell)
   const [gate, setGate] = React.useState(() => (gated ? { phase: "resolving" } : { phase: "open" }));
   const [publicBooking, setPublicBooking] = React.useState(false);
-  const [toast, setToast] = React.useState(null);
+  const [toast, flashToast] = useToast();
   const [notifsOpen, setNotifsOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
@@ -2663,10 +2678,7 @@ function ClinicApp({ ctx }) {
   }, []);
 
   React.useEffect(()=>{
-    window.showToast = (msg, kind="success") => {
-      setToast({msg, kind});
-      setTimeout(()=>setToast(null), 4000);
-    };
+    window.showToast = (msg, kind="success") => flashToast(msg, kind);
   },[]);
 
   React.useEffect(()=>{
@@ -2803,14 +2815,12 @@ function ClinicApp({ ctx }) {
       const linked = window.tenantRouteFromHash ? window.tenantRouteFromHash() : null;
       setRoute(linked || (window.roleDefaultRoute ? window.roleDefaultRoute(u.role) : "dashboard"));
     }
-    setToast({ msg: tt("أهلاً بعودتك، {name}", { name: u.name.split(" ")[0] }), kind:"success" });
-    setTimeout(()=>setToast(null), 2400);
+    flashToast(tt("أهلاً بعودتك، {name}", { name: u.name.split(" ")[0] }), "success", 2400);
   }
 
   if (publicBooking) return <PublicBookingScreen onBack={()=>setPublicBooking(false)} onDone={()=>{
     setPublicBooking(false);
-    setToast({ msg:tt("تم تأكيد الحجز — أُرسل التأكيد عبر واتساب."), kind:"success" });
-    setTimeout(()=>setToast(null), 3500);
+    flashToast(tt("تم تأكيد الحجز — أُرسل التأكيد عبر واتساب."), "success", 3500);
   }}/>;
 
   // Historical import page (?import=1) — handled BEFORE the localStorage
@@ -2955,7 +2965,8 @@ function ClinicApp({ ctx }) {
           {!demo && <InactiveBranchBanner/>}
           {forbidden && <ClinicNoPermission go={go} role={acct.role}/>}
           {moduleOff && <TenantModuleDisabled go={go}/>}
-          {!forbidden && !moduleOff && <>
+          {/* A page that throws shows its own error card, not a blank app (docs/06 S6). */}
+          {!forbidden && !moduleOff && <ErrorBoundary resetKey={route} route={"#/" + route}>
           {route==="dashboard" && <RoleHome role={acct.role} go={go} user={acct}/>}
           {route==="patients" && <Patients go={go}/>}
           {route==="appointments" && <Appointments go={go}/>}
@@ -2969,7 +2980,7 @@ function ClinicApp({ ctx }) {
           {route==="settings" && <SettingsPage go={go}/>}
           {typeof route === "string" && route.startsWith("custom:") && <CustomSectionPage id={route.slice(7)}/>}
           {!titles[route] && !(typeof route === "string" && route.startsWith("custom:")) && <NotFound go={go}/>}
-          </>}
+          </ErrorBoundary>}
         </main>
       </div>
       {toast && <Toast msg={toast.msg} kind={toast.kind}/>}
@@ -3049,7 +3060,10 @@ const PATIENT_ME = new Proxy({}, {
 function PatientPortal({ onLogout }) {
   const [route, setRoute] = React.useState("home");
   const [bookingOpen, setBookingOpen] = React.useState(false);
-  const [toast, setToast] = React.useState(null);
+  const [toast, flashToast] = useToast();
+  // The patient's whole history, also from before the startup window (docs/06 S9).
+  const me = getPatientMe();
+  window.useOlderRows({ patientId: me.file && me.file !== "—" ? me.file : null });
 
   function go(r) {
     if (r === "book") { setBookingOpen(true); return; }
@@ -3060,8 +3074,7 @@ function PatientPortal({ onLogout }) {
 
   function handleBookingComplete(slot) {
     setBookingOpen(false);
-    setToast({ msg: tt("تم حجز موعدك يوم {date} الساعة {time}", { date: ptDate(slot.date), time: slot.time }), kind:"success" });
-    setTimeout(()=>setToast(null), 3000);
+    flashToast(tt("تم حجز موعدك يوم {date} الساعة {time}", { date: ptDate(slot.date), time: slot.time }), "success", 3000);
     setRoute("appointments");
   }
 

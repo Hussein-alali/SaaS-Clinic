@@ -18,6 +18,7 @@ const members = require('../members');
 const invites = require('../invites');
 const { isValidEmail, requestLang } = require('../mailer');
 const P = require('../platform');
+const usage = require('../usage');
 
 const router = express.Router();
 const ACTOR_ROLE = 'super_admin';
@@ -88,10 +89,13 @@ function parseDate(value, field) {
 
 router.get('/stats', async (req, res) => {
   const { db } = req.app.locals;
-  const [byStatus, pending, overdue] = await Promise.all([
+  const [byStatus, pending, overdue, errors, queue] = await Promise.all([
     db.query('select status, count(*)::int as n from public.organizations group by status'),
     db.query("select count(*)::int as n from public.invitations where status = 'pending' and expires_at > now()"),
     db.query("select count(*)::int as n from public.organizations where status = 'suspended' and retention_until < now()"),
+    db.query('select count(*)::int as n from public.error_groups where resolved_at is null'),
+    db.query(`select count(*) filter (where done_at is null and dead_at is null)::int as queued,
+                     count(*) filter (where dead_at is not null)::int as failed from public.jobs`),
   ]);
   const organizations = Object.fromEntries(P.ORG_STATUSES.map((s) => [s, 0]));
   let total = 0;
@@ -103,6 +107,9 @@ router.get('/stats', async (req, res) => {
     organizations: { ...organizations, total },
     pending_invitations: pending.rows[0].n,
     retention_overdue: overdue.rows[0].n,
+    open_errors: errors.rows[0].n,
+    jobs_queued: queue.rows[0].queued,
+    jobs_failed: queue.rows[0].failed,
   });
 });
 
@@ -399,6 +406,7 @@ router.post('/organizations/:id/invitations', async (req, res) => {
     const r = await invites.createInvitation(client, {
       orgId: org.id, email: input.email, role: input.role, branchIds: input.branchIds, invitedBy: req.user.id,
     });
+    await invites.limitSends(db, res, { orgId: org.id, email: r.invitation.email });
     await audit(client, req, {
       orgId: org.id, action: 'invitation.create', tableName: 'invitations', rowPk: r.invitation.id,
       targetType: 'invitation', targetId: r.invitation.id,
@@ -422,6 +430,7 @@ router.post('/organizations/:id/invitations/:invitationId/resend', async (req, r
   if (!INVITABLE_ORG_STATUSES.includes(org.status)) throw new HttpError(409, 'org_inactive', `This clinic is ${org.status}`);
   const { invitation, token } = await db.withContext({ userId: req.user.id, system: true }, async (client) => {
     const r = await invites.resendInvitation(client, { orgId: org.id, id });
+    await invites.limitSends(db, res, { orgId: org.id, email: r.invitation.email });
     await audit(client, req, {
       orgId: org.id, action: 'invitation.resend', tableName: 'invitations', rowPk: id,
       targetType: 'invitation', targetId: id, payload: { email: r.invitation.email, previous_status: r.previousStatus },
@@ -594,6 +603,63 @@ router.get('/audit', async (req, res) => {
     return { data: list.rows, count: count.rows[0].n };
   });
   res.json(result);
+});
+
+// ── resources (A01 «الموارد», docs/06 S8) ───────────────────────────────
+
+router.get('/usage', async (req, res) => {
+  const { db, config } = req.app.locals;
+  const { rows: [snapshot] } = await db.query('select * from public.usage_snapshots order by taken_at desc, id desc limit 1');
+  const levels = snapshot ? snapshot.levels : { disk: 0, email_hour: 0, email_day: 0 };
+  if (snapshot) for (const k of ['db_bytes', 'files_bytes', 'backups_bytes', 'disk_total_bytes', 'disk_free_bytes']) {
+    snapshot[k] = snapshot[k] === null ? null : Number(snapshot[k]);
+  }
+  res.json({ snapshot: snapshot || null, limits: usage.limitsOf(config), levels });
+});
+
+// ── errors (A08, docs/06 S6) ────────────────────────────────────────────
+// error_groups / error_events (0012) hold scrubbed text only; no RLS.
+
+const FINGERPRINT_RE = /^[0-9a-f]{64}$/;
+const GROUP_COLUMNS = 'fingerprint, source, message, route, status, code, count::float8 as count, first_seen, last_seen, last_release, resolved_at';
+
+async function errorGroup(db, fingerprint) {
+  if (!FINGERPRINT_RE.test(fingerprint)) throw notFound('error_not_found', 'Error not found');
+  const { rows } = await db.query(`select ${GROUP_COLUMNS} from public.error_groups where fingerprint = $1`, [fingerprint]);
+  if (!rows[0]) throw notFound('error_not_found', 'Error not found');
+  return rows[0];
+}
+
+router.get('/errors', async (req, res) => {
+  const { db } = req.app.locals;
+  const { limit, offset } = page(req.query);
+  const status = qstr(req.query.status) || 'open';
+  const where = { open: 'where resolved_at is null', resolved: 'where resolved_at is not null', all: '' }[status];
+  if (where === undefined) throw badRequest('invalid_filter', 'status must be open, resolved or all');
+  const [list, count] = await Promise.all([
+    db.query(`select ${GROUP_COLUMNS} from public.error_groups ${where} order by last_seen desc limit $1 offset $2`, [limit, offset]),
+    db.query(`select count(*)::int as n from public.error_groups ${where}`),
+  ]);
+  res.json({ data: list.rows, count: count.rows[0].n });
+});
+
+router.get('/errors/:fingerprint', async (req, res) => {
+  const { db } = req.app.locals;
+  const group = await errorGroup(db, req.params.fingerprint);
+  const { rows: events } = await db.query(
+    `select e.id, e.created_at, e.message, e.stack, e.route, e.method, e.status, e.code, e.release, e.user_agent,
+            e.organization_id, o.slug as organization_slug, e.user_id
+       from public.error_events e left join public.organizations o on o.id = e.organization_id
+      where e.fingerprint = $1 order by e.created_at desc, e.id desc limit 20`, [group.fingerprint]);
+  res.json({ group, events });
+});
+
+router.post('/errors/:fingerprint/resolve', async (req, res) => {
+  const { db } = req.app.locals;
+  const group = await errorGroup(db, req.params.fingerprint);
+  const { rows } = await db.query(
+    `update public.error_groups set resolved_at = now() where fingerprint = $1 returning ${GROUP_COLUMNS}`, [group.fingerprint]);
+  res.json({ group: rows[0] });
 });
 
 module.exports = router;

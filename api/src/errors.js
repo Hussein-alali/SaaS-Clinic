@@ -3,11 +3,13 @@
 // (docs/02-TRD.md "API contract").
 
 class HttpError extends Error {
-  constructor(status, code, message) {
+  // extra: more fields of the error body, e.g. {retry_after} on a 429.
+  constructor(status, code, message, extra) {
     super(message || code);
     this.status = status;
     this.code = code;
     this.expose = true;
+    if (extra) this.extra = extra;
   }
 }
 
@@ -34,14 +36,16 @@ function mapPgError(err) {
   if (code === 'PL422') return [422, { message, code }];
   // A new row on an inactive branch (0009_inactive_branch_guard).
   if (code === 'BR409') return [409, { message: 'Branch is inactive', code: 'branch_inactive' }];
+  // Another active booking holds the therapist's / doctor's slot (0010_concurrency).
+  if (code === 'BK409') return [409, { message: 'This time slot is already booked', code: 'slot_taken' }];
   if (code === '57014') return [503, { message: 'Query took too long and was cancelled', code }];
   if (SERVER_CLASSES.has(code.slice(0, 2))) return [500, { message: 'Database error', code }];
   return [400, { message, code }];
 }
 
-function sendError(res, status, code, message) {
+function sendError(res, status, code, message, extra) {
   if (res.headersSent) return;
-  res.status(status).json({ error: { message, code } });
+  res.status(status).json({ error: { message, code, ...extra } });
 }
 
 module.exports = { HttpError, badRequest, unauthorized, forbidden, notFound, isPgError, mapPgError, sendError };

@@ -18,6 +18,7 @@ const { HttpError, badRequest, forbidden, notFound } = require('../errors');
 const { requireOrg } = require('../tenant');
 const files = require('../files');
 const { assertModule, bucketModule } = require('../modules');
+const ratelimit = require('../ratelimit');
 
 const router = express.Router();
 
@@ -78,6 +79,8 @@ async function storageLimitBytes(db, orgId) {
 
 router.post('/upload', requireOrg(), allow('upload'), async (req, res) => {
   const { config, db } = req.app.locals;
+  // 120 uploads per user an hour, counted before the body is read (docs/06 S5).
+  await ratelimit.enforce(db, res, 'upload_user', req.ctx.userId);
   await parseUpload(req, res);
   const tmp = req.file && req.file.path;
   try {

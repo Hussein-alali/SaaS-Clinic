@@ -23,6 +23,7 @@ const { HttpError, badRequest, notFound, forbidden } = require('../errors');
 const { writeAudit } = require('../audit');
 const members = require('../members');
 const invites = require('../invites');
+const ratelimit = require('../ratelimit');
 
 const router = express.Router();
 
@@ -48,6 +49,20 @@ async function findByToken(client, token, { lock = false } = {}) {
   return rows[0] || null;
 }
 
+/** findByToken() for a request: unknown tokens count per IP (30 in 10
+ *  minutes, then 429: someone guessing links); valid ones do not. */
+async function lookup(req, res) {
+  const { db } = req.app.locals;
+  const ip = auth.clientIp(req);
+  if (ip) {
+    const state = await ratelimit.peek(db, 'invitation_ip', ip);
+    if (state.blocked) throw ratelimit.rateLimited(res, state.retryAfterSec);
+  }
+  const inv = await findByToken(db, req.params.token);
+  if (!inv && ip) await ratelimit.hit(db, 'invitation_ip', ip);
+  return inv;
+}
+
 /** 404 / 410 / 403 unless the invitation can be accepted now. */
 function assertUsable(inv) {
   if (!inv) throw notFound('invitation_not_found', 'Invitation not found');
@@ -58,7 +73,7 @@ function assertUsable(inv) {
 
 router.get('/:token', async (req, res) => {
   const { db } = req.app.locals;
-  const inv = await findByToken(db, req.params.token);
+  const inv = await lookup(req, res);
   assertUsable(inv);
   const { rowCount } = await db.query('select 1 from auth.users where lower(email) = lower($1)', [inv.email]);
   res.json({
@@ -72,7 +87,7 @@ router.get('/:token', async (req, res) => {
 });
 
 router.post('/:token/accept', async (req, res) => {
-  const { config, db, loginLimiter } = req.app.locals;
+  const { config, db } = req.app.locals;
   const token = req.params.token;
   const body = req.body || {};
   const password = typeof body.password === 'string' ? body.password : '';
@@ -81,13 +96,12 @@ router.post('/:token/accept', async (req, res) => {
   if (nameIn.length > 120) throw badRequest('invalid_name', 'Name must be at most 120 characters');
 
   // Rate limit like /api/auth/login (the password may be an existing account's).
-  const peek = await findByToken(db, token);
+  const peek = await lookup(req, res);
   assertUsable(peek);
   const ip = auth.clientIp(req);
-  const keys = [`email:${peek.email.toLowerCase()}`];
-  if (ip) keys.push(`ip:${ip}`);
-  const wait = Math.max(...keys.map((k) => loginLimiter.retryAfter(k)));
-  if (wait) throw auth.tooManyAttempts(res, wait);
+  const keys = [['login_email', peek.email.toLowerCase()]];
+  if (ip) keys.push(['login_ip', ip]);
+  await auth.refuseBlocked(db, res, keys);
 
   let result;
   try {
@@ -198,10 +212,10 @@ router.post('/:token/accept', async (req, res) => {
       };
     });
   } catch (err) {
-    if (err && err.countsAsFailure) keys.forEach((k) => loginLimiter.fail(k));
+    if (err && err.countsAsFailure) await Promise.all(keys.map(([bucket, key]) => ratelimit.hit(db, bucket, key)));
     throw err;
   }
-  loginLimiter.reset(keys[0]);
+  await ratelimit.clear(db, ...keys[0]);
   auth.issueSession(res, config, result.user, false);
   const payload = await auth.sessionPayload(db, auth.publicUser(result.user));
   res.json({ ...payload, organization: result.organization, role: result.role });

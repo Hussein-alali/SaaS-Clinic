@@ -61,6 +61,16 @@ function writeLS(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); }
   catch (e) { console.warn("writeLS failed", key, e); }
 }
+// A URL read from the database (file_url and the like) for <a href> or
+// window.open: http(s) or a path of this site only. Anything else
+// (javascript:, data:, vbscript:...) would run script → "" (CWE-79).
+function safeUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const { protocol } = new URL(value, window.location.href);
+    return protocol === "https:" || protocol === "http:" ? value : "";
+  } catch { return ""; }
+}
 // Escape untrusted text for interpolation into HTML.
 function escHtml(s) {
   return String(s == null ? "" : s)
@@ -304,11 +314,13 @@ function __ensureActiveBranch(list) {
 
 const INACTIVE_BRANCH_BOOKING = tt("هذا الفرع معطّل — لا يمكن إضافة حجوزات جديدة فيه. اختر فرعًا نشطًا من قائمة الفروع.");
 
-// The API refuses every write on an inactive branch with 409
-// {code:"branch_inactive"} (e.g. deactivated by another admin meanwhile):
-// the Arabic reason, or null for any other error.
-function __branchInactiveText(error) {
-  return error && error.code === "branch_inactive" ? __AUTH_ERRORS.branch_inactive : null;
+// Writes the API refuses for a reason the person can act on, in the page
+// language: 409 {code:"branch_inactive"} (a branch deactivated meanwhile),
+// 409 {code:"slot_taken"} (another booking took the slot first) and 429
+// {code:"rate_limited"} (docs/06 S4, S5). Null for any other error.
+const __WRITE_REFUSALS = new Set(["branch_inactive", "slot_taken", "rate_limited"]);
+function __refusalText(error) {
+  return error && __WRITE_REFUSALS.has(error.code) ? __AUTH_ERRORS[error.code] : null;
 }
 
 // The reason for a refused branch write (docs/03 «إضافة فرع»), in the page language.
@@ -739,6 +751,8 @@ const __AUTH_ERRORS = __i18nValues({
   plan_limit_modules:  "هذه الميزة غير متاحة في خطتك",
   // 409 from the API: a write on a deactivated branch (docs/06 task 3.18).
   branch_inactive:     "هذا الفرع معطّل — اختر فرعًا نشطًا لإضافة حجوزات أو مدفوعات جديدة",
+  // 409 from the API: another booking took this therapist's / doctor's slot (docs/06 S4).
+  slot_taken:          "هذا الموعد محجوز بالفعل — اختر وقتًا آخر",
   weak_password:       "كلمة المرور يجب أن تكون من 6 إلى 72 حرفًا",
   invalid_email:       "بريد إلكتروني غير صحيح",
   invalid_role:        "الدور المحدد غير صالح",
@@ -1176,9 +1190,12 @@ function printHTML(title, bodyHtml) {
     <h1>${brand} — ${safeTitle}</h1>
     <div class="sub">${escHtml(fmtDate(new Date(), "dateTime"))}</div>
     ${bodyHtml || ""}
-    <div class="no-print" style="margin-top:24px"><button onclick="window.print()">${escHtml(tt("طباعة / حفظ PDF"))}</button></div>
+    <div class="no-print" style="margin-top:24px"><button type="button">${escHtml(tt("طباعة / حفظ PDF"))}</button></div>
     </body></html>`);
   w.document.close();
+  // A listener, not onclick="": the window inherits the page's CSP, which runs no inline handler.
+  const printButton = w.document.querySelector(".no-print button");
+  if (printButton) printButton.addEventListener("click", () => w.print());
   // Wait for load rather than fixed 250ms; falls back to timeout for older browsers.
   const doPrint = () => { try { w.focus(); w.print(); } catch (e) { console.warn("print failed", e); } };
   if (w.document.readyState === "complete") doPrint();
@@ -1200,24 +1217,29 @@ function printHTML(title, bodyHtml) {
 // `cols` whitelists which columns to actually send to Supabase — anything
 // else in the row is UI-only seed metadata (patient name, doctor, room…)
 // that would trip PGRST204 on the strict schema.
+// `window`: the date column of a time-series table, read from a date
+// onwards (bounded loading, docs/06 S9 — see DATA_WINDOW_DAYS below);
+// `undated`: rows without that date (it has no default) are read too.
 const DATA_TABLES = {
   patients:   { key: "patients",   pk: "patient_id",  ls: "kinetic.patients",
                 cols: ["patient_id","name","phone","age","gender","diagnosis","notes","therapist_id","created_at",
                        "medical_file_no","national_id","whatsapp","email","date_of_birth","address","occupation",
                        "emergency_name","emergency_phone","doctor_id","medical_history","allergies","medications",
                        "insurance_info","status","updated_at"] },
-  appts:      { key: "bookings",   pk: "booking_id",  ls: "kinetic.bookings", branchScoped: true,
+  appts:      { key: "bookings",   pk: "booking_id",  ls: "kinetic.bookings", branchScoped: true, window: "date", undated: true,
                 cols: ["booking_id","patient_id","therapist_id","doctor_id","department_id","date","time","status","notes","created_at"] },
   schedules:  { key: "patient_schedules", pk: "schedule_id", ls: "kinetic.patient_schedules", branchScoped: true,
                 cols: ["schedule_id","patient_id","therapist_id","days","time","sessions_per_week",
                        "allow_consecutive","active","notes","created_at","updated_at"] },
-  sessions:   { key: "sessions",   pk: "session_id",  ls: "kinetic.sessions", branchScoped: true,
+  sessions:   { key: "sessions",   pk: "session_id",  ls: "kinetic.sessions", branchScoped: true, window: "date", undated: true,
                 cols: ["session_id","patient_id","therapist_id","treatment_id","booking_id","date","pain_score",
                        "mood","duration_minutes","goals","completed_exercises","session_notes","session_number",
                        "status","started_at","created_at"] },
-  payments:   { key: "invoices",   pk: "invoice_id",  ls: "kinetic.invoices", branchScoped: true,
+  payments:   { key: "invoices",   pk: "invoice_id",  ls: "kinetic.invoices", branchScoped: true, window: "created_at",
+                // Not fully paid: read whatever their date (balances). RPCs write "paid", the screens «مدفوع».
+                openRows: (q) => q.neq("status", "paid").neq("status", "مدفوع"),
                 cols: ["invoice_id","patient_id","amount","paid","payment_method","status","created_at"] },
-  paymentHistory: { key: "payments", pk: "payment_id", ls: "kinetic.payment_history", branchScoped: true,
+  paymentHistory: { key: "payments", pk: "payment_id", ls: "kinetic.payment_history", branchScoped: true, window: "created_at",
                 cols: ["payment_id","patient_id","cashier_id","cashier_name","amount","method",
                        "reference","transaction_id","notes","receipt_no","allocations",
                        "ip_address","status","created_at"] },
@@ -1282,10 +1304,11 @@ function __branchFilterOf(cfg) {
 // what came back is re-read page by page, ordered by its primary key so
 // pages neither overlap nor skip rows.
 // opts.allBranches: every branch RLS lets the member read (reports «كل
-// الفروع»), whatever branch is selected.
+// الفروع»), whatever branch is selected. opts.where(q) adds filters.
 async function selectAllRows(cfg, opts) {
   const branch = opts && opts.allBranches ? null : __branchFilterOf(cfg);
-  const scoped = (q) => (branch ? q.eq("branch_id", branch) : q);
+  const where = (opts && opts.where) || ((q) => q);
+  const scoped = (q) => where(branch ? q.eq("branch_id", branch) : q);
   const first = await scoped(sb.from(cfg.key).select("*", { count: "exact" }));
   const total = first.count;
   const pageSize = Array.isArray(first.data) ? first.data.length : 0;
@@ -1299,11 +1322,89 @@ async function selectAllRows(cfg, opts) {
   return { data: pages.flatMap(p => p.data || []), error: null };
 }
 
+// ── Bounded loading (docs/06 S9) ──────────────────────────────
+// The time-series tables (cfg.window) are read from DATA_WINDOW_DAYS before
+// today onwards, future rows included, instead of from the clinic's first
+// day: years of bookings are no longer downloaded on every start. Invoices
+// that are not fully paid (cfg.openRows) come whatever their date, so
+// balances stay right, and so do rows without a date (cfg.undated: the
+// screens show an undated booking as today's). Older rows come on demand:
+//   KineticData.loadOlder({ from })      every row since `from` (reports, the
+//                                        calendar), merged into window.DATA
+//   KineticData.loadOlder({ patientId }) every row of one patient (patient
+//                                        file, session numbers), merged too
+//   KineticData.listRange(name, from, to, { patientId, allBranches })
+//                                        one range for one view, DATA untouched
+// What was loaded stays loaded (hydrates keep it) until the branch changes.
+// Dates are YYYY-MM-DD; created_at compares in UTC, as the API's sessions do.
+const DATA_WINDOW_DAYS = 180;
+const __history = { branch: null, from: null, patients: new Set(), epoch: 0 };
+function __isoDay(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function __nextDayIso(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + 1);
+  return __isoDay(d);
+}
+// The first day window.DATA holds for every patient.
+function dataWindowFrom() {
+  if (__history.from) return __history.from;
+  const d = new Date();
+  d.setDate(d.getDate() - DATA_WINDOW_DAYS);
+  return __isoDay(d);
+}
+// A branch switch starts over: what was loaded belongs to the old branch.
+function __historyForBranch() {
+  const branch = (typeof window.ACTIVE_BRANCH_ID === "string" && window.ACTIVE_BRANCH_ID) || "";
+  if (__history.branch !== branch) {
+    __history.branch = branch;
+    __history.from = null;
+    __history.patients = new Set();
+    __history.epoch++;
+  }
+  return __history.epoch;
+}
+const __rowDay = (cfg, row) => String(row[cfg.window] || "").slice(0, 10);
+function __uniqueRows(cfg, rows) {
+  const seen = new Set();
+  return rows.filter(r => { const k = pkOf(cfg, r); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+// range: { from, before, patientId, patientIds, withKept } (each optional)
+// — rows with from <= date < before of one patient (or of several, 200 per
+// request); withKept adds the rows a window always holds: not fully paid
+// before `from` (cfg.openRows), and undated (cfg.undated).
+async function selectRange(cfg, range, opts) {
+  const where = (ids) => (q) => {
+    if (range.from) q = q.gte(cfg.window, range.from);
+    if (range.before) q = q.lt(cfg.window, range.before);
+    if (range.patientId) q = q.eq("patient_id", range.patientId);
+    if (ids) q = q.in("patient_id", ids);
+    return q;
+  };
+  const groups = [];
+  for (let i = 0; range.patientIds && i < range.patientIds.length; i += 200) groups.push(range.patientIds.slice(i, i + 200));
+  const parts = range.patientIds
+    ? groups.map(ids => selectAllRows(cfg, { ...opts, where: where(ids) }))
+    : [selectAllRows(cfg, { ...opts, where: where(null) })];
+  if (range.withKept && range.from && cfg.openRows) {
+    parts.push(selectAllRows(cfg, { ...opts, where: (q) => cfg.openRows(q.lt(cfg.window, range.from)) }));
+  }
+  if (range.withKept && cfg.undated) parts.push(selectAllRows(cfg, { ...opts, where: (q) => q.is(cfg.window, null) }));
+  const results = await Promise.all(parts);
+  const failed = results.find(r => r.error);
+  if (failed) return { data: null, error: failed.error };
+  return { data: __uniqueRows(cfg, results.flatMap(r => r.data || [])), error: null };
+}
+function __readTable(cfg, opts) {
+  return cfg.window ? selectRange(cfg, { from: dataWindowFrom(), withKept: true }, opts) : selectAllRows(cfg, opts);
+}
+
 async function listTable(name) {
   const cfg = DATA_TABLES[name];
   if (!cfg) return [];
   if (sb) {
-    const { data, error } = await selectAllRows(cfg);
+    const { data, error } = await __readTable(cfg);
     // On success (no error), trust the server — even if the response is [].
     // That way a deleted row on the server actually clears the LS cache.
     if (!error && Array.isArray(data)) {
@@ -1367,11 +1468,21 @@ async function upsertRow(name, row) {
         __ok = false;
         // Keep the FULL PostgreSQL error (code + message + details + hint)
         // so callers can show exactly why the write was rejected — e.g.
-        // 42501 is an RLS policy violation. An inactive branch gets its
-        // Arabic reason (and a toast, after the screen's own generic one).
-        const inactive = __branchInactiveText(error);
-        if (inactive) setTimeout(() => { if (window.showToast) window.showToast(inactive, "error"); }, 0);
-        __error = inactive || [error.code, error.message, error.details, error.hint]
+        // 42501 is an RLS policy violation. A refusal the person can act on
+        // (inactive branch, taken slot, too many requests) gets its reason
+        // in the page language, and a toast after the screen's own one.
+        const reason = __refusalText(error);
+        // Another receptionist took the slot first (BK409, docs/06 S4): the
+        // booking does not exist, so it leaves the calendar again.
+        if (error.code === "slot_taken") {
+          if (window.DATA) window.DATA[name] = list;
+          writeLS(cfg.ls, list);
+          // ...and the calendar catches up with the booking that took it
+          // (and its patient, who may be new to this screen).
+          hydrateDomainTables().catch(() => {});
+        }
+        if (reason) setTimeout(() => { if (window.showToast) window.showToast(reason, "error"); }, 0);
+        __error = reason || [error.code, error.message, error.details, error.hint]
           .filter(Boolean).join(" · ") || String(error);
         console.warn(`upsertRow ${name} failed`, { table: cfg.key, op: "UPSERT (INSERT ON CONFLICT UPDATE)", error });
       }
@@ -1404,7 +1515,7 @@ async function removeRow(name, id) {
     if (error) {
       console.warn(`removeRow ${name} failed`, { table: cfg.key, error });
       throw new Error(
-        __branchInactiveText(error)
+        __refusalText(error)
         || [error.code, error.message, error.details, error.hint].filter(Boolean).join(" · ")
         || tt("تعذّر الحذف")
       );
@@ -1427,23 +1538,37 @@ async function removeRow(name, id) {
 const BOOKING_STATUS_AR = { pending:"معلّق", confirmed:"مؤكد", completed:"مكتمل", cancelled:"ملغي", "no-show":"لم يحضر", available:"متاح" };
 const INVOICE_STATUS_AR = { paid:"مدفوع", partial:"جزئي", pending:"معلّق", overdue:"متأخر" };
 
+// Name lookups by id through Maps built once (the first row with an id wins,
+// as Array.find did): one pass per table instead of rows × patients.
+function __firstById(rows, idOf) {
+  const m = new Map();
+  for (const r of rows || []) {
+    const k = idOf(r);
+    if (k != null && !m.has(k)) m.set(k, r);
+  }
+  return m;
+}
 function normalizeDomainData(D) {
   const patients = D.patients || [];
+  const patientsById = __firstById(patients, x => x.patient_id ?? x.id);
+  const therapistsById = __firstById(D.therapists, x => x.id);
+  const staffById = __firstById(D.staff, x => x.staff_id);
+  const doctorsById = __firstById(D.doctors, x => x.id);
+  const deptsById = __firstById(D.departments, x => x.id);
   const nameOfPatient = (pid) => {
-    const p = patients.find(x => (x.patient_id ?? x.id) === pid);
+    const p = patientsById.get(pid);
     return p ? p.name : "";
   };
   const nameOfTherapist = (tid) => {
-    const t = (D.therapists || []).find(x => x.id === tid)
-      || (D.staff || []).find(x => x.staff_id === tid);
+    const t = therapistsById.get(tid) || staffById.get(tid);
     return t ? t.name : "";
   };
   const nameOfDoctor = (did) => {
-    const d = (D.doctors || []).find(x => x.id === did);
+    const d = doctorsById.get(did);
     return d ? d.name : "";
   };
   const nameOfDept = (deid) => {
-    const d = (D.departments || []).find(x => x.id === deid);
+    const d = deptsById.get(deid);
     return d ? d.name_ar : "";
   };
   D.patients = patients.map(p => ({
@@ -1547,9 +1672,22 @@ let __hydrateGeneration = 0;
 async function hydrateDomainTables() {
   if (!sb) return;
   const generation = ++__hydrateGeneration;
+  const epoch = __historyForBranch();
+  const readFrom = dataWindowFrom();
   const names = Object.keys(DATA_TABLES);
-  const results = await Promise.all(names.map(name =>
-    listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; })));
+  // The patients whose whole history was loaded (loadOlder) are read again
+  // too, one request per table for all of them: an old row changed
+  // elsewhere (an old invoice paid) must not stay stale.
+  const covered = [...__history.patients];
+  const windowed = names.filter(n => DATA_TABLES[n].window);
+  const [results, olderRows] = await Promise.all([
+    Promise.all(names.map(name =>
+      listTable(name).catch(e => { console.warn("hydrate", name, "failed", e); return null; }))),
+    covered.length
+      ? Promise.all(windowed.map(name => selectRange(DATA_TABLES[name], { before: readFrom, patientIds: covered })
+          .catch(e => ({ data: null, error: e }))))
+      : Promise.resolve([]),
+  ]);
   if (generation !== __hydrateGeneration) return;
   const fetched = {};
   names.forEach((name, i) => {
@@ -1557,6 +1695,25 @@ async function hydrateDomainTables() {
     // means empty UI, not "keep whatever was in memory before".
     if (Array.isArray(results[i])) fetched[name] = results[i];
   });
+  // Rows from before the window that were loaded on demand (loadOlder) stay:
+  // the covered patients' history as just read (the copy in memory only when
+  // that read failed), and a period loaded while this ran.
+  if (window.DATA && epoch === __history.epoch) {
+    const since = dataWindowFrom();
+    const readNow = new Set(covered); // patients loaded while this ran keep their copy
+    windowed.forEach((name, i) => {
+      const cfg = DATA_TABLES[name];
+      if (!fetched[name]) return;
+      const fresh = olderRows[i] && !olderRows[i].error && Array.isArray(olderRows[i].data) ? olderRows[i].data : null;
+      const keep = (window.DATA[name] || []).filter(r => {
+        const day = __rowDay(cfg, r);
+        if (day >= readFrom) return false;
+        if (day >= since) return true;
+        return __history.patients.has(r.patient_id) && (!fresh || !readNow.has(r.patient_id));
+      });
+      fetched[name] = __uniqueRows(cfg, fetched[name].concat(fresh || [], keep));
+    });
+  }
   if (window.DATA) {
     for (const [name, rows] of Object.entries(fetched)) window.DATA[name] = rows;
     // Normalize even when nothing was fetched: rows restored from the LS
@@ -1589,10 +1746,18 @@ async function loadClinicData() {
 // clinic — without touching X-Branch-Id or window.DATA. Rows keep
 // branch_id and get the same UI aliases as window.DATA (names from it).
 // Resolves to { appts, sessions, ... } or throws an Error (Arabic).
-async function listAllBranchesTables(names) {
+// opts.from: also the rows since that date when it is before the window.
+async function listAllBranchesTables(names, opts) {
   if (!sb) throw __uiError(tt("هذه الميزة تحتاج الاتصال بالخادم"));
   const wanted = (names || []).filter(n => DATA_TABLES[n] && DATA_TABLES[n].branchScoped);
-  const results = await Promise.all(wanted.map(n => selectAllRows(DATA_TABLES[n], { allBranches: true })));
+  const start = dataWindowFrom();
+  const from = opts && opts.from && opts.from < start ? opts.from : start;
+  const results = await Promise.all(wanted.map(n => {
+    const cfg = DATA_TABLES[n];
+    return cfg.window
+      ? selectRange(cfg, { from, withKept: true }, { allBranches: true })
+      : selectAllRows(cfg, { allBranches: true });
+  }));
   const D = window.DATA || {};
   const out = {
     patients: D.patients || [], therapists: D.therapists || [], staff: D.staff || [],
@@ -1612,11 +1777,90 @@ async function listAllBranchesTables(names) {
   return tables;
 }
 
+// Merges rows read on demand into window.DATA, oldest first (the screens
+// read the tables in load order). Returns how many were new.
+function __mergeOlder(name, rows) {
+  const cfg = DATA_TABLES[name];
+  const D = window.DATA;
+  if (!D || !rows.length) return 0;
+  const list = D[name] || [];
+  const seen = new Set(list.map(r => pkOf(cfg, r)));
+  const add = __uniqueRows(cfg, rows.filter(r => !seen.has(pkOf(cfg, r))));
+  if (add.length) D[name] = add.concat(list);
+  return add.length;
+}
+
+// Whether window.DATA already holds every row since `from` / of the patient.
+function historyCovers({ from, patientId } = {}) {
+  __historyForBranch();
+  if (from && from < dataWindowFrom()) return false;
+  if (patientId && !__history.patients.has(patientId)) return false;
+  return true;
+}
+
+// See "Bounded loading" above. Resolves to true when rows were added (and
+// kinetic:data-updated was sent); throws an Error with an Arabic message.
+async function loadOlderRows({ from, patientId } = {}) {
+  if (!sb || historyCovers({ from, patientId })) return false;
+  const epoch = __history.epoch;
+  const start = dataWindowFrom();
+  const ranges = [];
+  if (from && from < start) ranges.push({ from, before: start });
+  if (patientId && !__history.patients.has(patientId)) ranges.push({ before: start, patientId });
+  const names = Object.keys(DATA_TABLES).filter(n => DATA_TABLES[n].window);
+  const jobs = [];
+  for (const range of ranges) for (const name of names) jobs.push({ name, run: selectRange(DATA_TABLES[name], range) });
+  const results = await Promise.all(jobs.map(j => j.run));
+  if (epoch !== __history.epoch) return false; // the branch changed meanwhile
+  const failed = results.find(r => r.error && r.error.code !== "module_disabled");
+  if (failed) {
+    console.warn("loadOlder failed", failed.error.message || failed.error);
+    throw __uiError(__friendlyAuthError(failed.error.code, "") || tt("تعذّر تحميل البيانات الأقدم"));
+  }
+  let added = 0;
+  results.forEach((r, i) => { added += __mergeOlder(jobs[i].name, r.data || []); });
+  if (from && from < dataWindowFrom()) __history.from = from;
+  if (patientId) __history.patients.add(patientId);
+  if (added && window.DATA) {
+    normalizeDomainData(window.DATA);
+    window.dispatchEvent(new CustomEvent("kinetic:data-updated", { detail: { table: "*" } }));
+  }
+  return added > 0;
+}
+
+// One range of a time-series table for one view (to: the last day,
+// inclusive); rows normalized like window.DATA's, which stays as it is.
+async function listRangeRows(name, from, to, opts) {
+  const cfg = DATA_TABLES[name];
+  if (!cfg || !cfg.window) throw __uiError(tt("تعذّر تحميل البيانات الأقدم"));
+  if (!sb) throw __uiError(tt("هذه الميزة تحتاج الاتصال بالخادم"));
+  const o = opts || {};
+  const { data, error } = await selectRange(cfg,
+    { from: from || null, before: to ? __nextDayIso(to) : null, patientId: o.patientId || null },
+    { allBranches: !!o.allBranches });
+  if (error) {
+    if (error.code === "module_disabled") return [];
+    console.warn("listRange " + name + " failed", error.message || error);
+    throw __uiError(__friendlyAuthError(error.code, "") || tt("تعذّر تحميل البيانات الأقدم"));
+  }
+  const D = window.DATA || {};
+  const out = {
+    patients: D.patients || [], therapists: D.therapists || [], staff: D.staff || [],
+    doctors: D.doctors || [], departments: D.departments || [], [name]: data || [],
+  };
+  normalizeDomainData(out);
+  return out[name];
+}
+
 const KineticData = {
   list: listTable,
   upsert: upsertRow,
   remove: removeRow,
   listAllBranches: listAllBranchesTables,
+  loadOlder: loadOlderRows,
+  covers: historyCovers,
+  listRange: listRangeRows,
+  windowFrom: dataWindowFrom,
   tables: DATA_TABLES,
 };
 
@@ -1726,15 +1970,6 @@ async function loadPaymentHistory(patientId, opts) {
   return src.slice(offset, offset + limit);
 }
 
-// Best-effort IP capture. Not sensitive — used only for the audit log.
-async function __clientIP() {
-  try {
-    const r = await fetch("https://api.ipify.org?format=json", { cache: "no-store" });
-    if (r.ok) { const j = await r.json(); return j.ip || null; }
-  } catch {}
-  return null;
-}
-
 function __receiptNo() {
   const d = new Date();
   const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
@@ -1774,10 +2009,14 @@ async function recordQuickPayment(input) {
   const me = window.ME || {};
   const cashierId = me.staff_id || me.id || me.email || null;
   const cashierName = me.name || me.email || "غير معروف";
-  const ipAddress = await __clientIP();
+  // The IP address is the server's to record (api/src/routes/rpc.js): the
+  // browser no longer asks a third party (api.ipify.org) for it.
 
   // ── Transactional path (Supabase RPC) ────────────────────────
+  // One Idempotency-Key per payment attempt (the screen keeps it across a
+  // retry): a second click or a resend after a timeout never pays twice.
   if (sb) {
+    const idempotencyKey = (input && input.idempotency_key) || newRecordId("qp-");
     const { data, error } = await sb.rpc("record_quick_payment", {
       p_patient_id: patientId,
       p_allocations: allocs.map(a => ({
@@ -1789,11 +2028,10 @@ async function recordQuickPayment(input) {
       p_notes: (input.notes || "").trim() || null,
       p_cashier_id: cashierId,
       p_cashier_name: cashierName,
-      p_ip_address: ipAddress,
-    });
+    }, { idempotencyKey });
     if (error) {
       console.warn("record_quick_payment failed", error.message || error);
-      return { ok: false, error: __branchInactiveText(error) || error.message || tt("تعذّر تسجيل الدفع") };
+      return { ok: false, error: __refusalText(error) || error.message || tt("تعذّر تسجيل الدفع") };
     }
     // Refresh mirrors so tiles/tables update without a page reload.
     await hydrateDomainTables().catch(()=>{});
@@ -1865,7 +2103,7 @@ async function recordQuickPayment(input) {
       transaction_id: (input.transaction_id || "").trim() || null,
       notes: (input.notes || "").trim() || null,
       receipt_no, allocations: allocs,
-      ip_address: ipAddress,
+      ip_address: null,
       status: "completed",
       created_at: new Date().toISOString(),
     });
@@ -1887,11 +2125,21 @@ async function recordQuickPayment(input) {
   }
 }
 
+// One Idempotency-Key per payment attempt (docs/06 S4): the same key while
+// the payment is unchanged (a second click, a retry after a lost answer —
+// the server then answers with the first payment), a new key once anything
+// in it was edited, since the stored answer would be the old payment's.
+function quickPayAttempt(prev, payload) {
+  const sig = JSON.stringify(payload);
+  return prev && prev.sig === sig ? prev : { key: newRecordId("qp-"), sig, payload };
+}
+
 const QuickPay = {
   searchPatients:      searchPatientsFor,
   loadFinancials:      loadPatientFinancials,
   loadHistory:         loadPaymentHistory,
   recordPayment:       recordQuickPayment,
+  attempt:             quickPayAttempt,
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -2673,15 +2921,17 @@ async function removePatientFile(fileId) {
 
 // Signed URL for private buckets (falls back to whatever file_url already
 // holds, which is a public URL when the bucket is public).
+// file_url is any member's text: only a safe URL is returned (safeUrl).
 async function getPatientFileUrl(row, expiresSeconds = 3600) {
   if (!row) return "";
-  if (!sb || !row.storage_path) return row.file_url || "";
+  const fallback = safeUrl(row.file_url);
+  if (!sb || !row.storage_path) return fallback;
   try {
     const { data, error } = await sb.storage.from(PATIENT_FILES_BUCKET)
       .createSignedUrl(row.storage_path, expiresSeconds);
-    if (error) { console.warn("createSignedUrl failed", error.message || error); return row.file_url || ""; }
-    return (data && data.signedUrl) || row.file_url || "";
-  } catch (e) { console.warn("createSignedUrl failed", e); return row.file_url || ""; }
+    if (error) { console.warn("createSignedUrl failed", error.message || error); return fallback; }
+    return safeUrl(data && data.signedUrl) || fallback;
+  } catch (e) { console.warn("createSignedUrl failed", e); return fallback; }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -3242,7 +3492,7 @@ Object.assign(window, {
   adminCreateUser, sendPasswordReset, updateOwnPassword, updateOwnProfile, updateStaffMember,
   adminResetPassword, adminSetStaffStatus, OrgAdmin,
   listAvailableAuthUsers,
-  startDictation, printHTML, escHtml,
+  startDictation, printHTML, escHtml, safeUrl,
   KineticData, QuickPay, TxMethods, InvoicesAPI, PaymentReceipts, Templates, TplCategories, TreatmentsAPI,
   uploadPatientFile, listPatientFiles, removePatientFile, getPatientFileUrl,
 });

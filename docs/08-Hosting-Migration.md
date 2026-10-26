@@ -134,3 +134,72 @@
 1. **الآن: الخيار A.** يوفر تكلفة استضافة الواجهة، ويحسن السرعة، ولا يحمل مخاطر على البيانات.
 2. **الخيار B ليس مشروعًا منفصلًا.** ادمجه مع خطة تعدد العيادات ([05](05-Backend-Schema.md)، [06](06-Implementation-Plan.md)). تلك الخطة **تعيد كتابة RLS وطبقة البيانات أصلًا** (Milestone 2–3)، فإذا نُفذ النقل وحده الآن ستُكتب الأجزاء نفسها مرتين. القرار المطلوب منك: **هل الوجهة النهائية لقاعدة البيانات Supabase أم PostgreSQL على hosting.com؟** حدده قبل بدء Milestone 2، وسنحدّث TRD والخطة بناءً عليه.
 3. **عن الـ 30GB:** تكفي بسهولة لقاعدة البيانات (عادة عشرات أو مئات الميغابايت لعيادة) وللملفات لفترة طويلة. المساحة ليست العائق. العائق هو الخدمات الأربع المذكورة أعلاه.
+
+## التشغيل على الخادم (Runbook) — الجاهزية للتوسع
+
+> كل شيء داخل hosting.com (قرار المالك 25 أكتوبر 2026). الأوامر تُضاف في cPanel ← **Cron Jobs**، وتعمل من مجلد الإصدار الحالي.
+
+### النسخ الاحتياطي (S1) ✅
+
+| ماذا | الأمر | متى |
+|---|---|---|
+| نسخة كاملة (القاعدة + ملفات العيادات + manifest) | `cd ~/clinicsys/current && scripts/backup.sh >> ~/clinicsys-backups/backup.log 2>&1` | كل ليلة `15 2 * * *` |
+| تجربة استرجاع (تطابق عدد صفوف كل جدول) | `cd ~/clinicsys/current && scripts/restore-check.sh >> ~/clinicsys-backups/restore-check.log 2>&1` | الأحد `0 4 * * 0` |
+
+- **المكان:** `BACKUP_DIR` (الافتراضي `~/clinicsys-backups`) خارج `public_html` وخارج مجلد الملفات؛ السكربت يرفض غير ذلك (خروج 4).
+- **الاحتفاظ:** آخر 7 نسخ يومية و 4 أسبوعية (نسخة الأحد أسبوعية): `BACKUP_KEEP_DAILY` و `BACKUP_KEEP_WEEKLY`. نسخ القاعدة وحدها التي يأخذها `deploy.sh` قبل كل نشر نوعها `db-only` ولها تدويرها (آخر 5، `BACKUP_KEEP_DB_ONLY`)، فلا تُخرج النشرات النسخ الليلية التي فيها الملفات.
+- **المساحة:** لا تبدأ النسخة إن كانت ستُبقي أقل من `BACKUP_MIN_FREE_MB` (الافتراضي 1024) حرة (خروج 3) — ويصل تنبيه الموارد (S8).
+- **الاتساق:** الـ dump وعدد صفوف كل جدول من لقطة واحدة (`db/backup-tools.js`)، بسياق النظام (`app.system = on`) لأن جداول العيادات FORCE RLS. الـ manifest فيه sha256 لكل ملف.
+- **قاعدة الاسترجاع:** قاعدة ثانية فارغة تُنشأ مرة واحدة في cPanel (مثل `<account>_clinicsys_restore`) لنفس المستخدم، وعنوانها في `RESTORE_DATABASE_URL`. السكربت يرفض أن تكون هي القاعدة الحية.
+- **استرجاع حقيقي بعد كارثة:** أوقف التطبيق (cPanel ← Setup Node.js App ← Stop)، ثم من `~/clinicsys/current`: `RESTORE_DATABASE_URL="$DATABASE_URL" node db/backup-tools.js restore ~/clinicsys-backups/<stamp>/db.dump` (يشغّل `pg_restore --clean` بسياق النظام وكلمة المرور في `PGPASSWORD`، لا في سطر الأوامر الذي يراه كل حساب على الخادم المشترك)، وفك `files.tar.gz` داخل `FILES_DIR`، ثم شغّل التطبيق.
+- **الخصوصية:** النسخة فيها سجلات كل العيادات وبصمات كلمات المرور: `backup.sh` يعمل بـ `umask 077` (المجلدات `0700` والملفات `0600`) ويضبط `BACKUP_DIR` على `0700`؛ لا تنقلها إلا عبر SFTP، ولا تضعها في مكان مشترك.
+- **خطر معروف:** النسخ على نفس الخادم لا تحمي من فقدان الخادم نفسه. **نزّل النسخة الأسبوعية إلى جهازك** (File Manager أو SFTP) حتى يُعتمد مكان خارجي، وفعّل نسخ cPanel/JetBackup من hosting.com إن وُجد في الخطة.
+
+### النشر والتراجع (S2) ✅
+
+**الترتيب على الخادم** (`APP_HOME`، الافتراضي `~/clinicsys`):
+
+| المسار | المحتوى |
+|---|---|
+| `releases/<stamp>-<id>/` | إصدار كامل: `api/` و `db/` و `dist/` و `scripts/` وملف `RELEASE` |
+| `current` | رابط رمزي إلى الإصدار العامل. في cPanel ← Setup Node.js App: **Application root = `clinicsys/current/api`**، و Startup file = `app.js` |
+| `shared/` | ما يبقى بين الإصدارات: `shared/files` (ملفات العيادات، `FILES_DIR`) و `shared/env` |
+
+**الخطوات:**
+
+1. على جهازك (أو في CI): `scripts/package-release.sh` ← `release-<sha>.tar.gz` (البناء على جهازك، لأن esbuild أداة تطوير).
+2. ارفع الملف إلى الخادم.
+3. شغّل `DATABASE_URL=… PORT=… ~/clinicsys/current/scripts/deploy.sh release-<sha>.tar.gz` (في أول نشر يُشغّل من النسخة المفكوكة).
+4. ما يحدث تلقائيًا: نسخة احتياطية للقاعدة ← فك الإصدار ← `npm ci --omit=dev` ← migrations ← تبديل `current` ← إعادة التشغيل (`tmp/restart.txt`) ← فحص `GET /api/health` لمدة 60 ثانية حتى يجيب **باسم الإصدار الجديد** (`release`)، فلا يُحسب ردّ العملية القديمة نجاحًا. العنوان `https://$APP_BASE_DOMAIN/api/health` (Passenger لا يستمع على منفذ محلي)، أو `HEALTH_URL` صراحة.
+5. إن لم يصح الإصدار الجديد: يعود `current` تلقائيًا إلى الإصدار السابق (خروج 2)، ويُعلَّم الإصدار الفاشل بملف `.failed`.
+
+**التراجع اليدوي:** `scripts/rollback.sh` يعود إلى أحدث إصدار سابق سليم، و `scripts/rollback.sh <release>` إلى إصدار بعينه. يُحتفظ بآخر 5 إصدارات.
+
+**البيئة على الخادم:** ملف `~/clinicsys/shared/env` (صلاحية 600، خارج Git) فيه `export NODE_ENV=production DATABASE_URL=… APP_BASE_DOMAIN=clinicsyseg.com FILES_DIR=~/clinicsys/shared/files BACKUP_DIR=… PORT=…`، تقرؤه السكربتات فقط: **التطبيق نفسه يأخذ متغيراته من شاشة Setup Node.js App**، فضع فيها `FILES_DIR` نفسه (الـ API يرفض البدء في الإنتاج بدونه، لأن الافتراضي داخل مجلد الإصدار ويضيع مع النشر التالي) ولا تضع فيها `RELEASE`، و `. ~/clinicsys/shared/env` قبل `deploy.sh` و `rollback.sh` وأي `node db/migrate.js` يدوي. `deploy.sh` يشغّل الـ migrations بـ `NODE_ENV=production` إن لم يُضبط.
+
+### المهام الخلفية (S7) ✅
+
+| ماذا | الأمر | متى |
+|---|---|---|
+| المهام المستحقة (إعادة البريد الفاشل، الصيانة اليومية) | `. ~/clinicsys/shared/env && cd ~/clinicsys/current/api && node scripts/run-jobs.js >> ~/clinicsys-jobs.log 2>&1` | كل دقيقة `* * * * *` |
+
+- الـ API نفسه يشغّلها أيضًا كل 10 ثوانٍ ما دامت عمليته حية (`JOBS_POLL_MS`)؛ الـ Cron يضمنها حين يوقف Passenger العمليات الخاملة. `FOR UPDATE SKIP LOCKED` يمنع تنفيذ مهمة مرتين.
+- المهام الفاشلة نهائيًا تظهر في بطاقة «مهام خلفية فشلت» في لوحة المنصة، ومعها آخر خطأ في جدول `jobs`.
+
+### تنبيهات الموارد (S8) ✅
+
+- مهمة `usage.check` كل ساعة (من نفس Cron المهام) تقيس القاعدة + ملفات العيادات + النسخ مقابل `DISK_QUOTA_MB` (حصة الحساب في cPanel، الافتراضي 30720)، والبريد مقابل `SMTP_HOURLY_LIMIT` و `SMTP_DAILY_LIMIT` (حدود hosting.com). اضبطها في `shared/env` بأرقام الخطة الفعلية (سؤال 1.15).
+- عند 70/85/95% تصل رسالة لكل مديري المنصة. **ماذا تفعل:** القرص ← احذف نسخًا قديمة يدويًا أو قلّل `BACKUP_KEEP_DAILY`، ونزّل الأسبوعية إلى جهازك، أو ارفع الحصة مع hosting.com؛ البريد ← رسائل المهام تنتظر الساعة التالية تلقائيًا، وإن تكرر فاطلب رفع الحد.
+
+### Webhooks (S10) ✅
+
+- لا مزوّد اليوم. لتفعيل مزوّد: أضف `WEBHOOK_<NAME>_SECRET=<سر من لوحة المزوّد، 32 حرفًا على الأقل>` إلى `shared/env` وأعد تشغيل التطبيق، وأعطِ المزوّد العنوان `https://admin.clinicsyseg.com/api/webhooks/<name>` (أو أي نطاق للتطبيق). أضف معالجات `webhook.<name>.<type>` في `api/src/job-handlers.js` قبل التفعيل، وإلا تفشل مهامه وتظهر في A01 «مهام خلفية فشلت».
+- الأحداث تُعالج بنفس Cron المهام (S7)؛ الرد للمزوّد فوري، فلا يتأثر بحد وقت Passenger.
+
+### القاعدة الحية أثناء الـ migrations (S3) ✅
+
+- **لا انتظار طويل:** كل ملف ينتظر القفل 5 ث على الأكثر (`MIGRATE_LOCK_TIMEOUT`) ويعمل 15 دقيقة على الأكثر (`MIGRATE_STATEMENT_TIMEOUT`). عند التجاوز (SQLSTATE `55P03` أو `57014`) يُلغى الملف كاملًا ويقف النشر قبل التبديل (خروج 1، الإصدار الحالي يعمل)؛ أعد المحاولة في وقت أهدأ.
+- **نسخة قبل كل migration:** مع `NODE_ENV=production` يرفض `migrate.js` ملفات معلقة بلا نسخة أحدث من ساعتين في `BACKUP_DIR` (خروج 5): شغّل `scripts/backup.sh --db-only` أولًا. `deploy.sh` يأخذها تلقائيًا (من الإصدار العامل، وفي أول نشر من الإصدار الجديد). `--no-backup-check` للحالات المقصودة فقط.
+- **expand/contract:** من `0010` يرفض `migrate.js` الحذف وإعادة التسمية وتغيير النوع و `set not null` إلا بسطر `-- contract: <السبب>` قبلها ([05](05-Backend-Schema.md) «Migration and seed data»).
+
+**القاعدة لا تُرجع تلقائيًا أبدًا:** كل migration يُبقي الإصدار السابق عاملًا (expand/contract، المهمة S3). إن أفسد migration البيانات: استرجع النسخة التي أخذها `deploy.sh` قبل النشر (أحدث مجلد في `BACKUP_DIR`) كما في «استرجاع حقيقي بعد كارثة» أعلاه، ثم `rollback.sh`.

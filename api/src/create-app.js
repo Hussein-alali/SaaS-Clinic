@@ -6,15 +6,17 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { createDb } = require('./db');
-const { createMailer } = require('./mailer');
+const { createMailer, countSends } = require('./mailer');
 const { TableCatalog, FunctionCatalog } = require('./catalog');
-const { FailureLimiter } = require('./auth');
 const { HttpError, isPgError, mapPgError, sendError } = require('./errors');
 const { staticHandlers } = require('./static');
+const { throttle } = require('./ratelimit');
+const errorlog = require('./errorlog');
+const { webhooksRouter } = require('./webhooks');
+require('./job-handlers'); // the kinds of background job (docs/06 S7)
 
 const CSRF_HEADER_VALUE = 'clinicsys';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
 function securityHeaders(config) {
   return (req, res, next) => {
@@ -35,16 +37,29 @@ function requireCsrfHeader(req, res, next) {
   next();
 }
 
+// A 5xx is a bug or an outage: it goes to the error list (docs/06 S6),
+// after the response, and never fails the request a second time.
+function track(req, err, status) {
+  const { db } = req.app.locals;
+  if (db) req.app.locals.background(() => errorlog.recordError(db, errorlog.fromRequest(req, err, status)));
+}
+
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   if (res.headersSent) {
     if (err && err.code !== 'ECONNABORTED' && err.code !== 'ECONNRESET') console.error('[api] error after headers sent:', err.message);
     return;
   }
-  if (err instanceof HttpError) return sendError(res, err.status, err.code, err.message);
+  if (err instanceof HttpError) {
+    if (err.status >= 500) track(req, err, err.status);
+    return sendError(res, err.status, err.code, err.message, err.extra);
+  }
   if (isPgError(err)) {
     const [status, body] = mapPgError(err);
-    if (status >= 500) console.error(`[api] database error ${err.code}: ${err.message}`);
+    if (status >= 500) {
+      console.error(`[api] database error ${err.code}: ${err.message}`);
+      track(req, err, status);
+    }
     return res.status(status).json({ error: body });
   }
   if (err && err.type === 'entity.parse.failed') return sendError(res, 400, 'invalid_json', 'Malformed JSON body');
@@ -55,13 +70,14 @@ function errorHandler(err, req, res, next) {
   if (err && (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET')) return undefined;
   // No request data in logs (NFR-012): message and stack only.
   console.error('[api] unhandled error:', err && (err.stack || err.message || err));
+  track(req, err, 500);
   return sendError(res, 500, 'internal_error', 'Internal server error');
 }
 
 /**
  * createApp(config, {db, mailer}) → Express app.
- * app.locals: config, db, mailer, catalog, functions, loginLimiter,
- *             resetLimiter, background(fn), drain(), close().
+ * app.locals: config, db, mailer, catalog, functions, background(fn),
+ *             drain(), close(). Rate limits: src/ratelimit.js (PostgreSQL).
  */
 function createApp(config, deps = {}) {
   const app = express();
@@ -70,7 +86,7 @@ function createApp(config, deps = {}) {
   app.set('etag', false);
 
   const db = deps.db || createDb(config);
-  const mailer = deps.mailer || createMailer(config);
+  const mailer = countSends(deps.mailer || createMailer(config), db);
   const pending = new Set();
 
   Object.assign(app.locals, {
@@ -79,11 +95,6 @@ function createApp(config, deps = {}) {
     mailer,
     catalog: new TableCatalog(db),
     functions: new FunctionCatalog(db),
-    loginLimiter: new FailureLimiter({ max: 10, windowMs: FIFTEEN_MINUTES }),
-    resetLimiter: {
-      ip: new FailureLimiter({ max: 10, windowMs: FIFTEEN_MINUTES }),
-      email: new FailureLimiter({ max: 3, windowMs: FIFTEEN_MINUTES }),
-    },
     /** Runs fn after the response (e-mails); errors are logged, never thrown. */
     background(fn) {
       const p = Promise.resolve()
@@ -109,18 +120,29 @@ function createApp(config, deps = {}) {
     res.set('Cache-Control', 'no-store');
     next();
   });
+  // Before the CSRF check and the session: deploys and monitoring call it bare.
+  api.use('/health', require('./routes/health'));
+  // Signed by the provider (no browser, no session) and read raw for the
+  // signature: before the CSRF check, the throttle and the JSON parser (docs/06 S10).
+  api.use('/webhooks', (req, res, next) => { req.mountPath = req.baseUrl; next(); }, webhooksRouter(config));
   api.use(requireCsrfHeader);
   api.use(cookieParser());
+  // A runaway screen loop must not flood the database (docs/06 S5).
+  api.use(throttle(config.apiRatePerMin));
   api.use(express.json({ limit: '10mb' }));
-  api.use('/auth', require('./routes/auth'));
-  api.use('/orgs', require('./routes/orgs'));
-  api.use('/data', require('./routes/data'));
-  api.use('/rpc', require('./routes/rpc'));
-  api.use('/files', require('./routes/files'));
-  api.use('/admin', require('./routes/admin'));
-  api.use('/org', require('./routes/org'));
-  api.use('/invitations', require('./routes/invitations'));
-  api.use('/platform', require('./routes/platform'));
+  // req.mountPath: where the route module sits (/api/rpc...), for the error
+  // list's route pattern (req.baseUrl is gone by the time errorHandler runs).
+  const mount = (path, router) => api.use(path, (req, res, next) => { req.mountPath = req.baseUrl; next(); }, router);
+  mount('/auth', require('./routes/auth'));
+  mount('/orgs', require('./routes/orgs'));
+  mount('/data', require('./routes/data'));
+  mount('/rpc', require('./routes/rpc'));
+  mount('/files', require('./routes/files'));
+  mount('/admin', require('./routes/admin'));
+  mount('/org', require('./routes/org'));
+  mount('/invitations', require('./routes/invitations'));
+  mount('/client-errors', require('./routes/client-errors'));
+  mount('/platform', require('./routes/platform'));
   api.use((req, res) => sendError(res, 404, 'not_found', 'Not found'));
   app.use('/api', api);
 

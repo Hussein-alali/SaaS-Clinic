@@ -62,6 +62,11 @@ function createMailer(config) {
         port,
         secure,
         auth: user ? { user, pass } : undefined,
+        // Bounded (nodemailer waits up to 2 minutes to connect by default): an
+        // unreachable server fails the send, and the job retries later.
+        connectionTimeout: 20000,
+        greetingTimeout: 15000,
+        socketTimeout: 60000,
       });
     }
     return transport;
@@ -95,4 +100,25 @@ function createMailer(config) {
   return { send, isValidEmail };
 }
 
-module.exports = { createMailer, isValidEmail, requestLang, bilingualMessage };
+// Every e-mail sent or failed is counted in mail_log (kind, ok; never the
+// address): the SMTP hourly/daily limits are watched from it (docs/06 S8).
+// The app (create-app.js) and the cron runner (scripts/run-jobs.js) both wrap
+// their mailer with it.
+function countSends(mailer, db) {
+  return {
+    ...mailer,
+    async send(message) {
+      let ok = false;
+      try {
+        const result = await mailer.send(message);
+        ok = true;
+        return result;
+      } finally {
+        await db.query('insert into public.mail_log (kind, ok) values ($1, $2)', [(message && message.kind) || null, ok])
+          .catch((err) => console.error('[api] mail_log not written:', err.message));
+      }
+    },
+  };
+}
+
+module.exports = { createMailer, countSends, isValidEmail, requestLang, bilingualMessage };

@@ -15,6 +15,7 @@
 //   #/clinics     A02 list (?q&status&specialty&page)
 //   #/clinics/new A03 wizard             #/catalog  A05   #/plans  A06
 //   #/audit       A07 (?organization_id&actor&action&from&to&page)
+//   #/errors      A08 (?status=resolved|all&page; docs/06 S6)
 //
 // Everything lives inside this IIFE: the only global it adds is
 // window.PlatformApp (src/*.jsx share one global scope in the bundle). It
@@ -65,7 +66,7 @@
     pending: [tt("معلقة"), "b-amber"],
     expired: [tt("منتهية"), "b-grey"],
     accepted: [tt("مقبولة"), "b-green"],
-    revoked: [tt("ملغاة"), "pa-b-dark"],
+    revoked: [ttc("invitation", "ملغاة"), "pa-b-dark"],
   };
   const MEMBER_STATUS = { invited: [tt("مدعو"), "b-amber"], active: [tt("نشط"), "b-green"], disabled: [tt("معطّل"), "b-red"] };
   const BRANCH_STATUS = { active: [tt("نشط"), "b-green"], inactive: [tt("معطّل"), "b-grey"] };
@@ -329,6 +330,7 @@
     if (parts[0] === "catalog") return { name: "catalog" };
     if (parts[0] === "plans") return { name: "plans" };
     if (parts[0] === "audit") return { name: "audit", query };
+    if (parts[0] === "errors") return { name: "errors", query };
     return { name: "notfound" };
   }
   const hashUrl = (hash) => window.location.pathname + window.location.search + hash;
@@ -655,6 +657,55 @@
   // ══════════════════════════════════════════════════════════════
   // A01 — platform stats
   // ══════════════════════════════════════════════════════════════
+  // «الموارد» (docs/06 S8): what stops the platform on shared hosting — the
+  // account's disk quota and the SMTP budget — from the hourly usage.check.
+  function bytesText(b) {
+    if (b === null || b === undefined) return "—";
+    const gb = b / 1073741824;
+    return gb >= 1 ? fmtNumber(Math.round(gb * 10) / 10) + " GB" : fmtNumber(Math.round(b / 1048576)) + " MB";
+  }
+  function ResourcesCard() {
+    const res = useApi(P("/usage"));
+    const d = res.data;
+    const snap = d && d.snapshot;
+    const rows = snap ? [
+      { key: "disk", label: tt("مساحة القرص (القاعدة + الملفات + النسخ)"), used: (snap.db_bytes || 0) + (snap.files_bytes || 0) + (snap.backups_bytes || 0), max: d.limits.disk_bytes, fmt: bytesText },
+      { key: "email_hour", label: tt("البريد في الساعة"), used: snap.emails_last_hour || 0, max: d.limits.emails_per_hour, fmt: fmtNumber },
+      { key: "email_day", label: tt("البريد اليوم"), used: snap.emails_today || 0, max: d.limits.emails_per_day, fmt: fmtNumber },
+    ] : [];
+    return (
+      <div className="card" style={{ marginBottom: 22 }} data-usage="">
+        <div className="pa-card-head">
+          <h2 className="h3">{tt("الموارد")}</h2>
+          {snap && <span className="muted" style={{ fontSize: 12 }}>{ttx("آخر فحص: {when}", { when: <DateText value={snap.taken_at} time/> })}</span>}
+        </div>
+        {res.error ? <div style={{ padding: 16 }}><ErrorBox error={res.error} onRetry={res.reload}/></div>
+          : !d ? <SkeletonRows count={3}/>
+          : !snap ? <div className="muted" style={{ padding: "4px 16px 16px" }}>{tt("لم يُجرَ فحص الموارد بعد — يعمل كل ساعة.")}</div>
+          : (
+            <div className="pa-usage">
+              {rows.map((r) => {
+                const pct = Math.min(100, Math.round((100 * r.used) / r.max));
+                return (
+                  <div key={r.key} className="pa-usage-row" data-resource={r.key} data-level={(d.levels && d.levels[r.key]) || 0}>
+                    <div className="pa-usage-line">
+                      <span>{r.label}</span>
+                      <span className="tnum">{tt("{used} من {max}", { used: r.fmt(r.used), max: r.fmt(r.max) })} · {pct}%</span>
+                    </div>
+                    <div className="pa-bar" role="progressbar" aria-label={r.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                      <span style={{ width: pct + "%" }}/>
+                    </div>
+                  </div>
+                );
+              })}
+              {snap.disk_free_bytes !== null && snap.disk_free_bytes !== undefined &&
+                <div className="muted" style={{ fontSize: 12 }}>{tt("المساحة الحرة على الخادم: {free}", { free: bytesText(snap.disk_free_bytes) })}</div>}
+            </div>
+          )}
+      </div>
+    );
+  }
+
   function StatsPage() {
     const stats = useApi(P("/stats"));
     const recent = useApi(P("/audit") + qs({ limit: 8 }));
@@ -666,6 +717,10 @@
       { key: "pending_activation", label: tt("بانتظار التفعيل"), value: s && s.organizations.pending_activation, accent: "#D49044", icon: <I.Clock size={15}/>, href: "#/clinics?status=pending_activation" },
       { key: "pending_invitations", label: tt("دعوات معلقة"), value: s && s.pending_invitations, accent: "#7E6BD3", icon: <I.Mail size={15}/> },
       { key: "retention_overdue", label: tt("تجاوزت مدة الاحتفاظ"), value: s && s.retention_overdue, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/clinics?status=suspended" },
+      { key: "open_errors", label: tt("أخطاء مفتوحة"), value: s && s.open_errors, accent: "#D8665A", icon: <PI.Alert size={15}/>, href: "#/errors" },
+      // Background jobs (docs/06 S7): waiting (retries included) and dead after their last attempt.
+      { key: "jobs_queued", label: tt("مهام خلفية في الانتظار"), value: s && s.jobs_queued, accent: "#7E6BD3", icon: <I.Clock size={15}/> },
+      { key: "jobs_failed", label: tt("مهام خلفية فشلت"), value: s && s.jobs_failed, accent: "#D8665A", icon: <PI.Alert size={15}/> },
     ];
     return (
       <>
@@ -692,6 +747,7 @@
               : <div key={c.key} data-stat={c.key} role="group" aria-label={label}>{body}</div>;
           })}
         </div>
+        <ResourcesCard/>
         <div className="card">
           <div className="pa-card-head">
             <h2 className="h3">{tt("أحدث العمليات")}</h2>
@@ -2295,6 +2351,121 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // A08 — errors (docs/06 S6): API 5xx and browser errors, grouped by
+  // fingerprint and scrubbed by the server; newest first.
+  // ══════════════════════════════════════════════════════════════
+  const ERRORS_PAGE = 25;
+  const ERROR_SOURCE = { api: [tt("الخادم"), "b-blue"], client: [tt("المتصفح"), "b-amber"] };
+  const ERROR_FILTERS = () => [["open", tt("مفتوحة")], ["resolved", tt("محلولة")], ["all", tt("الكل")]];
+
+  function ErrorDetails({ fingerprint, onClose }) {
+    const res = useApi(P("/errors/" + fingerprint));
+    const g = res.data && res.data.group;
+    return (
+      <PModal title={tt("تفاصيل الخطأ")} width={720} onClose={onClose}>
+        {res.error ? <ErrorBox error={res.error} onRetry={res.reload}/> : !g ? <SkeletonRows count={4}/> : (
+          <>
+            <Kv rows={[
+              [tt("الرسالة"), <Ltr className="mono">{g.message}</Ltr>],
+              [tt("المصدر"), <Badge map={ERROR_SOURCE} value={g.source}/>],
+              [tt("المسار"), <Ltr className="mono">{g.route || "—"}</Ltr>],
+              [tt("المرات"), <span className="mono">{g.count}</span>],
+              [tt("أول مرة"), <DateText value={g.first_seen} time/>],
+              [tt("آخر مرة"), <DateText value={g.last_seen} time/>],
+              [tt("الإصدار"), <Ltr className="mono">{g.last_release || "—"}</Ltr>],
+            ]}/>
+            <h3 className="h3" style={{ margin: "16px 0 8px" }}>{tt("عينات (حتى واحدة في الدقيقة)")}</h3>
+            {res.data.events.map((e) => (
+              <div key={e.id} className="pa-error-event" data-event="">
+                <div className="muted" style={{ fontSize: 12 }}>
+                  <DateText value={e.created_at} time/>
+                  {e.organization_slug && <> · <Ltr className="mono">{e.organization_slug}</Ltr></>}
+                  {e.method && <> · <Ltr className="mono">{e.method}</Ltr></>}
+                  {e.release && <> · <Ltr className="mono">{e.release}</Ltr></>}
+                </div>
+                {e.stack && <pre className="pa-json" dir="ltr">{e.stack}</pre>}
+              </div>
+            ))}
+          </>
+        )}
+      </PModal>
+    );
+  }
+
+  function ErrorsPage({ query }) {
+    const status = ["open", "resolved", "all"].includes(query.status) ? query.status : "open";
+    const pageNo = Math.max(1, parseInt(query.page, 10) || 1);
+    const offset = (pageNo - 1) * ERRORS_PAGE;
+    const res = useApi(P("/errors") + qs({ status, limit: ERRORS_PAGE, offset }));
+    const [shown, setShown] = useState(null);
+    const [busy, setBusy] = useState(null);
+    const setQuery = (q) => nav.go("#/errors" + qs(q));
+    const rows = res.data ? res.data.data : null;
+    async function resolve(g) {
+      setBusy(g.fingerprint);
+      const r = await call("POST", P("/errors/" + g.fingerprint + "/resolve"), {});
+      setBusy(null);
+      if (r.ok) { toast(tt("عُلّم الخطأ كمحلول")); res.reload(); }
+      else toast(errorText(r.error), "error");
+    }
+    return (
+      <>
+        <div className="page-head">
+          <div>
+            <h1 className="h1">{tt("الأخطاء")}</h1>
+            <div className="muted" style={{ marginTop: 4 }}>{tt("أخطاء الخادم والمتصفح مجمّعة، الأحدث أولًا. النصوص منقّاة من البريد والأرقام. «تم الحل» يخفيها حتى تتكرر.")}</div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="pa-filters">
+            <window.Segmented label={tt("الحالة")} value={status}
+              onChange={(v) => setQuery(v === "open" ? {} : { status: v })}
+              options={ERROR_FILTERS().map(([value, label]) => ({ value, label }))}/>
+          </div>
+          {res.error ? <div style={{ padding: 16 }}><ErrorBox error={res.error} onRetry={res.reload}/></div> : (
+            <div className="tbl-scroll">
+              <CardTable data-errors="">
+                <thead>
+                  <tr>
+                    <th>{tt("آخر مرة")}</th>
+                    <th>{tt("المصدر")}</th>
+                    <th>{tt("الرسالة")}</th>
+                    <th>{tt("المرات")}</th>
+                    <th><span className="pa-sr">{tt("إجراءات")}</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!rows && <tr><td colSpan={5} style={{ padding: 0 }}><SkeletonRows count={5}/></td></tr>}
+                  {rows && rows.length === 0 && <tr><td colSpan={5} className="tbl-empty">
+                    {status === "open" ? tt("لا توجد أخطاء مفتوحة.") : tt("لا توجد أخطاء.")}</td></tr>}
+                  {rows && rows.map((g) => (
+                    <tr key={g.fingerprint} data-fingerprint={g.fingerprint}>
+                      <td><DateText value={g.last_seen} time/></td>
+                      <td><Badge map={ERROR_SOURCE} value={g.source}/></td>
+                      <td style={{ minWidth: 0 }}>
+                        <Ltr className="mono">{g.message}</Ltr>
+                        <div className="muted" style={{ fontSize: 11.5 }}><Ltr className="mono">{g.route || "—"}</Ltr>{g.resolved_at && <> · {tt("محلول")}</>}</div>
+                      </td>
+                      <td className="mono">{g.count}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <Btn kind="ghost" onClick={() => setShown(g.fingerprint)}><I.Eye size={14}/> {tt("التفاصيل")}</Btn>
+                        {!g.resolved_at && <Btn kind="secondary" busy={busy === g.fingerprint} onClick={() => resolve(g)}><I.Check size={14}/> {tt("تم الحل")}</Btn>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </CardTable>
+            </div>
+          )}
+          {res.data && <Pager offset={offset} limit={ERRORS_PAGE} count={res.data.count} loading={res.loading}
+            onPage={(p) => setQuery({ ...(status === "open" ? {} : { status }), ...(p > 1 ? { page: String(p) } : {}) })}/>}
+        </div>
+        {shown && <ErrorDetails fingerprint={shown} onClose={() => setShown(null)}/>}
+      </>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // Login, blocked screens, shell
   // ══════════════════════════════════════════════════════════════
   function BrandPanel() {
@@ -2467,17 +2638,18 @@
 
     const r = routeOf(loc);
     useEffect(() => { window.scrollTo(0, 0); }, [r.name, r.id]);
-    const section = { stats: "stats", clinics: "clinics", new: "clinics", clinic: "clinics", catalog: "catalog", plans: "plans", audit: "audit" }[r.name];
+    const section = { stats: "stats", clinics: "clinics", new: "clinics", clinic: "clinics", catalog: "catalog", plans: "plans", audit: "audit", errors: "errors" }[r.name];
     const NAV = [
       ["stats", "#/", tt("المؤشرات"), <I.Dashboard size={16}/>],
       ["clinics", "#/clinics", tt("العيادات"), <PI.Building size={16}/>],
       ["catalog", "#/catalog", tt("التخصصات والوحدات"), <I.Layers size={16}/>],
       ["plans", "#/plans", tt("الخطط"), <I.CreditCard size={16}/>],
       ["audit", "#/audit", tt("سجل التدقيق"), <I.FileText size={16}/>],
+      ["errors", "#/errors", tt("الأخطاء"), <PI.Alert size={16}/>],
     ];
     const titles = {
       stats: tt("المؤشرات"), clinics: tt("العيادات"), new: tt("إنشاء عيادة"), clinic: tt("تفاصيل العيادة"),
-      catalog: tt("التخصصات والوحدات"), plans: tt("الخطط"), audit: tt("سجل التدقيق"), notfound: tt("صفحة غير موجودة"),
+      catalog: tt("التخصصات والوحدات"), plans: tt("الخطط"), audit: tt("سجل التدقيق"), errors: tt("الأخطاء"), notfound: tt("صفحة غير موجودة"),
     };
     let page;
     switch (r.name) {
@@ -2488,6 +2660,7 @@
       case "catalog": page = <CatalogPage/>; break;
       case "plans": page = <PlansPage/>; break;
       case "audit": page = <AuditPage query={r.query}/>; break;
+      case "errors": page = <ErrorsPage query={r.query}/>; break;
       default: page = <div className="card"><Empty title={tt("الصفحة غير موجودة")} body={tt("الرابط غير معروف في لوحة المنصة.")} action={<a className="btn btn-secondary" href="#/">{tt("المؤشرات")}</a>}/></div>;
     }
     async function logout() {
@@ -2539,7 +2712,9 @@
             <LangSwitch className="btn btn-ghost pa-lang" compact={narrow}/>
             <Btn kind="secondary" busy={loggingOut} onClick={logout} aria-label={tt("تسجيل الخروج")}><I.Logout size={15}/><span className="pa-hide-sm">{tt("تسجيل الخروج")}</span></Btn>
           </header>
-          <main className="page pa-page" id="pa-main" ref={mainRef} tabIndex={-1}>{page}</main>
+          <main className="page pa-page" id="pa-main" ref={mainRef} tabIndex={-1}>
+            <window.ErrorBoundary resetKey={r.name + ":" + (r.id || "")} route={"#/" + r.name}>{page}</window.ErrorBoundary>
+          </main>
         </div>
         {leaveTo && (
           <ConfirmModal title={tt("تجاهل التغييرات؟")} kind="danger" confirmLabel={tt("تجاهل والخروج")}
@@ -2787,13 +2962,24 @@
 .pa-check{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer}
 .pa-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:2px 12px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--ink-200)}
 .pa-json{background:var(--ink-900);color:#E6EDF3;border-radius:10px;padding:12px 14px;font-family:var(--font-mono);font-size:12px;overflow:auto;max-height:50vh;margin:14px 0 0;text-align:start}
-.pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.pa-error-event{padding:10px 0;border-top:1px solid var(--ink-100)}
+.pa-usage{padding:4px 16px 16px;display:grid;gap:14px}
+.pa-usage-line{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:6px}
+.pa-bar{height:8px;border-radius:999px;background:var(--ink-100);overflow:hidden}
+.pa-bar>span{display:block;height:100%;background:var(--green);border-radius:999px}
+.pa-usage-row[data-level="70"] .pa-bar>span{background:#D49044}
+.pa-usage-row[data-level="85"] .pa-bar>span,.pa-usage-row[data-level="95"] .pa-bar>span{background:#C0574C}
+.pa-error-event .pa-json{margin-top:8px;max-height:30vh}
+.pa-toasts{position:fixed;top:72px;inset-inline-end:16px;z-index:300;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px));pointer-events:none}
 .pa-toast{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--ink-200);border-radius:12px;box-shadow:var(--shadow-lg);padding-block:11px;padding-inline:12px 14px;font-size:13.5px;animation:popin .2s}
 .pa-toast-dot{width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0}
 .pa-toast-error .pa-toast-dot{background:var(--red)}
 .pa-toast-info .pa-toast-dot{background:var(--blue-700)}
 .pa-toast-error{border-color:#F1C4BE}
-.pa-toast-x{background:none;border:none;color:var(--ink-400);cursor:pointer;padding:4px;border-radius:6px;display:inline-flex}
+/* Toasts let clicks through to the page under them (the primary action of
+   A01 sits there, task 3.33), like the clinic Toast; only the close button
+   takes clicks. */
+.pa-toast-x{background:none;border:none;color:var(--ink-400);cursor:pointer;padding:4px;border-radius:6px;display:inline-flex;pointer-events:auto}
 .pa-toast-x:hover{background:var(--ink-100);color:var(--ink-700)}
 .pa-center{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px 16px}
 .pa-center-card{max-width:460px;width:100%;padding:32px 28px;text-align:center}

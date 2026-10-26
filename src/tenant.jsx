@@ -1045,10 +1045,20 @@ function TenantResetScreen({ token }) {
 // Platform context and module gating
 // ══════════════════════════════════════════════════════════════
 // The Super Admin panel is window.PlatformApp (src/platform.jsx), which
-// handles its own sign-in.
+// handles its own sign-in. In the production build it is a separate chunk
+// (KINETIC_CHUNKS.platform, scripts/build.mjs) that only this context
+// downloads (task 3.12); in `npm run dev` index.html has loaded it already.
 function TenantPlatformGate() {
-  const Panel = window.PlatformApp;
-  if (typeof Panel === "function") return <Panel />;
+  const chunk = window.KINETIC_CHUNKS && window.KINETIC_CHUNKS.platform;
+  const [state, setState] = React.useState(() => (typeof window.PlatformApp === "function" ? "ready" : chunk ? "loading" : "missing"));
+  React.useEffect(() => {
+    if (state !== "loading") return;
+    loadScriptOnce(chunk)
+      .then(() => setState(typeof window.PlatformApp === "function" ? "ready" : "missing"))
+      .catch(() => setState("missing"));
+  }, [state]);
+  if (state === "ready") return <window.PlatformApp />;
+  if (state === "loading") return <TenantLoading text={tt("جارٍ تحميل لوحة المنصة…")} />;
   return <TenantStatusScreen status="platform-unavailable" />;
 }
 

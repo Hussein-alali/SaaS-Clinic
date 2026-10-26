@@ -72,7 +72,7 @@ function boot({ code = CLIENT_JS, search = "", hostname = "localhost", session =
   const win = {
     console: { log() {}, info() {}, warn() {}, error() {} },
     setTimeout, clearTimeout, setInterval, clearInterval,
-    URLSearchParams, FormData, Blob, Response, TextEncoder, TextDecoder, Event,
+    URL, URLSearchParams, FormData, Blob, Response, TextEncoder, TextDecoder, Event,
     CustomEvent: TestCustomEvent,
     addEventListener: events.addEventListener.bind(events),
     removeEventListener: events.removeEventListener.bind(events),
@@ -423,6 +423,16 @@ describe("rpc(): POST /api/rpc/:fn", () => {
     const { requests, client } = boot({ handler: () => json(200, null) });
     await client().rpc("weird/name", {});
     assert.equal(requests[0].path, "/api/rpc/weird%2Fname");
+  });
+
+  test("{ idempotencyKey } sends Idempotency-Key (docs/06 S4); without it there is none", async () => {
+    const { requests, client } = boot({ handler: () => json(200, { payment_id: "PMT-1" }) });
+    const sb = client();
+    await sb.rpc("record_quick_payment", { p_patient_id: "P-1" }, { idempotencyKey: "qp-abc12345" });
+    await sb.rpc("record_quick_payment", { p_patient_id: "P-1" });
+    assert.equal(requests[0].headers["Idempotency-Key"], "qp-abc12345");
+    assert.deepEqual(requests[0].body, { args: { p_patient_id: "P-1" } });
+    assert.equal(requests[1].headers["Idempotency-Key"], undefined);
   });
 });
 
@@ -1253,7 +1263,6 @@ describe("src/supabase.jsx on top of the client", () => {
   function apiHandler(overrides = {}) {
     return async (req) => {
       if (overrides[req.path]) return overrides[req.path](req);
-      if (req.url.startsWith("https://api.ipify.org")) return json(200, { ip: "203.0.113.7" });
       if (req.path === "/api/data") {
         const key = `${req.body.table}:${req.body.action}`;
         if (overrides[key]) return overrides[key](req);
@@ -1285,7 +1294,8 @@ describe("src/supabase.jsx on top of the client", () => {
     });
     assert.deepEqual(bodies.find((b) => b.table === "custom_sections").order, [{ column: "position", ascending: true }]);
     assert.deepEqual(bodies.find((b) => b.table === "branches").order, [{ column: "created_at", ascending: true }]);
-    const counted = bodies.filter((b) => b.count === "exact").map((b) => b.table).sort();
+    // Every table, once (invoices twice: the window and the open ones before it, docs/06 S9).
+    const counted = [...new Set(bodies.filter((b) => b.count === "exact").map((b) => b.table))].sort();
     const expected = Object.values(vm.runInContext("KineticData.tables", env.win)).map((c) => c.key).sort();
     assert.deepEqual(counted, expected);
     assert.ok(env.bootRequests.every((r) => !r.url.includes("supabase.co")), "nothing goes to Supabase");
@@ -1305,6 +1315,170 @@ describe("src/supabase.jsx on top of the client", () => {
     const pages = env.requests.filter((r) => r.body && r.body.table === "patients" && r.body.range);
     assert.deepEqual(pages.map((r) => r.body.range), [{ from: 0, to: 999 }, { from: 1000, to: 1999 }, { from: 2000, to: 2999 }]);
     assert.ok(pages.every((r) => r.body.order[0].column === "patient_id" && r.body.order[0].ascending === true));
+  });
+
+  // ── Bounded loading (docs/06 S9) ─────────────────────────────
+  // A tiny server for the time-series tables: answers /api/data selects by
+  // evaluating the request's filters, so the test sees what the app asked.
+  const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoDay(d); };
+  const OPS = {
+    is: (a, b) => (a ?? null) === b,
+    in: (a, b) => b.includes(a),
+    eq: (a, b) => a === b, neq: (a, b) => a != null && a !== b,
+    gte: (a, b) => a != null && String(a) >= String(b), lt: (a, b) => a != null && String(a) < String(b),
+    lte: (a, b) => a != null && String(a) <= String(b),
+  };
+  const matches = (row, filters = []) => filters.every((f) => OPS[f.op](row[f.column], f.value));
+  function historyServer(tables) {
+    const overrides = {};
+    for (const [table, rows] of Object.entries(tables)) {
+      overrides[`${table}:select`] = (req) => {
+        const hit = rows.filter((r) => matches(r, req.body.filters));
+        return json(200, { data: hit, count: req.body.count ? hit.length : null });
+      };
+    }
+    return overrides;
+  }
+  const OLD = daysAgo(400), RECENT = daysAgo(10), WINDOW = daysAgo(180);
+  const HISTORY = {
+    bookings: [
+      { booking_id: "B-old-1", patient_id: "P-1", date: OLD, time: "10:00", status: "مكتمل" },
+      { booking_id: "B-old-2", patient_id: "P-2", date: OLD, time: "11:00", status: "مكتمل" },
+      { booking_id: "B-new-1", patient_id: "P-1", date: RECENT, time: "10:00", status: "مؤكد" },
+      { booking_id: "B-undated", patient_id: "P-2", date: null, time: "12:00", status: "معلّق" },
+    ],
+    sessions: [
+      { session_id: "S-old-1", patient_id: "P-1", date: OLD, session_number: 1 },
+      { session_id: "S-new-1", patient_id: "P-1", date: RECENT, session_number: 2 },
+    ],
+    invoices: [
+      { invoice_id: "INV-old-paid", patient_id: "P-2", amount: 100, paid: 100, status: "paid", created_at: `${OLD}T09:00:00+00:00` },
+      { invoice_id: "INV-old-open", patient_id: "P-2", amount: 100, paid: 20, status: "partial", created_at: `${OLD}T09:00:00+00:00` },
+      { invoice_id: "INV-old-ar", patient_id: "P-1", amount: 50, paid: 50, status: "مدفوع", created_at: `${OLD}T09:00:00+00:00` },
+      { invoice_id: "INV-new", patient_id: "P-1", amount: 80, paid: 80, status: "paid", created_at: `${RECENT}T09:00:00+00:00` },
+    ],
+    payments: [
+      { payment_id: "PMT-old", patient_id: "P-1", amount: 50, method: "cash", created_at: `${OLD}T09:00:00+00:00` },
+      { payment_id: "PMT-new", patient_id: "P-1", amount: 80, method: "cash", created_at: `${RECENT}T09:00:00+00:00` },
+    ],
+    patients: [{ patient_id: "P-1", name: "مريض واحد" }, { patient_id: "P-2", name: "مريض اثنان" }],
+  };
+  // Arrays made in the vm are another realm's: copy them for deepEqual.
+  const inOrder = (rows) => [...rows].map((r) => r.id);
+  const ids = (rows) => inOrder(rows).sort();
+  // window.DATA comes from src/core.jsx in the app; boot hydrates again with it.
+  async function bootWithData(overrides) {
+    const env = await bootApp(overrides);
+    env.win.DATA = { patients: [], appts: [], sessions: [], payments: [], paymentHistory: [], therapists: [], staff: [], doctors: [], departments: [] };
+    await env.win.hydrateDomainTables();
+    env.bootRequests = env.requests.splice(0);
+    return env;
+  }
+
+  test("boot reads bookings, sessions, invoices and payments from 180 days ago only; open invoices whatever their date; other tables whole", async () => {
+    const env = await bootWithData(historyServer(HISTORY));
+    const reqs = env.bootRequests.filter((r) => r.path === "/api/data").map((r) => r.body);
+    const of = (t) => reqs.filter((b) => b.table === t);
+    assert.deepEqual(plain(of("bookings").map((b) => b.filters)), [[{ column: "date", op: "gte", value: WINDOW }], [{ column: "date", op: "is", value: null }]]);
+    assert.deepEqual(plain(of("sessions").map((b) => b.filters)), [[{ column: "date", op: "gte", value: WINDOW }], [{ column: "date", op: "is", value: null }]]);
+    assert.deepEqual(plain(of("payments")[0].filters), [{ column: "created_at", op: "gte", value: WINDOW }]);
+    assert.deepEqual(plain(of("invoices").map((b) => b.filters)), [
+      [{ column: "created_at", op: "gte", value: WINDOW }],
+      [{ column: "created_at", op: "lt", value: WINDOW }, { column: "status", op: "neq", value: "paid" }, { column: "status", op: "neq", value: "مدفوع" }],
+    ]);
+    assert.deepEqual(plain(of("patients")[0].filters), []);
+    const D = env.win.DATA;
+    assert.deepEqual(ids(D.appts), ["B-new-1", "B-undated"], "an undated booking still shows (as today's)");
+    assert.deepEqual(ids(D.sessions), ["S-new-1"]);
+    assert.deepEqual(ids(D.payments), ["INV-new", "INV-old-open"], "a partly paid invoice of last year still counts in balances");
+    assert.deepEqual(ids(D.paymentHistory), ["PMT-new"]);
+    assert.equal(env.win.KineticData.windowFrom(), WINDOW);
+  });
+
+  test("KineticData.loadOlder({ patientId }): that patient's older rows, once, merged into window.DATA (oldest first) with kinetic:data-updated", async () => {
+    const env = await bootWithData(historyServer(HISTORY));
+    let updates = 0;
+    env.win.addEventListener("kinetic:data-updated", () => { updates++; });
+    assert.equal(await env.win.KineticData.loadOlder({ patientId: "P-1" }), true);
+    const D = env.win.DATA;
+    assert.deepEqual(inOrder(D.appts), ["B-old-1", "B-new-1", "B-undated"]);
+    assert.deepEqual(inOrder(D.sessions), ["S-old-1", "S-new-1"]);
+    assert.deepEqual(ids(D.payments), ["INV-new", "INV-old-ar", "INV-old-open"]);
+    assert.deepEqual(ids(D.paymentHistory), ["PMT-new", "PMT-old"]);
+    assert.equal(D.appts[0].patient, "مريض واحد", "normalized like the startup rows");
+    assert.equal(updates, 1);
+    const asked = env.requests.filter((r) => r.path === "/api/data" && r.body.table === "bookings").map((r) => plain(r.body.filters));
+    assert.deepEqual(asked.at(-1), [{ column: "date", op: "lt", value: WINDOW }, { column: "patient_id", op: "eq", value: "P-1" }]);
+    const n = env.requests.length;
+    assert.equal(await env.win.KineticData.loadOlder({ patientId: "P-1" }), false, "read once");
+    assert.equal(env.requests.length, n);
+
+    // A later hydrate (a save elsewhere, slot_taken) keeps them.
+    await env.win.hydrateDomainTables();
+    assert.deepEqual(ids(env.win.DATA.sessions), ["S-new-1", "S-old-1"]);
+  });
+
+  test("a hydrate re-reads the older rows of the patients loaded on demand (one request per table): a change on the server shows", async () => {
+    const tables = JSON.parse(JSON.stringify(HISTORY));
+    const env = await bootWithData(historyServer(tables));
+    await env.win.KineticData.loadOlder({ patientId: "P-2" });
+    await env.win.KineticData.loadOlder({ patientId: "P-1" });
+    // Last year's open invoice of P-2 is paid elsewhere (a quick payment), then the app refreshes.
+    Object.assign(tables.invoices.find((r) => r.invoice_id === "INV-old-open"), { paid: 100, status: "paid" });
+    env.requests.length = 0;
+    await env.win.hydrateDomainTables();
+    const row = [...env.win.DATA.payments].find((r) => r.id === "INV-old-open");
+    assert.equal(row.paid, 100);
+    assert.equal(row.status, "مدفوع");
+    assert.deepEqual(ids(env.win.DATA.sessions), ["S-new-1", "S-old-1"]);
+    const older = env.requests.filter((r) => r.body && r.body.table === "bookings" && (r.body.filters || []).some((f) => f.op === "in"));
+    assert.equal(older.length, 1, "one request for every patient loaded on demand");
+    assert.deepEqual(plain(older[0].body.filters).find((f) => f.op === "in").value.sort(), ["P-1", "P-2"]);
+  });
+
+  test("KineticData.loadOlder({ from }): every row since that date (reports, calendar); later hydrates read from it; a branch switch starts over", async () => {
+    const env = await bootWithData(historyServer(HISTORY));
+    const from = daysAgo(500);
+    assert.equal(await env.win.KineticData.loadOlder({ from }), true);
+    assert.deepEqual(ids(env.win.DATA.appts), ["B-new-1", "B-old-1", "B-old-2", "B-undated"]);
+    assert.deepEqual(ids(env.win.DATA.payments), ["INV-new", "INV-old-ar", "INV-old-open", "INV-old-paid"]);
+    assert.equal(env.win.KineticData.windowFrom(), from);
+    assert.equal(await env.win.KineticData.loadOlder({ from: daysAgo(300) }), false, "already covered");
+    assert.equal(await env.win.KineticData.loadOlder({ from: daysAgo(5) }), false, "inside the window");
+
+    env.requests.length = 0;
+    await env.win.hydrateDomainTables();
+    const b = env.requests.find((r) => r.body && r.body.table === "bookings");
+    assert.deepEqual(plain(b.body.filters), [{ column: "date", op: "gte", value: from }]);
+    assert.equal(env.win.DATA.appts.length, 4);
+
+    env.win.ACTIVE_BRANCH_ID = "br-2";
+    env.requests.length = 0;
+    await env.win.hydrateDomainTables();
+    const b2 = env.requests.find((r) => r.body && r.body.table === "bookings");
+    assert.deepEqual(plain(b2.body.filters), [{ column: "branch_id", op: "eq", value: "br-2" }, { column: "date", op: "gte", value: WINDOW }]);
+  });
+
+  test("KineticData.listRange(table, from, to, { patientId }) reads one range for one view, without touching window.DATA", async () => {
+    const env = await bootWithData(historyServer(HISTORY));
+    const rows = await env.win.KineticData.listRange("payments", daysAgo(500), daysAgo(200));
+    assert.deepEqual(ids(rows), ["INV-old-ar", "INV-old-open", "INV-old-paid"]);
+    assert.equal(rows[0].patient && typeof rows[0].patient, "string", "normalized");
+    const req = env.requests.at(-1).body;
+    assert.deepEqual(plain(req.filters), [{ column: "created_at", op: "gte", value: daysAgo(500) }, { column: "created_at", op: "lt", value: daysAgo(199) }]);
+    const mine = await env.win.KineticData.listRange("sessions", null, null, { patientId: "P-1" });
+    assert.deepEqual(ids(mine), ["S-new-1", "S-old-1"]);
+    assert.deepEqual(ids(env.win.DATA.payments), ["INV-new", "INV-old-open"]);
+  });
+
+  test("«كل الفروع» reads the window too, or from an earlier date (listAllBranches(names, { from }))", async () => {
+    const env = await bootWithData(historyServer(HISTORY));
+    const now = await env.win.KineticData.listAllBranches(["appts", "payments"]);
+    assert.deepEqual(ids(now.appts), ["B-new-1", "B-undated"]);
+    assert.deepEqual(ids(now.payments), ["INV-new", "INV-old-open"]);
+    const older = await env.win.KineticData.listAllBranches(["appts"], { from: daysAgo(500) });
+    assert.deepEqual(ids(older.appts), ["B-new-1", "B-old-1", "B-old-2", "B-undated"]);
   });
 
   test("signInEmail → login + staff lookup; getAuthStaff revalidates and reads the role", async () => {
@@ -1432,6 +1606,21 @@ describe("src/supabase.jsx on top of the client", () => {
     await assert.rejects(env.win.KineticData.remove("patients", "P-1"), /42501 · permission denied/);
   });
 
+  test("write refusals get their Arabic reason: slot_taken (the booking leaves DATA again) and rate_limited (docs/06 S4, S5)", async () => {
+    const env = await bootApp({
+      "bookings:upsert": () => json(409, { error: { message: "This time slot is already booked", code: "slot_taken" } }),
+      "patients:upsert": () => json(429, { error: { message: "Too many requests, try again in 1 minute", code: "rate_limited", retry_after: 42 } }),
+    });
+    const texts = vm.runInContext("__AUTH_ERRORS", env.win);
+    const booked = await env.win.KineticData.upsert("appts", { booking_id: "A-race", patient_id: "P-1", therapist_id: "T-1", date: "2099-01-01", time: "10:00" });
+    assert.equal(booked._ok, false);
+    assert.equal(booked._error, texts.slot_taken);
+    const cached = JSON.parse(env.win.localStorage.getItem("kinetic.bookings") || "[]");
+    assert.equal(cached.some((a) => a.booking_id === "A-race"), false, "not left in the calendar's copy");
+    const busy = await env.win.KineticData.upsert("patients", { patient_id: "P-9", name: "Ali" });
+    assert.equal(busy._error, texts.rate_limited);
+  });
+
   test("uploadPatientFile: upload → insert().select().single(); a failed insert removes the file", async () => {
     let insert = (req) => json(200, { data: { ...req.body.values, organization_id: "o1" } });
     const env = await bootApp({
@@ -1467,6 +1656,34 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.equal(env.requests.at(-1).body.expiresIn, 600);
   });
 
+  test("getPatientFileUrl never hands a script URL to window.open (file_url is any member's text, CWE-79)", async () => {
+    let sign = () => json(500, { error: { message: "down", code: "internal" } });
+    const env = await bootApp({ "/api/files/sign": () => sign() });
+    const bad = ["javascript:alert(document.cookie)", " JavaScript:alert(1)", "java\tscript:alert(1)", "\u0000javascript:alert(1)",
+      "data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)", "blob:http://evil/x"];
+    for (const file_url of bad) {
+      assert.equal(await env.win.getPatientFileUrl({ storage_path: null, file_url }), "", JSON.stringify(file_url));
+      assert.equal(await env.win.getPatientFileUrl({ storage_path: "P-1/a.pdf", file_url }), "", `${JSON.stringify(file_url)} after a failed sign`);
+    }
+    const good = ["/api/files/object/patient-files/P-1/a.pdf", "https://abc.supabase.co/storage/v1/object/public/patient-files/P-1/a.pdf"];
+    for (const file_url of good) assert.equal(await env.win.getPatientFileUrl({ storage_path: null, file_url }), file_url);
+    sign = () => json(200, { signedUrl: "javascript:alert(1)" });
+    assert.equal(await env.win.getPatientFileUrl({ storage_path: "P-1/a.pdf", file_url: good[0] }), good[0], "a bad signed URL falls back to a safe file_url");
+    assert.equal(env.win.safeUrl("javascript:alert(1)"), "");
+    assert.equal(env.win.safeUrl("/api/x?y=1"), "/api/x?y=1");
+  });
+
+  test("QuickPay.attempt: one Idempotency-Key while the payment is unchanged, a new one once it is edited", async () => {
+    const env = await bootApp({});
+    const pay = { patient_id: "P-1", method: "cash", allocations: [{ type: "invoice", id: "INV-1", amount: 100 }] };
+    const first = env.win.QuickPay.attempt(null, pay);
+    assert.match(first.key, /^qp-/);
+    assert.equal(env.win.QuickPay.attempt(first, { ...pay }).key, first.key, "a double click or a retry after a lost answer");
+    const edited = env.win.QuickPay.attempt(first, { ...pay, allocations: [{ type: "invoice", id: "INV-1", amount: 150 }] });
+    assert.notEqual(edited.key, first.key, "another amount is another payment");
+    assert.notEqual(env.win.QuickPay.attempt(edited, { ...pay, method: "visa", allocations: edited.payload.allocations }).key, edited.key);
+  });
+
   test("QuickPay.recordPayment → rpc record_quick_payment", async () => {
     const env = await bootApp({ "/api/rpc/record_quick_payment": () => json(200, { payment_id: "PMT-9", receipt_no: "RCT-9" }) });
     env.win.ME = { name: "Cashier", staff_id: "U-1" };
@@ -1477,7 +1694,9 @@ describe("src/supabase.jsx on top of the client", () => {
     const req = env.requests.find((r) => r.path === "/api/rpc/record_quick_payment");
     assert.equal(req.body.args.p_patient_id, "P-1");
     assert.deepEqual(req.body.args.p_allocations, [{ type: "invoice", id: "INV-1", amount: 100 }]);
-    assert.equal(req.body.args.p_ip_address, "203.0.113.7");
+    // The server records the IP address (api/src/routes/rpc.js): no third party is asked.
+    assert.equal("p_ip_address" in req.body.args, false);
+    assert.equal(env.requests.some((r) => !r.url.startsWith("/api/")), false, "only the API is called");
   });
 
   test("TreatmentsAPI.create sends a newRecordId('TRT-') id; list reads {rows,count}", async () => {
@@ -1532,7 +1751,7 @@ describe("src/supabase.jsx on top of the client", () => {
       { code, search: "?lang=en" });
     const res = await env.win.signInEmail("a@b.co", "bad");
     assert.equal(res.code, "invalid_credentials");
-    assert.equal(res.error, "Wrong e-mail or password");
+    assert.equal(res.error, "Wrong email or password");
     const maps = vm.runInContext("[__AUTH_ERRORS, __ADMIN_ACTION_ERRORS]", env.win);
     for (const map of maps) for (const [k, v] of Object.entries(map)) assert.doesNotMatch(v, /[؀-ۿ]/, k);
     assert.equal(env.win.friendlyAuthError(null, "plan_limit:branches"), maps[0]["plan_limit:branches"]);
@@ -1556,14 +1775,15 @@ describe("src/supabase.jsx on top of the client", () => {
 
 // ════════════════════════════════════════════════════════════════
 describe("wiring", () => {
-  test("index.html loads the dictionaries, src/i18n.jsx, then src/apiclient.jsx; no supabase-js; CRLF kept", () => {
+  test("index.html loads the dictionaries, src/i18n.jsx, src/apiclient.jsx, then src/errors.jsx; no supabase-js; CRLF kept", () => {
     const html = read("index.html");
     const scripts = [...html.matchAll(/<script type="text\/babel" src="([^"]+)"><\/script>/g)].map((m) => m[1]);
     const app = scripts.filter((s) => !s.startsWith("src/lang/"));
     assert.ok(scripts.indexOf("src/i18n.jsx") > scripts.findLastIndex((s) => s.startsWith("src/lang/")), "dictionaries before src/i18n.jsx");
     assert.equal(app[0], "src/i18n.jsx");
     assert.equal(app[1], "src/apiclient.jsx");
-    assert.equal(app[2], "src/supabase.jsx");
+    assert.equal(app[2], "src/errors.jsx", "error reporting from the first script that can fail (docs/06 S6)");
+    assert.equal(app[3], "src/supabase.jsx");
     assert.doesNotMatch(html, /supabase-js/);
     assert.equal(html.split("\n").length - 1, html.split("\r\n").length - 1, "every line ends with CRLF");
   });

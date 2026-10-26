@@ -1118,6 +1118,10 @@ function PatientDetail({ p: pIn, onBack, go }) {
   // across every section immediately; fall back to the passed snapshot.
   const pid = pIn.patient_id || pIn.id;
   const p = (DATA.patients || []).find(x => (x.patient_id || x.id) === pid) || pIn;
+  // The patient's whole history, also from before the startup window
+  // (docs/06 S9): merged into DATA, so every tab below shows it.
+  window.useDataVersion && window.useDataVersion();
+  const older = window.useOlderRows ? window.useOlderRows({ patientId: pid }) : { loading: false, error: "" };
   // Real per-patient figures (production rows carry no seed metadata).
   const mySessions = DATA.sessions.filter(s => s.patient_id === pid || s.patient === p.name);
   const pkgTotal = Number(((p.pkg || "").match(/(\d+)/) || [])[1]) || 12;
@@ -1140,6 +1144,8 @@ function PatientDetail({ p: pIn, onBack, go }) {
           {mayEdit && <button className="btn btn-secondary" style={{fontSize:12}} onClick={()=>setEditOpen(true)}>{tt("إكمال البيانات")}</button>}
         </div>
       )}
+      {older.loading && <div className="muted" role="status" data-older="loading" style={{fontSize:12.5,marginTop:8}}>{tt("جارٍ تحميل السجل الأقدم…")}</div>}
+      {older.error && <CaAlert tone="error">{older.error}</CaAlert>}
 
       <div className="rgrid c-lg" style={{"--gtc":"1fr 340px",gap:24,marginTop:8}}>
         <div>
@@ -1835,7 +1841,7 @@ function PatientFiles({ p }) {
 
   async function resolveUrl(f) {
     if (window.getPatientFileUrl) return await window.getPatientFileUrl(f);
-    return f.file_url || "";
+    return window.safeUrl(f.file_url);
   }
   async function openFile(f) {
     const url = await resolveUrl(f);
@@ -2247,8 +2253,10 @@ function FormReview({ form }) {
   );
 }
 
-Object.assign(window, { Patients, PatientDetail, SessionTimeline: null });
-// SessionTimeline gets defined in treatments.jsx
+// SessionTimeline is defined in screens2.jsx (no placeholder here: in the
+// precompiled bundle all files are one script, so `SessionTimeline: null`
+// overwrote the hoisted function and the session history tabs crashed).
+Object.assign(window, { Patients, PatientDetail });
 
 
 // ===== src/appointments.jsx =====
@@ -2962,6 +2970,10 @@ function CalendarView({ dateOffset, setDateOffset }) {
     }
     return out;
   }, [weekStart]);
+  // A day or week before the startup window: its bookings are read when
+  // shown (docs/06 S9).
+  const firstShown = weekDays[0] && weekDays[0].iso < viewIso ? weekDays[0].iso : viewIso;
+  window.useOlderRows && window.useOlderRows({ from: firstShown });
   const weekAppts = React.useMemo(() => {
     const isoSet = new Set(weekDays.map(d => d.iso));
     return scoped.filter(a => isoSet.has(apptDateIso(a)))
@@ -3049,7 +3061,7 @@ function CalendarView({ dateOffset, setDateOffset }) {
       />
       <Segmented label={tt("طريقة عرض التقويم")} value={viewMode} onChange={setViewMode} style={{marginInlineEnd:12}}
         options={[["day","اليوم"],["therapist","الأخصائي"],["doctor","الدكتور"],["week","الأسبوع"]]
-          .filter(([m]) => canSeeTab(m)).map(([m, l]) => ({ value: m, label: tt(l) }))}/>
+          .filter(([m]) => canSeeTab(m)).map(([m, l]) => ({ value: m, label: ttc("calendar-view", l) }))}/>
       <div style={{flex:1}}/>
       {unroutedCount > 0 && (
         <span style={{fontSize:12,color:"#A8443A"}} title={tt("مواعيد مسندة لأخصائي/طبيب غير موجود في الأعمدة الظاهرة (غير نشط أو محذوف) — راجعها من تبويب القائمة")}>

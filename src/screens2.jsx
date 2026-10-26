@@ -14,12 +14,14 @@ function downloadCsv(rows, filename) {
 
 // Loads a classic script once and resolves after it has run. Used for code
 // only some visits need (Excel export, the ?import=1 page) so it stays out
-// of the first page load.
+// of the first page load. integrity: the SRI hash a CDN file must match
+// (a changed file is refused instead of running with the clinic's session).
 const scriptLoads = {};
-function loadScriptOnce(src) {
+function loadScriptOnce(src, integrity) {
   if (!scriptLoads[src]) {
     scriptLoads[src] = new Promise((resolve, reject) => {
       const s = document.createElement("script");
+      if (integrity) { s.integrity = integrity; s.crossOrigin = "anonymous"; }
       s.src = src;
       s.onload = () => resolve();
       s.onerror = () => { delete scriptLoads[src]; reject(new Error("failed to load " + src)); };
@@ -40,9 +42,12 @@ function loadScriptOnce(src) {
 // cell styles), fetched on the first export rather than on every page load.
 //
 // columns: [{ key, label, type?: 'text'|'number'|'currency'|'date', total?, width? }]
+// XLSX_SRC is also allowed by the page's Content-Security-Policy (scripts/build.mjs);
+// the SRI hash is sha384 of the npm package file, which jsDelivr serves as is.
 const XLSX_SRC = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
+const XLSX_INTEGRITY = "sha384-OUW9euuUyxyHcAhTqbhI+Iyb8LMssXt/cpz0yXhs9UWG2/R/uaWdakx/4cfww7Vb";
 async function exportReportExcel({ filename, sheetName = tt("التقرير"), title, filters = [], columns = [], rows = [] }) {
-  if (!window.XLSX) await loadScriptOnce(XLSX_SRC).catch(() => {});
+  if (!window.XLSX) await loadScriptOnce(XLSX_SRC, XLSX_INTEGRITY).catch(() => {});
   const XLSX = window.XLSX;
   if (!XLSX || !XLSX.utils) {
     window.showToast && window.showToast(tt("مكتبة Excel غير محمّلة — تحقق من الاتصال"), "error");
@@ -1859,6 +1864,10 @@ function QuickPaymentModal({ onClose, onDone }) {
   // ── Flow control ──────────────────────────────────────────
   const [confirming, setConfirming] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  // One Idempotency-Key per payment attempt (QuickPay.attempt): kept while
+  // the payment is unchanged, so a second click or a retry after a timeout
+  // never pays twice; a new one once it was edited (docs/06 S4).
+  const attemptKey = React.useRef(null);
   const [receipt, setReceipt] = React.useState(null); // set on success
   const [error, setError] = React.useState("");
 
@@ -1946,15 +1955,18 @@ function QuickPaymentModal({ onClose, onDone }) {
       const allocations = selected.map(a => ({
         type: a.type, id: a.id, amount: Number(a.amount),
       }));
-      const res = await window.QuickPay.recordPayment({
+      const payment = {
         patient_id: patient.patient_id || patient.id,
         method,
         reference: reference.trim(),
         transaction_id: txId.trim(),
         notes: notes.trim(),
         allocations,
-      });
+      };
+      attemptKey.current = window.QuickPay.attempt(attemptKey.current, payment);
+      const res = await window.QuickPay.recordPayment({ ...payment, idempotency_key: attemptKey.current.key });
       if (!res.ok) { setError(res.error || tt("تعذّر تسجيل الدفع")); setSaving(false); return; }
+      attemptKey.current = null;
       // Snapshot everything needed for the receipt BEFORE state resets.
       setReceipt({
         payment_id: res.payment_id,
@@ -3080,25 +3092,36 @@ function reportBranchActive(b) {
   return window.branchIsActive ? window.branchIsActive(b) : String((b && b.status) || "active") !== "inactive";
 }
 // scope: "current" | "all" → { scope, all, label, rowsOf(name), loading,
-// waiting (nothing loaded yet), error, retry } for the report tabs.
+// waiting (nothing loaded yet), loadingOlder, error, retry, need(from) } for
+// the report tabs. A tab calls need(its «من» date): rows from before the
+// startup window are read for it (docs/06 S9) — merged into window.DATA for
+// the current branch, read with every branch's for «كل الفروع».
 function useReportScope(scope, version) {
   const wide = scope === "all";
   const [state, setState] = React.useState({ tables: null, loading: false, error: "" });
+  const [since, setSince] = React.useState(null);
+  // An empty «من» means from the first day: every row.
+  const need = React.useCallback((from) => {
+    const day = from || "1900-01-01";
+    setSince(s => (!s || day < s ? day : s));
+  }, []);
+  const older = window.useOlderRows({ from: wide ? null : since });
   const reqRef = React.useRef(0);
   const fetchAll = React.useCallback(() => {
     const n = ++reqRef.current;
     setState(s => ({ ...s, loading: true, error: "" }));
-    window.KineticData.listAllBranches(REPORT_SCOPE_TABLES).then(
+    window.KineticData.listAllBranches(REPORT_SCOPE_TABLES, { from: since }).then(
       tables => { if (n === reqRef.current) setState({ tables, loading: false, error: "" }); },
       e => { if (n === reqRef.current) setState(s => ({ ...s, loading: false, error: (e && e.message) || tt("تعذّر تحميل بيانات الفروع") })); });
-  }, []);
+  }, [since]);
   // Read again whenever the clinic's data changes (a save, a branch switch).
   React.useEffect(() => { if (wide) fetchAll(); }, [wide, version, fetchAll]);
   return {
-    scope, all: wide,
+    scope, all: wide, need,
     label: wide ? tt("كل الفروع ({n})", { n: (window.BRANCHES || []).length }) : tt("الفرع: {name}", { name: activeBranchName() }),
     rowsOf: (name) => wide ? ((state.tables && state.tables[name]) || []) : ((window.DATA && window.DATA[name]) || []),
-    loading: wide && state.loading, waiting: wide && !state.tables, error: wide ? state.error : "", retry: fetchAll,
+    loading: wide && state.loading, waiting: wide && !state.tables, loadingOlder: !wide && older.loading,
+    error: wide ? state.error : older.error, retry: wide ? fetchAll : older.retry,
   };
 }
 
@@ -3179,6 +3202,7 @@ function Reports({ go }) {
                 <span className="pill"><I.MapPin size={12}/> {view.label}</span>
                 {!canPick && <span className="muted" style={{fontSize:12,marginInlineStart:8}}>{tt("بدّل الفرع من القائمة الجانبية لعرض تقاريره.")}</span>}
               </div>
+              {view.loadingOlder && <span className="muted" role="status" data-older="loading" style={{fontSize:12}}>{tt("جارٍ تحميل الفترة الأقدم…")}</span>}
               {canPick && (
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <Segmented className="report-scope" label={tt("نطاق التقرير")} value={view.scope} onChange={setScopeChoice} options={[
@@ -3228,6 +3252,7 @@ function Reports({ go }) {
 function FinancialReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: false, doctor: false, patient: true };
 
@@ -3327,6 +3352,7 @@ function FinancialReport({ view }) {
 function MedicalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: true, doctor: true, patient: true };
 
@@ -3450,6 +3476,7 @@ function MedicalReport({ view }) {
 function OperationalReport({ view }) {
   window.useDataVersion && window.useDataVersion();
   const { f, set, page, setPage } = useReportState();
+  React.useEffect(() => { view.need(f.from); }, [view.need, f.from]);
   const opts = useReportOpts();
   const show = { therapist: true, doctor: true, patient: true };
 

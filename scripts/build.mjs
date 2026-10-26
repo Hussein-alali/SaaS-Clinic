@@ -9,8 +9,9 @@
 //
 // The files are classic scripts that share globals (no import/export), so
 // they are concatenated in the exact order index.html lists them and
-// transformed — not bundled. src/import.jsx (the ?import=1 page) becomes a
-// separate chunk that screens2.jsx loads only on that route. The English
+// transformed — not bundled. src/import.jsx (the ?import=1 page) and
+// src/platform.jsx (the Super Admin panel) become separate chunks that the
+// app loads only on their route / context (screens3.jsx, tenant.jsx). The English
 // dictionaries (src/lang/en-*.jsx) become dist/lang-en.<hash>.js, which the
 // language boot script in index.html loads ahead of the app only when the
 // interface is in English (src/i18n.jsx), so Arabic users never download it.
@@ -20,10 +21,14 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+import { i18nHash } from "./i18n-hash.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = process.env.BUILD_OUT ? path.resolve(process.env.BUILD_OUT) : path.join(ROOT, "dist");
 const IMPORT_PAGE = "src/import.jsx";
+// The Super Admin panel: only admin.<base> / ?platform=1 needs it (task 3.12).
+const PLATFORM_PAGE = "src/platform.jsx";
 
 // Production React builds. SRI hashes are sha384 of the npm package files,
 // which unpkg serves byte-for-byte (same method reproduces the hashes of
@@ -52,7 +57,13 @@ function replaceOnce(html, re, replacement, what) {
   return html.replace(re, replacement);
 }
 
-async function compile(files, name) {
+// own: a chunk loaded on demand after the app bundle (import, platform).
+// Minified on its own, its top-level names (esbuild's helpers among them)
+// would land in the shared global scope and overwrite the app bundle's
+// (the platform panel crashed that way): it becomes one function scope and
+// exports through window.* only. The app bundle stays a plain script, as
+// the chunks read its globals (test/build.test.mjs).
+async function compile(files, name, { own = false } = {}) {
   const source = files.map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n;\n");
   const { code } = await transform(source, {
     loader: "jsx",
@@ -60,11 +71,47 @@ async function compile(files, name) {
     target: "es2017",
     legalComments: "none",
     sourcefile: name,
+    ...(own ? { format: "iife" } : {}),
   });
   const hash = createHash("sha256").update(code).digest("hex").slice(0, 10);
   const out = `${name}.${hash}.js`;
   fs.writeFileSync(path.join(DIST, out), code);
   return { out, bytes: Buffer.byteLength(code) };
+}
+
+// The English dictionaries are keyed by the Arabic text (readable in
+// src/lang/). Shipped, each key becomes its hash (src/i18n.jsx looks it up
+// the same way), which keeps the chunk small: the Arabic text is already in
+// the app bundle at every tt() call. Two keys with one hash fail the build.
+async function compileDictionary(files, name) {
+  // One sandbox per file, so the same Arabic text translated differently in
+  // two files fails the build instead of the later file silently winning
+  // (a word that needs two translations uses ttc() and a context key).
+  const dict = {};
+  const from = {};
+  for (const f of files) {
+    const sandbox = { window: {} };
+    vm.runInNewContext(fs.readFileSync(path.join(ROOT, f), "utf8"), sandbox, { filename: f });
+    for (const [ar, en] of Object.entries(sandbox.window.I18N_EN || {})) {
+      if (ar in dict && dict[ar] !== en) fail(`${name}: ${JSON.stringify(ar)} is ${JSON.stringify(dict[ar])} in ${from[ar]} but ${JSON.stringify(en)} in ${f}`);
+      dict[ar] = en;
+      from[ar] = f;
+    }
+  }
+  const hashed = {};
+  const owner = {};
+  for (const [ar, en] of Object.entries(dict)) {
+    if (typeof en !== "string") fail(`${name}: the English for ${JSON.stringify(ar)} is not a string`);
+    const h = i18nHash(ar);
+    if (owner[h] !== undefined && owner[h] !== ar) fail(`${name}: hash collision between ${JSON.stringify(owner[h])} and ${JSON.stringify(ar)}`);
+    owner[h] = ar;
+    hashed[h] = en;
+  }
+  const code = `window.I18N_EN_H=${JSON.stringify(hashed)};`;
+  const hash = createHash("sha256").update(code).digest("hex").slice(0, 10);
+  const out = `${name}.${hash}.js`;
+  fs.writeFileSync(path.join(DIST, out), code);
+  return { out, bytes: Buffer.byteLength(code), keys: Object.keys(hashed).length };
 }
 
 let html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
@@ -74,17 +121,19 @@ const eol = html.includes("\r\n") ? "\r\n" : "\n";
 const scripts = [...html.matchAll(/<script type="text\/babel" src="([^"]+)"><\/script>/g)].map(m => m[1]);
 if (!scripts.length) fail("no <script type=\"text/babel\"> tags found in index.html");
 if (!scripts.includes(IMPORT_PAGE)) fail(`${IMPORT_PAGE} is no longer listed in index.html — update scripts/build.mjs`);
+if (!scripts.includes(PLATFORM_PAGE)) fail(`${PLATFORM_PAGE} is no longer listed in index.html — update scripts/build.mjs`);
 const isLangEn = s => /^src\/lang\/en-[\w-]+\.jsx$/.test(s);
 const langEnFiles = scripts.filter(isLangEn);
 if (!langEnFiles.length) fail("no src/lang/en-*.jsx dictionaries listed in index.html");
-const appFiles = scripts.filter(s => s !== IMPORT_PAGE && !isLangEn(s));
+const appFiles = scripts.filter(s => s !== IMPORT_PAGE && s !== PLATFORM_PAGE && !isLangEn(s));
 
 fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(DIST, { recursive: true });
 
 const app = await compile(appFiles, "app");
-const importPage = await compile([IMPORT_PAGE], "import");
-const langEn = await compile(langEnFiles, "lang-en");
+const importPage = await compile([IMPORT_PAGE], "import", { own: true });
+const platformPage = await compile([PLATFORM_PAGE], "platform", { own: true });
+const langEn = await compileDictionary(langEnFiles, "lang-en");
 
 for (const [dev, prod] of Object.entries(REACT_PROD)) {
   html = replaceOnce(
@@ -106,10 +155,38 @@ const lastTag = html.lastIndexOf('<script type="text/babel"');
 const blockEnd = html.indexOf("</script>", lastTag) + "</script>".length;
 const indent = html.slice(html.lastIndexOf("\n", firstTag) + 1, firstTag);
 html = html.slice(0, firstTag)
-  + `<script>window.KINETIC_CHUNKS = { importPage: "${importPage.out}" };</script>${eol}`
+  + `<script>window.KINETIC_CHUNKS = { importPage: "${importPage.out}", platform: "${platformPage.out}" };</script>${eol}`
   + `${indent}<script src="${app.out}"></script>`
   + html.slice(blockEnd);
 if (html.includes("text/babel")) fail("a text/babel script survived the build");
+
+// Content-Security-Policy (security audit, 25 Oct 2026; test/build.test.mjs):
+// script runs from this site, from the exact CDN files the app loads (each
+// with SRI: the tags above and the URL literals in the sources, such as
+// the Excel library) and from the inline boot scripts by hash, so an
+// injected <script> or event handler never runs. The API repeats it as a
+// header with frame-ancestors (api/src/static.js). The HTML parser turns
+// CRLF into LF before the browser hashes an inline script.
+const inlineHashes = [...new Set([...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  .map(m => `'sha256-${createHash("sha256").update(m[1].replace(/\r\n?/g, "\n")).digest("base64")}'`))];
+const appSource = [...appFiles, IMPORT_PAGE, PLATFORM_PAGE].map(f => fs.readFileSync(path.join(ROOT, f), "utf8")).join("\n");
+const cdnScripts = [...new Set([
+  ...[...html.matchAll(/<script src="(https:\/\/[^"]+)"/g)].map(m => m[1]),
+  ...[...appSource.matchAll(/"(https:\/\/(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/[^"\s]+\.js)"/g)].map(m => m[1]),
+])];
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' ${[...inlineHashes, ...cdnScripts].join(" ")}`,
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+html = replaceOnce(html, /<meta charset="utf-8" \/>/, `$&${eol}<meta http-equiv="Content-Security-Policy" content="${csp}" />`, "<meta charset> tag");
 
 fs.writeFileSync(path.join(DIST, "index.html"), html);
 fs.cpSync(path.join(ROOT, "assets"), path.join(DIST, "assets"), { recursive: true });
@@ -117,5 +194,6 @@ fs.cpSync(path.join(ROOT, "assets"), path.join(DIST, "assets"), { recursive: tru
 const kb = n => `${(n / 1024).toFixed(0)} KB`;
 console.log(`dist/${app.out}  ${kb(app.bytes)}  (${appFiles.join(", ")})`);
 console.log(`dist/${importPage.out}  ${kb(importPage.bytes)}  (${IMPORT_PAGE}, loaded only on ?import=1)`);
-console.log(`dist/${langEn.out}  ${kb(langEn.bytes)}  (${langEnFiles.length} English dictionaries, loaded only in English)`);
+console.log(`dist/${platformPage.out}  ${kb(platformPage.bytes)}  (${PLATFORM_PAGE}, loaded only in the platform context)`);
+console.log(`dist/${langEn.out}  ${kb(langEn.bytes)}  (${langEn.keys} English texts from ${langEnFiles.length} dictionaries, loaded only in English)`);
 console.log(`${path.relative(ROOT, DIST) || "."}/index.html, assets/`);

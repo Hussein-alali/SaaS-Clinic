@@ -9,12 +9,14 @@ const { setup, rawRequest, freePort, TEST_DB_URL, USER } = require('./helpers');
 const { loadConfig } = require('../src/config');
 
 const API_ROOT = path.resolve(__dirname, '..');
+const PAGE_CSP = "default-src 'self'; script-src 'self' 'sha256-abc='; object-src 'none'";
 let h;
 let dist;
 
 before(async () => {
   dist = fs.mkdtempSync(path.join(os.tmpdir(), 'clinicsys-dist-'));
-  fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>ClinicSystem</title>');
+  fs.writeFileSync(path.join(dist, 'index.html'),
+    `<!doctype html><meta charset="utf-8" /><meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}" /><title>ClinicSystem</title>`);
   fs.writeFileSync(path.join(dist, 'app.4ee0f65b03.js'), 'console.log("app")');
   fs.mkdirSync(path.join(dist, 'assets'));
   fs.writeFileSync(path.join(dist, 'assets', 'body-diagram.jpeg'), 'JPEG');
@@ -57,7 +59,12 @@ test('static: index.html no-cache, hashed bundles cached for a year, SPA fallbac
     assert.equal(spa.status, 200, host);
     assert.match(spa.text, /ClinicSystem/);
     assert.equal(spa.headers['cache-control'], 'no-cache');
+    assert.equal(spa.headers['content-security-policy'], `${PAGE_CSP}; frame-ancestors 'none'`, `${host}: the page's CSP as a header`);
   }
+  // The build's policy (a <meta> in index.html) is also the header, with
+  // frame-ancestors, which a <meta> cannot carry (security audit, 25 Oct 2026).
+  assert.equal(root.headers['content-security-policy'], `${PAGE_CSP}; frame-ancestors 'none'`);
+  assert.equal(bundle.headers['content-security-policy'], undefined, 'scripts need no page policy');
   const head = await h.request('HEAD', '/');
   assert.equal(head.status, 200);
 });
@@ -148,7 +155,7 @@ test('config: production refuses to start without secrets; development has defau
   const strong = 'x'.repeat(40);
   assert.throws(() => loadConfig({ NODE_ENV: 'production', JWT_SECRET: 'short', FILES_SIGNING_SECRET: strong, DATABASE_URL: TEST_DB_URL }), /at least 32/);
   assert.throws(() => loadConfig({ NODE_ENV: 'production', JWT_SECRET: strong, FILES_SIGNING_SECRET: strong, DATABASE_URL: TEST_DB_URL }), /must be different/);
-  const prod = loadConfig({
+  const prodEnv = {
     NODE_ENV: 'production',
     JWT_SECRET: strong,
     FILES_SIGNING_SECRET: `y${strong}`,
@@ -156,7 +163,12 @@ test('config: production refuses to start without secrets; development has defau
     APP_BASE_DOMAIN: 'ClinicSysEG.com',
     COOKIE_DOMAIN: '.clinicsyseg.com',
     COOKIE_SECURE: 'true',
-  });
+  };
+  // The default api/uploads would sit inside releases/<name>/ (docs/06 S2):
+  // the clinic files would vanish with the next deploy.
+  assert.throws(() => loadConfig(prodEnv), /FILES_DIR is required in production/);
+  const prod = loadConfig({ ...prodEnv, FILES_DIR: '/home/clinic/clinicsys/shared/files' });
+  assert.equal(prod.filesDir, '/home/clinic/clinicsys/shared/files');
   assert.equal(prod.appBaseDomain, 'clinicsyseg.com');
   assert.equal(prod.publicBaseUrl, 'https://clinicsyseg.com');
   assert.equal(prod.mailTransport, 'smtp');

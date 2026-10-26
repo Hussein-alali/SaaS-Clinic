@@ -5,16 +5,33 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <!-- i18n:lang-chunk -->
 <script>
+/* The language cookie: on <base> and all its subdomains (clinicsyseg.com,
+   admin., <slug>.), host-only elsewhere (localhost, previews). Also used by
+   setLang() in src/i18n.jsx. */
+window.clinicsysLangCookie = function (l) {
+  var host = location.hostname, bases = ["staging.clinicsyseg.com", "clinicsyseg.com"], dom = "";
+  for (var i = 0; i < bases.length; i++) {
+    if (host === bases[i] || host.slice(-(bases[i].length + 1)) === "." + bases[i]) { dom = "; domain=" + bases[i]; break; }
+  }
+  document.cookie = "clinicsys_lang=" + l + "; path=/; max-age=31536000; samesite=lax" + dom + (location.protocol === "https:" ? "; secure" : "");
+};
+</script>
+<script>
 /* Interface language before anything renders (src/i18n.jsx): ?lang=ar|en,
-   else the saved choice, else Arabic. English also loads its dictionary
-   ahead of the app (the build sets KINETIC_LANG_EN; `npm run dev` loads
-   src/lang/*.jsx with the other scripts). */
+   else the cookie clinicsys_lang (shared by the main site, admin. and every
+   clinic subdomain), else the saved choice of this address, else Arabic.
+   English also loads its dictionary ahead of the app (the build sets
+   KINETIC_LANG_EN; `npm run dev` loads src/lang/*.jsx with the others). */
 (function () {
   var l = null;
   try {
     var q = /[?&]lang=(ar|en)\b/.exec(location.search);
-    if (q) { l = q[1]; localStorage.setItem("clinicsys.lang", l); }
-    else l = localStorage.getItem("clinicsys.lang");
+    var c = /(?:^|;\s*)clinicsys_lang=(ar|en)\b/.exec(document.cookie);
+    l = q ? q[1] : c ? c[1] : localStorage.getItem("clinicsys.lang");
+    if (q) {
+      localStorage.setItem("clinicsys.lang", l);
+      if (window.clinicsysLangCookie) window.clinicsysLangCookie(l);
+    }
   } catch (e) {}
   if (l !== "en") l = "ar";
   var h = document.documentElement;
@@ -597,6 +614,7 @@
   <script type="text/babel" src="src/lang/en-platform.jsx"></script>
   <script type="text/babel" src="src/i18n.jsx"></script>
   <script type="text/babel" src="src/apiclient.jsx"></script>
+  <script type="text/babel" src="src/errors.jsx"></script>
   <script type="text/babel" src="src/supabase.jsx"></script>
   <script type="text/babel" src="src/core.jsx"></script>
   <script type="text/babel" src="src/ui.jsx"></script>

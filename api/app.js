@@ -6,6 +6,9 @@
 
 const { loadConfig } = require('./src/config');
 const { createApp } = require('./src/create-app');
+const { recordError } = require('./src/errorlog');
+const jobs = require('./src/jobs');
+const { queueScheduled } = require('./src/job-handlers');
 
 /* global PhusionPassenger */
 const underPassenger =
@@ -41,4 +44,37 @@ if (runDirectly) {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // Background jobs (docs/06 S7): every JOBS_POLL_MS (10 s; 0 = off) while
+  // this process lives. Passenger stops idle processes, so cron runs
+  // scripts/run-jobs.js every minute as well; SKIP LOCKED keeps them apart.
+  const pollMs = Number(process.env.JOBS_POLL_MS || 10000);
+  if (pollMs > 0) {
+    let busy = false;
+    setInterval(() => {
+      if (busy) return;
+      busy = true;
+      queueScheduled(app.locals.db)
+        .then(() => jobs.runDue(app.locals.db, { deps: app.locals }))
+        .catch((err) => console.error('[api] jobs:', err.message))
+        .finally(() => { busy = false; });
+    }, pollMs).unref();
+  }
+
+  // Errors outside a request (a timer, a background task) reach the
+  // platform's error list too (docs/06 S6). After an uncaught exception the
+  // process is in an unknown state: record it, then exit (Passenger starts
+  // a new one).
+  const record = (err, route) => recordError(app.locals.db, {
+    source: 'api', message: (err && err.message) || String(err), stack: err && err.stack, route, release: config.release,
+  });
+  process.on('unhandledRejection', (err) => {
+    console.error('[api] unhandled rejection:', err && (err.stack || err));
+    record(err, 'process:unhandledRejection');
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[api] uncaught exception:', err && (err.stack || err));
+    setTimeout(() => process.exit(1), 3000).unref();
+    record(err, 'process:uncaughtException').finally(() => process.exit(1));
+  });
 }

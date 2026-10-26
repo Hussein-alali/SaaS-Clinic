@@ -170,7 +170,8 @@ test('catalog: schema_migrations, 23 RPCs (legacy two dropped by 0007), no exten
          and not relrowsecurity and relname <> 'schema_migrations'`);
     const platformTables = new Set(['organizations', 'platform_admins', 'organization_members', 'member_branches',
       'invitations', 'specialties', 'modules', 'specialty_modules', 'organization_modules',
-      'subscription_plans', 'subscriptions', 'reserved_slugs']); // no RLS by design (docs/05 rule 4)
+      'subscription_plans', 'subscriptions', 'reserved_slugs',
+      'org_counters', 'idempotency_keys', 'rate_limits', 'error_groups', 'error_events', 'jobs', 'mail_log', 'usage_snapshots', 'alert_state']); // no RLS by design (docs/05 rule 4; ops tables of 0010+)
     assert.deepEqual(noRls.rows.map((r) => r.relname).filter((n) => !platformTables.has(n)), []);
 
     // Seeds: kept (template library, default methods, settings row) and removed (accounts).

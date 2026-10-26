@@ -31,7 +31,7 @@
 7. **`app_role()` الجديدة ✅:** دور `auth.uid()` في `organization_members` للعيادة `app_org_id()`، بشرط أن تكون العضوية `active` والعيادة `active` **والحساب `active`** (وكذلك `is_super_admin()`)، وإلا `null`. `can_access_branch(NULL)` أو بلا دور = `false`. قيم الأدوار: `admin`، `receptionist`، `doctor`، `therapist`، `staff`.
 8. **الفرع:** `branch_id text NOT NULL DEFAULT app_branch_id() REFERENCES branches(id)` على `bookings` و `sessions` و `invoices` و `payments` و `payment_receipts` و `patient_schedules` و `treatments`. سياسة RESTRICTIVE ثانية `branch_scope` تسمح للمستخدم بصفوف فروعه فقط (`can_access_branch(branch_id)`؛ `admin` يرى كل فروع عيادته).
 9. **القيود الفريدة على مستوى العيادة** ✅ (مثل `patients_org_national_id_uniq`، و `staff_org_email_lower_uniq`، و `payments_org_receipt_no_key`، و `branches_org_name_key`؛ وللقوالب العامة فهارس `..._global_name_key` بشرط `organization_id IS NULL`؛ وكل جدول عيادة فيه `unique (organization_id, <pk>)` باسم `<table>_org_key`): كل `UNIQUE` في جدول عيادة يصبح `(organization_id, ...)`، ومنها: `patients(national_id)`، و `patients(medical_file_no)`، و `staff(lower(email))`، و `payments(receipt_no)`، و `custom_sections(slug)`، و `template_categories(name)`، و `treatment_methods(name)`، و `patient_files(storage_path)`.
-10. **المعرّفات** (✅ في الواجهة؛ ⏳ في دوال SQL — المهمة 2.10): المفاتيح النصية الحالية (`patient_id`...) تبقى مفتاحًا أساسيًا مفردًا، لكن يجب أن تكون **فريدة عالميًا**. كل مولدات `src/` تستخدم الآن `newRecordId` بنفس البادئات (P-، A-، B-، S-، SCH-، INV-، U-، TM-، TPL-، TRT-...). المتبقي: مولدات داخل دوال SQL (`PMT-` في `record_quick_payment`، و `TPL-` و `TM-` و `TU-` و `TPC-`) تعتمد الوقت + 4 أحرف hex. الواجهة تولّدها بـ `newRecordId(prefix)` = `prefix + Date.now().toString(36) + 6 أحرف عشوائية base36`، بدل `"P-" + 5 أرقام`. التصادم بين عيادتين يفشل بخطأ RLS ولا يكشف بيانات.
+10. **المعرّفات** (✅ في الواجهة؛ ✅ `PMT-` و `receipt_no` في SQL — `0010`؛ ⏳ مولدات القوالب — المهمة 2.10): المفاتيح النصية الحالية (`patient_id`...) تبقى مفتاحًا أساسيًا مفردًا، لكن يجب أن تكون **فريدة عالميًا**. كل مولدات `src/` تستخدم الآن `newRecordId` بنفس البادئات (P-، A-، B-، S-، SCH-، INV-، U-، TM-، TPL-، TRT-...). في SQL: `new_record_id(prefix)` بنفس الصيغة (`0010`) لـ `PMT-`، و `receipt_no` = `RCT-YYYYMMDD-` + عدّاد العيادة لليوم (`org_counters`، 5 أرقام على الأقل). المتبقي: `TPL-` و `TM-` و `TU-` و `TPC-` (إجراءات مدير، الثانية + 16 بت عشوائية). الواجهة تولّدها بـ `newRecordId(prefix)` = `prefix + Date.now().toString(36) + 6 أحرف عشوائية base36`، بدل `"P-" + 5 أرقام`. التصادم بين عيادتين يفشل بخطأ RLS ولا يكشف بيانات.
 11. **`clinic_settings`:** يصبح سجلًا لكل عيادة: `PRIMARY KEY (organization_id, id)` مع إبقاء `id = 1`. الاستعلام الحالي `.eq("id", 1)` يعيد سجل العيادة الحالية.
 12. **دوال `security definer` الحالية** تعمل كمالك الجداول، والمالك خاضع لـ FORCE RLS، فتعمل بصلاحيات المستخدم والعيادة الحاليين. هذا مقصود. `search_path` ثابت في كل دالة. **تنبيهات مُتحقق منها لـ `0003`:**
     - يجب إعادة تعريف `app_role()` لتقرأ `organization_members` **قبل** فرض FORCE RLS على `staff`، وإلا يحدث `stack depth limit exceeded` (سياسة `staff` تستدعي `app_role()` التي تقرأ `staff`).
@@ -182,7 +182,7 @@
 
 ### `patient_files` (معدل — بدل `stored_files`)
 
-الجدول الحالي + `organization_id`. `storage_path` نسبي (مثل `patients/P-.../file.pdf`)، والملف الفعلي في `FILES_DIR/<organization_id>/patient-files/<storage_path>`. `unique (organization_id, storage_path)`. الملفات تبقى خاصة ولا تُخدم إلا عبر `/api/files/*`.
+الجدول الحالي + `organization_id`. `storage_path` نسبي (مثل `patients/P-.../file.pdf`)، والملف الفعلي في `FILES_DIR/<organization_id>/patient-files/<storage_path>`. `unique (organization_id, storage_path)`. الملفات تبقى خاصة ولا تُخدم إلا عبر `/api/files/*`. `file_url` (و `payment_receipts.file_url`) يقبل `null` أو `''` أو `http(s)://…` أو مسارًا في الموقع (`/…`، لا `//host`) فقط: CHECK `patient_files_file_url_safe` / `payment_receipts_file_url_safe` (`0017`، NOT VALID)، لأن العضو يكتبه وعضو آخر يفتحه.
 
 ### `audit_events` (معدل)
 
@@ -266,6 +266,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 - **حد الصفوف:** `/api/data` يعيد في كل طلب 1000 صف كحد أقصى، كما كان يفعل PostgREST في Supabase. أي قراءة لقائمة كاملة **يجب** أن تمر عبر `selectAllRows(cfg)` في `src/supabase.jsx`: طلب أول مع `count: "exact"`، ثم إذا كان الجدول أكبر مما وصل، صفحات متوازية مرتبة بالمفتاح الأساسي. المفتاح الأساسي مفهرس دائمًا، فالترتيب رخيص.
 - **التوازي:** الجداول المستقلة تُطلب معًا (`Promise.all`)، لا واحدًا بعد الآخر.
 - **ترتيب الصفوف:** الجداول الأكبر من *Max rows* تصل مرتبة بالمفتاح الأساسي. الشاشات التي تحتاج ترتيبًا آخر ترتب بنفسها.
+- ✅ **نافذة البدء (S9):** الحجوزات والجلسات والفواتير والمدفوعات تُقرأ من اليوم − 180 يومًا (والفواتير غير المسددة كلها، والصفوف بلا تاريخ)، والأقدم عند الطلب (`KineticData.loadOlder`، `listRange`). و `/api/data` يضيف `organization_id = <العيادة الحالية>` إلى كل قراءة وتعديل وحذف في جدول بصفوف عيادة واحدة (لا جداول القوالب ذات الصفوف العامة)، فتعمل فهارس `(organization_id, …)` رغم صيغة `OR` في `tenant_isolation`.
 - **المستقبل (F18):** بدل تحميل كل الجداول عند البداية، كل شاشة تطلب ما تعرضه: المواعيد لنطاق التاريخ، والمرضى بالبحث و `.range()`، والتقارير عبر دوال RPC تجمّع داخل قاعدة البيانات. مع تعدد العيادات تُضاف فهارس `(organization_id, date)` و `(organization_id, branch_id)`.
 - **إن نُقلت القاعدة إلى hosting.com:** القواعد نفسها تُطبق في خادم Node.js API بدل PostgREST ([08](08-Hosting-Migration.md)).
 
@@ -287,6 +288,7 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | الوحدات | `core.*` مسموحة دائمًا؛ الوحدات `planned` أو غير النشطة لا تُفعّل؛ التبعيات تُفحص |
 | الموعد | `branch_id` إلزامي ويتبع نفس المؤسسة؛ لا تعارض لنفس الممارس في نفس الوقت |
 | المبالغ | `amount > 0` (كما في `payments` الحالي) |
+| اللغة والقيم المخزنة | لا تغيير في المخطط للغتين: الأدوار والحالات والقيم الثابتة تُخزن كما هي (عربية حيث كانت) وتُترجم في الواجهة عند العرض فقط؛ بيانات العيادات (الأسماء، القوالب العامة من `0001`، الأقسام المخصصة) تبقى كما أُدخلت. اللغة نفسها لا تُخزن في القاعدة (cookie و `localStorage` في المتصفح)، والـ API يقرأ `X-Lang` لترتيب لغتي البريد فقط |
 | الجنس (`patients.gender`) | الواجهة تكتب `F` / `M` في الإضافة والتعديل والاستيراد (منذ 3.10؛ قبلها كانت شاشة الإضافة تكتب `Female` / `Male`). لا قيد في القاعدة؛ الصفوف القديمة تُعرض صحيحًا، وتوحيدها يُفحص عند ترحيل البيانات (4.7) |
 
 ## Retention and deletion
@@ -299,11 +301,14 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | بعد 6 أشهر | **قرار مفتوح** (حذف نهائي أم أرشفة). حتى القرار: لا حذف آلي؛ تقرير شهري لـ Super Admin بالعيادات التي تجاوزت `retention_until` |
 | التصدير والاستعادة | **قرار مفتوح**. المقترح: Super Admin يصدّر بيانات العيادة (CSV/JSON + الملفات) عند الطلب، والاستعادة بإعادة التفعيل خلال فترة الاحتفاظ |
 | سجل التدقيق | لا يُحذف ولا يُعدل |
+| النسخ الاحتياطي ✅ | نسخة ليلية للقاعدة كلها (schemas `public` و `auth`) وملفات العيادات، يُحتفظ بآخر 7 يومية و 4 أسبوعية على الخادم خارج `public_html`؛ تجربة استرجاع أسبوعية (S1، [08](08-Hosting-Migration.md)). النسخة تحوي بيانات صحية: نفس حماية القاعدة، ولا تُرسل بالبريد |
 | الحذف داخل العيادة | الحذف الفعلي للمرضى والمدفوعات للمدير فقط ومع سجل تدقيق؛ يُفضل الإلغاء/الأرشفة |
 
 ## Migration and seed data
 
-**المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser). `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
+**المسار:** `db/migrations/NNNN_name.sql`، ويطبقها `node db/migrate.js` (جدول `schema_migrations`، كل ملف داخل transaction). كل ملف يُختبر على `scripts/dev-db.sh` (مالك بدون superuser).
+
+**expand/contract (من `0010`، يفرضه `migrate.js`، S3):** أثناء النشر يعمل الإصدار السابق على المخطط الجديد، فالـ migration يضيف ولا يكسر: أعمدة وجداول ودوال جديدة، وأعمدة بقيمة افتراضية أو `NULL`. الحذف وإعادة التسمية وتغيير النوع و `set not null` على مرحلتين: الإصدار N يتوقف عن استخدام القديم، والإصدار N+1 يحذفه بسطر يسبقه `-- contract: <السبب>`. المهلة 5 ث للقفل: ما يحتاج قفلًا طويلًا على جدول كبير (فهرس، إعادة كتابة) يُقسّم أو يُشغّل في وقت هادئ. `supabase/migrations/` و `Supabase_All_In_One.sql` يبقيان للمرجعية فقط.
 
 1. ✅ `0001_baseline.sql` (4,866 سطرًا؛ مُتحقق منه على 13.23 و 16.15، ومطابق لكتالوج الأصل: الجداول والأعمدة والقيود والفهارس والـ triggers و 57 سياسة و md5 كل دالة). **ما حُذف:** 30 أمر `GRANT ... TO authenticated`، و `storage.buckets` و 4 سياسات `storage.objects`، و**بذرتا** المدير (القسم 14) و 6 حسابات موظفين بكلمة مرور ثابتة (القسم 15)، و `pgcrypto` (كانت تستخدمه البذرتان فقط)، و `notify pgrst`. **ما بقي داخل الملف:** 49 قالب علاج وتصنيفان، و 9 طرق علاج، وسجل `clinic_settings` (id=1). الوصف الأصلي للمهمة: نقل `Supabase_All_In_One.sql` إلى PostgreSQL عادي: schema `auth` التوافقي (القاعدة 2)، وحذف `pgcrypto` و `storage.*` و `auth.identities` و `grant`/`to authenticated`، وتحويل السياسات إلى `TO PUBLIC`، وفصل بذور قوالب العلاج إن لزم. **السلوك لعيادة واحدة يبقى كما هو.**
 2. ✅ `0002_platform.sql` (12 جدولًا بلا RLS، و trigger يرفض الـ slugs المحجوزة، و 16 وحدة منها 5 `planned`) — `organizations`، `platform_admins`، `organization_members`، `member_branches`، `invitations`، `specialties`، `modules`، `specialty_modules`، `organization_modules`، `subscription_plans`، `subscriptions`، `reserved_slugs` + بذر الكتالوج: 3 تخصصات، والوحدات (النواة المشتركة `core.*` بما فيها `core.branches` + وحدات العلاج الطبيعي الحالية)، والربط الافتراضي، والـ slugs المحجوزة (`admin`، `www`، `api`، `app`، `staging`، `mail`، `static`).
@@ -314,7 +319,15 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 7. ✅ `0007_rpc_role_guards.sql` — إعادة إنشاء 21 دالة `security definer` من آخر تعريف لها مع فحص دور آمن من `NULL` (`v_role is null or v_role not in (...)`، و `coalesce(public.app_role(), '')` في دوال القراءة)؛ فحص دور جديد (admin، receptionist) لـ `record_quick_payment` و `list_invoices_filtered`؛ حذف `create_treatment_method` و `update_treatment_method` (خارج قائمة السماح وغير مستخدمتين). فحص ذاتي: يفشل إن بقي نمط غير آمن في أي دالة `security definer` في `public`، أو نقص الفحص في أي من الدوال الـ 23، أو بقيت الدالتان.
 8. ✅ `0008_invitation_email_status.sql` — العمودان `invitations.email_status` (check) و `email_status_at`. لا يمس trigger حد المستخدمين.
 9. ✅ `0009_inactive_branch_guard.sql` — trigger `<table>_branch_active` (الدالة `refuse_inactive_branch(pk)`) على الجداول السبعة المرتبطة بفرع: `BEFORE INSERT` و `BEFORE UPDATE OF branch_id` يرفضان فرعًا معطّلًا بـ SQLSTATE `BR409` (`branch_inactive`). مستثنى: سياق النظام، و upsert لمفتاح أساسي موجود (الشاشات تحفظ هكذا)، وفرع لا يراه المستدعي (ترفضه القيود الأخرى). فحص ذاتي: كل جدول فيه `branch_scope` عليه الـ trigger مفعّلًا ومعامله المفتاح الأساسي.
-10. `0010_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**.
+10. ✅ `0010_concurrency.sql` — (1) trigger `bookings_slot_guard` (`BEFORE INSERT OR UPDATE OF therapist_id, doctor_id, date, time, status`): حجز نشط واحد (الحالة ليست `ملغي`/`ملغى`/`cancelled`/`متاح`) لكل أخصائي ولكل طبيب في (التاريخ، الوقت بعد `btrim`) داخل العيادة، بقفل `pg_advisory_xact_lock` ثم `booking_slot_taken()` (security definer، يرفع `app.system` لاستعلامه فقط ليرى كل الفروع، ومقيد بعيادة المستدعي) → SQLSTATE `BK409` (`slot_taken`). مستثنى: سياق النظام، وصف عيادة أخرى (يرفضه RLS)، وحفظ حجز يملك موعده أصلًا (upsert لمفتاح موجود يُعامل كتعديل)؛ التكرارات القديمة تبقى قابلة للتعديل. (2) `org_counters(organization_id, name, value)` + `next_org_counter(org, name)`؛ عدادات اليوم تبدأ بعد آخر إيصال صادر. (3) `new_record_id(prefix)` (من `gen_random_uuid()`، مدمج في PG13). (4) `idempotency_keys(scope, key, organization_id, user_id, status, response, created_at)` بمفتاح `(scope, key)`؛ تُحذف بعد يوم، إلا نطاق `webhook:<name>` (معرّفات أحداث المزوّدين، S10) فبعد 30 يومًا. `record_quick_payment` أعيد إنشاؤه بالعداد و `new_record_id('PMT-')`. الجدولان الجديدان تشغيليان بلا RLS (القاعدة 4) ولا يصلهما `/api/data`.
+11. ✅ `0011_rate_limits.sql` — `rate_limits(bucket, key_hash, window_start, count)` بمفتاح `(bucket, key_hash, window_start)` وفهرس على `window_start`: عدادات حدود الطلبات المشتركة بين عمليات الـ API (`api/src/ratelimit.js`)؛ المفتاح sha256 فقط. جدول تشغيلي بلا RLS (القاعدة 4).
+12. ✅ `0012_error_log.sql` — `error_groups(fingerprint PK, source api|client, message, route, status, code, count, first_seen, last_seen, last_event_at, last_release, resolved_at)` و `error_events(id, fingerprint → error_groups, created_at, message, stack, route, method, status, code, organization_id, user_id, release, user_agent)`؛ نصوص منقّاة فقط، وعينة واحدة لكل مجموعة في الدقيقة. جدولان تشغيليان بلا RLS (القاعدة 4)؛ العينات الأقدم من 30 يومًا تُحذف في مهمة الصيانة (S7).
+13. ✅ `0013_jobs.sql` — `jobs(id, kind, payload jsonb, run_at, attempts, max_attempts 5, last_error, locked_by, done_at, dead_at, dedupe_key, created_at, updated_at)` مع فهرس المستحقة، وفهرس فريد جزئي على `dedupe_key` للمهام المعلقة؛ و `mail_log(id, sent_at, kind, ok)` بلا عناوين. الحمولة معرّفات فقط (لا بريد ولا رمز ولا بيانات صحية). جدولان تشغيليان بلا RLS (القاعدة 4).
+14. ✅ `0014_usage.sql` — `usage_snapshots(id, taken_at, db_bytes, files_bytes, backups_bytes, disk_total_bytes, disk_free_bytes, emails_last_hour, emails_today, levels jsonb)` (90 يومًا) و `alert_state(key, level, sent jsonb, updated_at)`. جدولان تشغيليان بلا RLS (القاعدة 4).
+15. ✅ `0015_indexes.sql` — `(organization_id, branch_id, date)` على `bookings` و `sessions`، و `(organization_id, branch_id, created_at)` على `invoices` و `payments` (نافذة البدء، S9). لا فهارس `(organization_id, patient_id)`: `patient_id` فريد على المنصة (`patients_pkey`) وفهارسه الحالية تكفي.
+16. ✅ `0016_invoices_rpc_org.sql` — `list_invoices_filtered` (نفس التوقيع والنتيجة) يذكر `i.organization_id = app_org_id()` في قراءاته الست للفواتير، فيستعمل فهرس `0015` بدل مسح فواتير كل العيادات (صيغة `OR` في `tenant_isolation`). قاعدة لكل دالة جديدة: اذكر العيادة صراحة بجانب RLS.
+17. ✅ `0017_safe_file_urls.sql` — CHECK (NOT VALID) على `patient_files.file_url` و `payment_receipts.file_url`: http(s) أو مسار في الموقع فقط (XSS مخزَّن عبر `javascript:`، المراجعة الأمنية 25 أكتوبر؛ `db/test/safe_urls.test.js`).
+18. `0018_...` وما بعدها — أي إصلاح لاحق كملف جديد؛ **لا يُعدل ملف طُبّق على قاعدة مشتركة**. فحص expand/contract في `migrate.js` يشمل من `0016` أيضًا حذف الدوال والإجراءات والـ views والقيود والقيم الافتراضية، وتغيير النوع المكتوب على سطرين.
 
 **الملفات:** بيانات المالك ونوع المحتوى لكل ملف في `FILES_DIR/<org>/.meta/<bucket>/<path>.json`.
 
@@ -339,3 +352,15 @@ org_module_enabled(code text) returns boolean  -- organization_modules للعي�
 | 22 أكتوبر 2026 | `0005_branches_no_delete` و `0006_staff_role` ✅؛ إغلاق فجوتي حذف الفروع ودور `staff`؛ فرض الوحدات في الـ API لا في RLS؛ مفاتيح تخزين جديدة. |
 | 22 أكتوبر 2026 | `0007_rpc_role_guards` (2.9)، `0008_invitation_email_status` (3.15)، `0009_inactive_branch_guard` (3.18) ✅؛ عمودان جديدان في `invitations`؛ الحجز على الفرع النشط فقط؛ فرض الوحدات يشمل الملفات؛ حذف مفتاح `clinicsys.unsent_invites`. (هذا الـ commit) |
 | 23 أكتوبر 2026 | قاعدة «الجنس» في Data validation: `F`/`M` من الواجهة، والقيم القديمة `Female`/`Male` (مراجعة 3.10). (هذا الـ commit) |
+| 25 أكتوبر 2026 | قاعدة «اللغة والقيم المخزنة»: لا تغيير في المخطط للغتين؛ القيم تبقى كما هي وتُترجم عند العرض؛ `X-Lang` للبريد فقط. (هذا الـ commit) |
+| 25 أكتوبر 2026 | سطر «النسخ الاحتياطي» في Retention and deletion (S1). (هذا الـ commit) |
+| 25 أكتوبر 2026 | قاعدة expand/contract للـ migrations من `0010` و `-- contract:` (S3). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0010_concurrency`: حماية الموعد (`BK409`)، `org_counters` وأرقام الإيصالات، `new_record_id()`، `idempotency_keys` (S4). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0011_rate_limits` (S5). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0012_error_log` (S6). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0013_jobs` (S7). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0014_usage` (S8). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0015_indexes` ونافذة البدء وشرط `organization_id` في `/api/data` (S9). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `idempotency_keys` لمعرّفات أحداث الـ Webhooks (نطاق `webhook:<name>`، 30 يومًا) (S10). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0016_invoices_rpc_org`؛ أنماط فحص expand/contract الإضافية من `0016` (مراجعة S1–S10). (هذا الـ commit) |
+| 25 أكتوبر 2026 | `0017_safe_file_urls` (روابط الملفات http(s) أو مسار الموقع فقط)؛ عنوان IP في `payments` يملؤه الخادم (المراجعة الأمنية). (هذا الـ commit) |

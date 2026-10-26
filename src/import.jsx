@@ -309,7 +309,7 @@ function HistoricalImportPage() {
         <span className="badge b-green" title={tt("عدد السجلات المُدخلة في هذه الجلسة")}>
           <span className="dot"></span> {ttx("تم إدخال {n} مريض", { n: <span className="mono" style={{ margin: "0 4px" }}>{count}</span> })}
         </span>
-        <LangSwitch className="btn btn-ghost" />
+        <LangSwitch className="btn btn-ghost" style={{ minHeight: 44, minWidth: 44 }} />
         {/* In Arabic the stylesheet mirrors this arrow inside .btn (index.html). */}
         <button className="btn btn-secondary" onClick={exitImport}><I.ArrowLeft size={13} /> {tt("عودة للتطبيق")}</button>
       </header>

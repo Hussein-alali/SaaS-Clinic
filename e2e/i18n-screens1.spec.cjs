@@ -88,7 +88,7 @@ async function patientsScreens(page, c, who, { edit = true, add = true } = {}) {
   await expect(view.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
   await c.check(`${who} patients cards`);
   await view.getByRole("button", { name: "Table" }).click();
-  for (const s of ["Active", "Inactive", "Incomplete", "All"]) await status.getByRole("button", { name: s }).click();
+  for (const s of ["Active", "Inactive", "Incomplete", "All"]) await status.getByRole("button", { name: s, exact: true }).click();
 
   const rows = main(page).locator("table.tbl-cards tbody tr[data-clickable]");
   if (await rows.count()) {
@@ -141,7 +141,7 @@ async function patientsScreens(page, c, who, { edit = true, add = true } = {}) {
     await c.check(`${who} new patient 3 attachments`);
     await main(page).getByRole("button", { name: "Continue", exact: true }).click();
     await expect(main(page).getByText("Review & create", { exact: true })).toBeVisible();
-    await expect(main(page).getByText(/^Looks good\. The patient will be created with file #/)).toBeVisible();
+    await expect(main(page).getByText(/Looks good\. The patient will be created with file #/)).toBeVisible();
     await c.check(`${who} new patient 4 review`);
     for (let i = 0; i < 4; i++) await main(page).getByRole("button", { name: /^(Back|Cancel)$/ }).first().click();
     await expect(main(page).getByRole("heading", { level: 1, name: "Patients" })).toBeVisible();
@@ -207,7 +207,7 @@ async function appointmentScreens(page, c, who, { modes, wizard = true } = {}) {
     await main(page).getByRole("group", { name: "Patient", exact: true }).getByRole("button", { name: "New patient", exact: true }).click();
     await main(page).getByPlaceholder("Full name").fill("Wizard Patient " + who);
     await main(page).getByPlaceholder("+20 1xx xxx xxxx").fill("01110001001");   // a known number
-    await expect(main(page).getByText(/^Known number — the booking will be linked to .+'s file$/)).toBeVisible();
+    await expect(main(page).getByText(/Known number — the booking will be linked to .+'s file$/)).toBeVisible();
     await c.check(`${who} wizard 1 new patient`);
     await main(page).getByRole("button", { name: "Continue", exact: true }).click();
     await expect(main(page).getByText("Choose a therapist — the therapist appointment is required", { exact: true })).toBeVisible();
@@ -233,7 +233,7 @@ async function appointmentScreens(page, c, who, { modes, wizard = true } = {}) {
   const q = dialog(page, "Quick booking");
   await expect(q.getByText(/^For phone and WhatsApp bookings/)).toBeVisible();
   await q.getByPlaceholder("+20 1xx xxx xxxx").fill("01110001001");
-  await expect(q.getByText(/^Known number — /)).toBeVisible();
+  await expect(q.getByText(/Known number — /)).toBeVisible();
   await q.getByRole("button", { name: "Confirm booking", exact: true }).click();   // no therapist → a toast
   await expect(page.getByText(/^(Enter the patient's name|Choose a therapist)$/).first()).toBeVisible();
   await c.check(`${who} quick booking`);
