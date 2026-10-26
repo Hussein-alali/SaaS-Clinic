@@ -457,7 +457,8 @@ test("AT-08 a user of clinic A gets neither a file of clinic B's patient nor a w
   await bp.goto("/?org=demo-dental#/patients");
   await clinicLogin(bp, "admin@demo-dental.test");
   await bp.locator("main").getByText("مريض أول — DEN").first().click();
-  await bp.getByRole("button", { name: "الملفات", exact: true }).click();
+  // The dental patient file (src/dental.jsx): its sections are tabs.
+  await bp.getByRole("tab", { name: "الملفات", exact: true }).click();
   const uploaded = bp.waitForResponse((r) => r.url().endsWith("/api/files/upload"));
   await bp.locator('input[type="file"]').setInputFiles({ name: `report-${RUN}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(`%PDF-1.4 secret of clinic B ${RUN}`) });
   const up = await uploaded;

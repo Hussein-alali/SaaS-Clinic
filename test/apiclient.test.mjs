@@ -1396,6 +1396,19 @@ describe("src/supabase.jsx on top of the client", () => {
     assert.equal(env.win.KineticData.windowFrom(), WINDOW);
   });
 
+  // The doctor's caseload (src/roles.jsx scopePatients) matches on p.dr: it
+  // was always "—" because patients carry doctor_id only, so every doctor's
+  // patient list was empty.
+  test("normalizeDomainData: a patient's doctor name comes from doctor_id, like the therapist's", async () => {
+    const env = await bootApp({});
+    const D = {
+      doctors: [{ id: "DR-1", name: "د. سارة" }],
+      patients: [{ patient_id: "P-1", doctor_id: "DR-1" }, { patient_id: "P-2", doctor_id: null }, { patient_id: "P-3", dr: "د. قديم" }],
+    };
+    env.win.normalizeDomainData(D);
+    assert.deepEqual(D.patients.map((p) => p.dr), ["د. سارة", "—", "د. قديم"]);
+  });
+
   test("KineticData.loadOlder({ patientId }): that patient's older rows, once, merged into window.DATA (oldest first) with kinetic:data-updated", async () => {
     const env = await bootWithData(historyServer(HISTORY));
     let updates = 0;

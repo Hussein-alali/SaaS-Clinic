@@ -326,6 +326,7 @@ function AssessmentDetails({ a }) {
   return (
     <div data-assessment={a.assessment_id}>
       <ClinicalRow k={tt("الشكوى الرئيسية")} v={a.complaint}/>
+      {a.kind !== "physio" && <ClinicalRow k={tt("الفحص")} v={d.examination}/>}
       <ClinicalRow k={tt("التشخيص")} v={a.diagnosis}/>
       {a.kind === "physio" && <>
         <ClinicalRow k="Traction" v={[on(d.cervical, "Cervical"), on(d.thll, "TH, LL"), on(d.thpl, "TH, PL"), d.shortWave ? "Short wave" : null].filter(Boolean).join(" · ")}/>
@@ -339,10 +340,10 @@ function AssessmentDetails({ a }) {
         <ClinicalRow k="Manual Techniques notes" v={d.manualNotes}/>
       </>}
       {a.kind !== "physio" && <>
-        <ClinicalRow k={tt("الفحص")} v={d.examination}/>
         <ClinicalRow k={tt("ما تم اليوم")} v={d.treatment_done}/>
         <ClinicalRow k={tt("الخطة")} v={d.plan}/>
-        <ClinicalRow k={tt("المتابعة")} v={d.follow_up || d.next_visit}/>
+        <ClinicalRow k={tt("الزيارة القادمة")} v={d.next_visit}/>
+        <ClinicalRow k={tt("المتابعة")} v={d.follow_up}/>
       </>}
       <ClinicalRow k={tt("ملاحظات")} v={a.notes}/>
     </div>
@@ -651,7 +652,7 @@ function PrescriptionModal({ patient, onClose, onSaved }) {
 // value goes through escHtml here).
 function printPrescription(rx, patient) {
   const esc = window.escHtml;
-  const rows = (rx.items || []).map(it => `<tr>${RX_FIELDS.map(([k]) => `<td>${esc(it[k] || "")}</td>`).join("")}</tr>`).join("");
+  const rows = (rx.items || []).map(it => `<tr>${RX_FIELDS.map(([k]) => `<td><bdi>${esc(it[k] || "")}</bdi></td>`).join("")}</tr>`).join("");
   const body = `
     <div style="margin-bottom:12px"><b>${esc(tt("المريض"))}:</b> ${esc(patient.name)} · <span class="mono">${esc(patient.medical_file_no || patient.id)}</span></div>
     <div style="margin-bottom:12px"><b>${esc(tt("التاريخ"))}:</b> ${esc(fmtDate(rx.prescribed_on))} · <b>${esc(tt("الطبيب"))}:</b> ${esc(rx.author_name || "")}</div>
@@ -684,7 +685,7 @@ function PrescriptionsTab({ p, onNew }) {
             <div className="tbl-scroll">
               <table className="tbl">
                 <thead><tr>{RX_FIELDS.map(([k, l]) => <th key={k}>{tt(l)}</th>)}</tr></thead>
-                <tbody>{(rx.items || []).map((it, i) => <tr key={i}>{RX_FIELDS.map(([k]) => <td key={k}>{it[k] || "—"}</td>)}</tr>)}</tbody>
+                <tbody>{(rx.items || []).map((it, i) => <tr key={i}>{RX_FIELDS.map(([k]) => <td key={k}>{it[k] ? <bdi>{it[k]}</bdi> : "—"}</td>)}</tr>)}</tbody>
               </table>
             </div>
             {rx.notes && <div className="muted" style={{fontSize:12.5,marginTop:8,whiteSpace:"pre-wrap"}}>{rx.notes}</div>}

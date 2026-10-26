@@ -63,11 +63,20 @@ function myTherapistId(){
   const t = (DATA.therapists || []).find(x => x.name === nm);
   return t ? t.id : null;
 }
+// The DATA.doctors row of the logged-in doctor: their account (auth_uid),
+// else their name; patients and bookings link to it by doctor_id.
+function myDoctorId(){
+  const me = window.ME; if (!me) return null;
+  const nm = myName();
+  const d = (DATA.doctors || []).find(x => (me.id && x.auth_uid === me.id)) || (DATA.doctors || []).find(x => nm && x.name === nm);
+  return d ? d.id : null;
+}
 function scopePatients(list){
   const me = window.ME;
   if (!me || me.scope==="all" || me.scope==="reception") return list;
   const nm = myName();
-  if (me.scope==="doctor")    return list.filter(p=>p.dr===nm);
+  if (me.scope==="doctor")    { const did = myDoctorId();
+    return list.filter(p=>p.dr===nm || (did && p.doctor_id===did)); }
   if (me.scope==="therapist") { const tid = myTherapistId();
     return list.filter(p=>p.th===nm || (tid && p.therapist_id===tid)); }
   return list;
@@ -76,7 +85,8 @@ function scopeAppts(list){
   const me = window.ME;
   if (!me || me.scope==="all" || me.scope==="reception") return list;
   const nm = myName();
-  if (me.scope==="doctor")    return list.filter(a=>a.dr===nm);
+  if (me.scope==="doctor")    { const did = myDoctorId();
+    return list.filter(a=>a.dr===nm || (did && a.doctor_id===did)); }
   if (me.scope==="therapist") { const tid = myTherapistId();
     return list.filter(a=>a.th===nm || (tid && a.therapist_id===tid)); }
   return list;

@@ -1579,7 +1579,7 @@ function normalizeDomainData(D) {
     registered: p.registered ?? String(p.created_at || "").slice(0, 10),
     chronic: Array.isArray(p.chronic) ? p.chronic : [],
     surgeries: Array.isArray(p.surgeries) ? p.surgeries : [],
-    dr: p.dr ?? "—", th: p.th ?? (nameOfTherapist(p.therapist_id) || "—"), job: p.job ?? "—",
+    dr: p.dr ?? (nameOfDoctor(p.doctor_id) || "—"), th: p.th ?? (nameOfTherapist(p.therapist_id) || "—"), job: p.job ?? "—",
     visited: p.visited ?? "—", payment: p.payment ?? "معلّق",
   }));
   D.appts = (D.appts || []).map(a => ({
